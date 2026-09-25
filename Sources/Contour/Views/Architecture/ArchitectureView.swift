@@ -7,8 +7,12 @@ import SwiftUI
 /// relationships. Two pieces of chrome drive it: a Before / After / Delta mode (Delta is
 /// the default — it shows enough context but emphasizes the architectural change) and a
 /// System / Implementation zoom (System shows conceptual responsibilities; Implementation
-/// reveals the real classes). Selecting a node or an edge fills the inspector, and an
-/// edge's embodied decisions link straight into the Decisions lens.
+/// reveals the real classes). Selecting a node or an edge fills a detail panel inline below
+/// the diagram — matching the rest of the app's "inspector-free, cross-links live inline"
+/// pattern (see `ContentView`) rather than a second side-by-side pane. That also sidesteps
+/// a real macOS bug: nesting an `HSplitView` inside `NavigationSplitView`'s detail column
+/// intermittently collapses the outer sidebar, which is exactly what a first version of
+/// this view did. An edge's embodied decisions link straight into the Decisions lens.
 struct ArchitectureView: View {
     let graph: PRGraph
     var onOpenEvidence: (CodeRef) -> Void
@@ -32,22 +36,25 @@ struct ArchitectureView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
-            HSplitView {
-                ArchitectureDiagramView(
-                    components: visibleComponents,
-                    edges: visibleEdges,
-                    boundaries: graph.boundaries,
-                    mode: mode,
-                    selectedNodeId: selectedNodeId,
-                    selectedEdgeId: selectedEdgeId,
-                    onSelectNode: { selection = .node($0.id) },
-                    onSelectEdge: { selection = .edge($0.id) }
-                )
-                .frame(minWidth: 420, minHeight: 300)
+            Divider()
 
-                inspector
-                    .frame(minWidth: 300, idealWidth: 340)
-            }
+            ArchitectureDiagramView(
+                components: visibleComponents,
+                edges: visibleEdges,
+                boundaries: graph.boundaries,
+                mode: mode,
+                selectedNodeId: selectedNodeId,
+                selectedEdgeId: selectedEdgeId,
+                onSelectNode: { selection = .node($0.id) },
+                onSelectEdge: { selection = .edge($0.id) }
+            )
+            .frame(minHeight: 260, maxHeight: .infinity)
+            .layoutPriority(1)
+
+            Divider()
+
+            detailPanel
+                .frame(minHeight: 150, idealHeight: 210, maxHeight: 260)
         }
         .onAppear { if selection == .none { selection = defaultSelection } }
         .onChange(of: mode) { _, _ in reconcileSelection() }
@@ -143,12 +150,12 @@ struct ArchitectureView: View {
         }
     }
 
-    // MARK: - Inspector
+    // MARK: - Detail panel (inline, below the diagram — not a second side pane)
 
     @ViewBuilder
-    private var inspector: some View {
+    private var detailPanel: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 switch selection {
                 case let .node(id):
                     if let node = graph.component(id) { nodeInspector(node) }
@@ -157,41 +164,47 @@ struct ArchitectureView: View {
                         edgeInspector(edge)
                     }
                 case .none:
-                    Text("Select a node or a relationship to inspect it.")
+                    Text("Select a node or a relationship in the diagram to inspect it.")
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(.background.opacity(0.4))
     }
 
     // MARK: Node inspector
 
     @ViewBuilder
     private func nodeInspector(_ node: ComponentNode) -> some View {
-        inspectorHeader(kind: node.level.label, title: node.title)
-
-        if let purpose = node.summary {
-            field("RESPONSIBILITY") { StatementView(statement: purpose) }
-        }
-
-        field("CHANGED BY THIS PR") {
+        HStack(alignment: .top, spacing: 16) {
+            inspectorHeader(kind: node.level.label, title: node.title)
+            Spacer(minLength: 0)
+            let changed = node.changeKind == .new || node.changeKind == .changed
             HStack(spacing: 6) {
-                let changed = node.changeKind == .new || node.changeKind == .changed
                 Image(systemName: changed ? "checkmark.circle.fill" : "minus.circle")
                     .foregroundStyle(changed ? .green : .secondary)
                 ChangeKindBadge(kind: node.changeKind)
             }
         }
 
-        let incoming = edges(into: node.id)
-        if !incoming.isEmpty {
-            field("TRIGGERED BY") { relationshipList(incoming, endpoint: \.fromId, prefix: "") }
+        if let purpose = node.summary {
+            field("RESPONSIBILITY") { StatementView(statement: purpose) }
         }
+
+        let incoming = edges(into: node.id)
         let outgoing = edges(from: node.id)
-        if !outgoing.isEmpty {
-            field("TRIGGERS") { relationshipList(outgoing, endpoint: \.toId, prefix: "") }
+        if !incoming.isEmpty || !outgoing.isEmpty {
+            HStack(alignment: .top, spacing: 28) {
+                if !incoming.isEmpty {
+                    field("TRIGGERED BY") { relationshipList(incoming, endpoint: \.fromId, prefix: "") }
+                }
+                if !outgoing.isEmpty {
+                    field("TRIGGERS") { relationshipList(outgoing, endpoint: \.toId, prefix: "") }
+                }
+                Spacer(minLength: 0)
+            }
         }
 
         let decisions = graph.decisions(affecting: node.id)
@@ -226,18 +239,9 @@ struct ArchitectureView: View {
     private func edgeInspector(_ edge: ArchitectureEdge) -> some View {
         let from = graph.component(edge.fromId)
         let to = graph.component(edge.toId)
-        inspectorHeader(kind: "Relationship", title: edge.label.isEmpty ? "relates to" : edge.label)
-
-        field("DIRECTION") {
-            HStack(spacing: 6) {
-                Text(from?.title ?? edge.fromId).font(.callout.weight(.medium))
-                Image(systemName: "arrow.right").font(.caption).foregroundStyle(edge.change.color)
-                Text(to?.title ?? edge.toId).font(.callout.weight(.medium))
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        field("KIND") {
+        HStack(alignment: .top, spacing: 16) {
+            inspectorHeader(kind: "Relationship", title: edge.label.isEmpty ? "relates to" : edge.label)
+            Spacer(minLength: 0)
             HStack(spacing: 8) {
                 pill(edge.change == .new ? "New relationship"
                      : edge.change == .changed ? "Changed"
@@ -247,6 +251,15 @@ struct ArchitectureView: View {
                      color: edge.flow == .async ? .secondary : .primary)
                 if edge.isTrustBoundary { pill("Trust boundary", color: .orange, glyph: "lock.shield") }
             }
+        }
+
+        field("DIRECTION") {
+            HStack(spacing: 6) {
+                Text(from?.title ?? edge.fromId).font(.callout.weight(.medium))
+                Image(systemName: "arrow.right").font(.caption).foregroundStyle(edge.change.color)
+                Text(to?.title ?? edge.toId).font(.callout.weight(.medium))
+            }
+            .fixedSize(horizontal: false, vertical: true)
         }
 
         if edge.onCriticalPath {

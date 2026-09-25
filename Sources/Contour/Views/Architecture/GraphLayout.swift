@@ -13,11 +13,15 @@ struct ArchDiagramLayout {
         var id: String { component.id }
     }
     /// A resolved edge with concrete geometry. `labelPoint` is where the relationship verb
-    /// is drawn; `from`/`to` are the anchor points the connector runs between.
+    /// is drawn; `from`/`to` are the anchor points the connector runs between. `via`, when
+    /// present, is an elevated waypoint an edge that skips one or more columns routes
+    /// through — reserved headroom above every node row — so it arcs clear of the boxes
+    /// and edge labels sitting in the columns it passes over instead of cutting through them.
     struct PlacedEdge: Identifiable {
         var edge: ArchitectureEdge
         var from: CGPoint
         var to: CGPoint
+        var via: CGPoint?
         var labelPoint: CGPoint
         var id: String { edge.id }
     }
@@ -35,11 +39,14 @@ struct ArchDiagramLayout {
 enum GraphLayoutEngine {
     static let boxWidth: CGFloat = 208
     static let boxHeight: CGFloat = 66
-    static let hGap: CGFloat = 116        // wide enough that an edge label fits between columns
+    static let hGap: CGFloat = 160        // wide enough that a capped-width edge label fits between columns without spilling into either neighbor
     static let vGap: CGFloat = 34
     static let margin: CGFloat = 40
     static let boundaryPad: CGFloat = 18
     static let boundaryLabelH: CGFloat = 22
+    /// Headroom reserved above every node row for edges that skip one or more columns to
+    /// arc through, clear of the boxes/labels in the columns they pass over.
+    static let skipLaneGap: CGFloat = 28
 
     /// Lay out `components` along the direction of travel of `edges` (from → to reads
     /// left-to-right), with `boundaries` resolved to container rects behind their members.
@@ -95,7 +102,10 @@ enum GraphLayoutEngine {
         var placed: [ArchDiagramLayout.PlacedNode] = []
         let sortedKeys = layers.keys.sorted()
         var maxBottom: CGFloat = 0
-        let topInset = margin + boundaryLabelH
+        // The skip lane sits inside any boundary container (above its members' rows, below
+        // its own top border) so an arced edge never crosses a boundary's own outline.
+        let topInset = margin + boundaryLabelH + skipLaneGap
+        let skipApexY = topInset - skipLaneGap * 0.6
 
         for key in sortedKeys {
             let column = layers[key] ?? []
@@ -123,10 +133,17 @@ enum GraphLayoutEngine {
         }
 
         // Resolve edge geometry. Anchor on the side that faces the target so arrows read
-        // as travel; a backward/same-column edge still connects sensibly center-to-center.
+        // as travel. A same-column-adjacent edge's connector line is always confined to the
+        // gap's x-range (from f.maxX to t.minX), so it can never cross a node box regardless
+        // of vertical distance — only its *label* needs width-capping (done by the view) to
+        // stay inside that same gap. An edge whose endpoints are more than one column apart
+        // gets routed through an elevated `via` waypoint in the reserved skip lane above
+        // every node row instead, so it clears the intervening column's boxes entirely
+        // rather than just avoiding them on average.
         var placedEdges: [ArchDiagramLayout.PlacedEdge] = []
         for e in liveEdges {
             guard let f = frameById[e.fromId], let t = frameById[e.toId] else { continue }
+            let columnGap = abs((memo[e.toId] ?? 0) - (memo[e.fromId] ?? 0))
             let from: CGPoint, to: CGPoint
             if t.minX >= f.maxX - 1 {                 // target is to the right
                 from = CGPoint(x: f.maxX, y: f.midY)
@@ -139,8 +156,14 @@ enum GraphLayoutEngine {
                 from = CGPoint(x: f.midX, y: goingDown ? f.maxY : f.minY)
                 to = CGPoint(x: t.midX, y: goingDown ? t.minY : t.maxY)
             }
-            let labelPoint = CGPoint(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 9)
-            placedEdges.append(.init(edge: e, from: from, to: to, labelPoint: labelPoint))
+
+            if columnGap > 1 {
+                let via = CGPoint(x: (from.x + to.x) / 2, y: skipApexY)
+                placedEdges.append(.init(edge: e, from: from, to: to, via: via, labelPoint: CGPoint(x: via.x, y: via.y - 9)))
+            } else {
+                let labelPoint = CGPoint(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 9)
+                placedEdges.append(.init(edge: e, from: from, to: to, via: nil, labelPoint: labelPoint))
+            }
         }
 
         let width = margin * 2 + CGFloat(sortedKeys.count) * boxWidth + CGFloat(max(sortedKeys.count - 1, 0)) * hGap

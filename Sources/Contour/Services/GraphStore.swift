@@ -19,14 +19,12 @@ enum NavigationTarget: Hashable {
     case decisions
     case tradeoffs
     case flows
-    case entryPoints
     case files
     case diff
     case decisionDetail(String)
     case componentDetail(String)
     case tradeoffDetail(String)
     case flowDetail(String)
-    case entryPointDetail(String)
     case evidence(CodeRef)
 }
 

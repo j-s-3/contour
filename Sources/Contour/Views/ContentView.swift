@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The window shell from §4.1: sidebar of lenses + files, main pane driven by the
 /// semantic navigation stack, inspector-free for MVP (cross-links live inline instead).
@@ -7,6 +8,13 @@ struct ContentView: View {
     @State private var showPalette = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
+    /// Explicit, not `.automatic`: `WindowAccessor` force-enters real fullscreen ~0.2s
+    /// after launch, and that AppKit transition is a known trigger for
+    /// `NavigationSplitView` silently collapsing its sidebar column (the automatic
+    /// width-based visibility heuristic gets a bad reading mid-transition and never
+    /// reconsiders). Owning the binding — and reasserting it once fullscreen actually
+    /// completes — is what keeps the sidebar from vanishing.
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         Group {
@@ -28,6 +36,9 @@ struct ContentView: View {
                 .opacity(0)
         )
         .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+            sidebarVisibility = .all
+        }
     }
 
     @ViewBuilder
@@ -52,7 +63,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private func readyBody(_ graph: PRGraph) -> some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
             sidebar(graph)
         } detail: {
             detailContent(graph)
@@ -80,7 +91,6 @@ struct ContentView: View {
             Section("System") {
                 sidebarRow("Architecture", "square.stack.3d.up", .architecture)
                 sidebarRow("Flows (\(graph.flows.count))", "arrow.triangle.branch", .flows)
-                sidebarRow("Entry points (\(graph.entryPoints.count))", "arrow.right.to.line", .entryPoints)
             }
             Section("Decisions") {
                 sidebarRow("Decisions (\(graph.decisions.count))", "checklist", .decisions)
@@ -113,10 +123,10 @@ struct ContentView: View {
     private func isActive(_ target: NavigationTarget) -> Bool {
         switch (store.current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
-             (.tradeoffs, .tradeoffs), (.flows, .flows), (.entryPoints, .entryPoints), (.diff, .diff):
+             (.tradeoffs, .tradeoffs), (.flows, .flows), (.diff, .diff):
             return true
         case (.componentDetail(_), .architecture), (.decisionDetail(_), .decisions),
-             (.tradeoffDetail(_), .tradeoffs), (.flowDetail(_), .flows), (.entryPointDetail(_), .entryPoints):
+             (.tradeoffDetail(_), .tradeoffs), (.flowDetail(_), .flows):
             return true
         default:
             return false
@@ -149,18 +159,8 @@ struct ContentView: View {
             )
         case .flows, .flowDetail(_):
             FlowsView(graph: graph, onOpenEvidence: { store.navigate(to: .evidence($0)) })
-        case .entryPoints, .entryPointDetail(_):
-            EntryPointsView(
-                graph: graph,
-                onOpenEvidence: { store.navigate(to: .evidence($0)) },
-                onOpenFlow: { store.navigate(to: .flowDetail($0)) }
-            )
         case .files:
-            EntryPointsView(
-                graph: graph,
-                onOpenEvidence: { store.navigate(to: .evidence($0)) },
-                onOpenFlow: { store.navigate(to: .flowDetail($0)) }
-            )
+            ContentUnavailableView("No file view", systemImage: "doc.text")
         case .diff:
             if let diff = store.diffText {
                 DiffView(diff: diff)
