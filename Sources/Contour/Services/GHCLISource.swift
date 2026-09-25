@@ -1,56 +1,13 @@
 import Foundation
 
-/// Raw material pulled from GitHub for one PR, before any analysis. Corresponds to
-/// design doc §9 "Repository-context acquisition", tier 1.
-struct RawPRContext: Sendable {
-    var url: String
-    var owner: String
-    var repo: String
-    var number: Int
-    var title: String
-    var body: String
-    var author: String
-    var state: String
-    var headRefName: String
-    var baseRefName: String
-    var headSha: String
-    var baseSha: String
-    var isCrossRepository: Bool
-    var headCloneURL: String       // where to fetch the head ref from (fork-aware)
-    var additions: Int
-    var deletions: Int
-    var changedFiles: Int
-    var files: [String]            // changed file paths
-    var commits: [CommitInfo]
-    var comments: [String]         // issue-thread comments, author + body flattened
-    var reviews: [String]          // review bodies, for author-stated rationale extraction
-    var diff: String
-}
+/// Reads PRs through an already-authenticated `gh`. No token handling and no GitHub SDK —
+/// every credential and rate limit is inherited from the user's own `gh` (§8, §16). This
+/// is the path that covers private repositories.
+struct GHCLISource: PRSource {
+    var describesItself: String { "gh CLI" }
 
-struct CommitInfo: Sendable {
-    var sha: String
-    var message: String
-    var author: String
-}
-
-enum GitHubServiceError: LocalizedError {
-    case badURL(String)
-    case malformedResponse(String)
-    var errorDescription: String? {
-        switch self {
-        case .badURL(let u): return "Not a recognizable GitHub PR URL: \(u)"
-        case .malformedResponse(let d): return "Unexpected response from gh: \(d)"
-        }
-    }
-}
-
-/// Wraps the `gh` CLI. No token handling, no GitHub SDK — every credential and rate limit
-/// is inherited from the user's already-authenticated `gh` (§8, §16).
-struct GitHubService {
-
-    /// Fetches everything needed to build the PR knowledge graph, in one pass.
     func fetchContext(prURL: String) async throws -> RawPRContext {
-        guard let normalized = Self.normalize(prURL) else {
+        guard let normalized = GitHubService.normalize(prURL) else {
             throw GitHubServiceError.badURL(prURL)
         }
 
@@ -104,7 +61,7 @@ struct GitHubService {
         }
 
         // Extract owner/repo from the canonical url so we can drive the checkout even for forks.
-        let (owner, repo) = try Self.ownerRepo(fromCanonicalURL: url)
+        let (owner, repo) = try GitHubService.ownerRepo(fromCanonicalURL: url)
         let headRepo = obj["headRepository"] as? [String: Any]
         let headOwnerLogin = (obj["headRepositoryOwner"] as? [String: Any])?["login"] as? String ?? owner
         let headRepoName = (headRepo?["name"] as? String) ?? repo
@@ -121,29 +78,18 @@ struct GitHubService {
         )
     }
 
-    /// Accepts a full PR URL, `owner/repo#123`, or bare `123` won't resolve without -R; we
-    /// require the full URL per the product's core workflow ("paste a GitHub PR URL").
-    static func normalize(_ input: String) -> String? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.contains("github.com"), trimmed.contains("/pull/") else { return nil }
-        return trimmed
-    }
-
-    static func ownerRepo(fromCanonicalURL url: String) throws -> (String, String) {
-        // https://github.com/{owner}/{repo}/pull/{number}
-        guard let u = URL(string: url) else { throw GitHubServiceError.badURL(url) }
-        let parts = u.pathComponents.filter { $0 != "/" }
-        guard parts.count >= 2 else { throw GitHubServiceError.badURL(url) }
-        return (parts[0], parts[1])
-    }
-
-    /// Post reviewer-marked decisions back to GitHub as a real PR review. Deferred past MVP
-    /// (§17/§18) but the shape is settled now: one line-anchored comment per marked decision,
-    /// built from its primary CodeRef.
-    func submitReview(prURL: String, body: String, comments: [(path: String, line: Int, body: String)]) async throws {
-        // gh pr review <url> --comment/--approve/--request-changes --body "..."
-        // Line-anchored comments require the REST review API (`gh api .../pulls/{n}/reviews`)
-        // since `gh pr review` only supports a top-level body. Left unimplemented until §18.
-        fatalError("submitReview: post-MVP, see design doc §18")
+    func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {
+        guard let json = try? await Shell.run("gh", [
+            "issue", "view", number, "--repo", "\(owner)/\(repo)", "--json", "title,body,url"
+        ]) else { return nil }
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let title = obj["title"] as? String
+        else { return nil }
+        return RawIssue(
+            title: title,
+            body: (obj["body"] as? String) ?? "",
+            url: (obj["url"] as? String) ?? "https://github.com/\(owner)/\(repo)/issues/\(number)"
+        )
     }
 }

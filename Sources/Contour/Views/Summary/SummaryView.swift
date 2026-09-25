@@ -55,9 +55,9 @@ struct SummaryView: View {
                 Text(graph.pr.state.capitalized)
                 Text("\u{00b7}").foregroundStyle(.tertiary)
                 Text("\(graph.pr.author) \u{00b7} \(graph.pr.branch) \u{2192} \(graph.pr.baseBranch)")
-                if let jira = graph.pr.jiraTicket {
+                if let ticket = graph.pr.ticket {
                     Text("\u{00b7}").foregroundStyle(.tertiary)
-                    jiraChip(jira)
+                    ticketChip(ticket)
                 }
             }
             .font(.subheadline)
@@ -65,11 +65,13 @@ struct SummaryView: View {
         }
     }
 
-    private func jiraChip(_ jira: JiraTicketInfo) -> some View {
-        Link(destination: URL(string: jira.url) ?? URL(string: "about:blank")!) {
+    /// Renders a GitHub issue or a Jira ticket identically apart from the icon — from the
+    /// reviewer's side they play the same role, so only the glyph distinguishes them.
+    private func ticketChip(_ ticket: TicketInfo) -> some View {
+        Link(destination: URL(string: ticket.url) ?? URL(string: "about:blank")!) {
             HStack(spacing: 4) {
-                Image(systemName: "link")
-                Text(jira.key)
+                Image(systemName: ticket.kind == .jira ? "link" : "smallcircle.filled.circle")
+                Text(ticket.key)
             }
             .font(.caption.weight(.semibold))
         }
@@ -77,7 +79,7 @@ struct SummaryView: View {
         .foregroundStyle(.blue)
         .padding(.horizontal, 6).padding(.vertical, 2)
         .background(Color.blue.opacity(0.1), in: Capsule())
-        .help(jira.summary)
+        .help(ticket.summary)
     }
 
     // MARK: - Hero: the behavior change

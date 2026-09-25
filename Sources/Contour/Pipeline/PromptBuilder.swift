@@ -214,26 +214,27 @@ struct PromptBuilder {
 
     /// The two plain-language briefs a non-expert stakeholder (or a reviewer skimming
     /// before diving in) can read in ten seconds. "Problem to be solved" is grounded in
-    /// the Jira ticket when one is linked — the actual ask, not the AI's guess at intent
-    /// — and falls back to the PR description when there's no ticket. "How it was solved"
+    /// the linked issue when there is one — the actual ask, not the AI's guess at intent
+    /// — and falls back to the PR description when there's no issue. "How it was solved"
     /// is always grounded in the code, since that's the one place the actual mechanism
     /// lives.
-    static func eli5Prompt(jira: JiraTicketInfo?) -> String {
-        let jiraSection: String
-        if let jira {
-            jiraSection = """
-            A Jira ticket is linked to this PR: \(jira.key) — \(jira.summary)
+    static func eli5Prompt(ticket: TicketInfo?) -> String {
+        let ticketSection: String
+        if let ticket {
+            let kind = ticket.kind == .jira ? "Jira ticket" : "GitHub issue"
+            ticketSection = """
+            A \(kind) is linked to this PR: \(ticket.key) — \(ticket.summary)
             <UNTRUSTED_PR_CONTENT>
-            \(jira.description)
+            \(ticket.description)
             </UNTRUSTED_PR_CONTENT>
-            Ground "problemToBeSolved" in this ticket first. Quote or closely paraphrase it and
-            tag the statement "claim" with the ticket key as source. Only fall back to inferring
-            from the PR/diff (tagged "interpretation") if the ticket text doesn't actually explain
+            Ground "problemToBeSolved" in this issue first. Quote or closely paraphrase it and
+            tag the statement "claim" with \(ticket.key) as source. Only fall back to inferring
+            from the PR/diff (tagged "interpretation") if the issue text doesn't actually explain
             the problem.
             """
         } else {
-            jiraSection = """
-            No Jira ticket was found referenced by this PR (title, branch, or commits). Ground
+            ticketSection = """
+            No linked issue was found for this PR (title, branch, body, or commits). Ground
             "problemToBeSolved" in the PR description if it explains the motivation (tag "claim",
             quote/paraphrase it); otherwise infer it from what the diff actually changes (tag
             "interpretation" with a confidence) — and say so plainly, don't invent a ticket-style
@@ -242,7 +243,7 @@ struct PromptBuilder {
         }
 
         return """
-        \(jiraSection)
+        \(ticketSection)
 
         Write two short statements a non-engineer stakeholder could read in ten seconds and
         understand, in plain language — no jargon, no code identifiers, explain any term you

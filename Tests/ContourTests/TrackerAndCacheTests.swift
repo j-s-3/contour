@@ -1,7 +1,7 @@
 import XCTest
 @testable import Contour
 
-final class JiraAndCacheTests: XCTestCase {
+final class TrackerAndCacheTests: XCTestCase {
 
     private func makeContext(title: String, body: String = "", headRef: String = "main", commits: [CommitInfo] = []) -> RawPRContext {
         RawPRContext(
@@ -13,47 +13,62 @@ final class JiraAndCacheTests: XCTestCase {
         )
     }
 
-    func testTicketKeyFoundInTitle() {
-        let ctx = makeContext(title: "PROJ-40000 fix flaky login redirect")
-        XCTAssertEqual(JiraService.ticketKey(in: ctx), "PROJ-40000")
+    private func jiraRef(_ ctx: RawPRContext) -> String? {
+        JiraTracker().reference(in: ctx)?.id
     }
 
-    func testTicketKeyFoundInBranchWhenTitleHasNone() {
+    func testJiraKeyFoundInTitle() {
+        XCTAssertEqual(jiraRef(makeContext(title: "PROJ-40000 fix flaky login redirect")), "PROJ-40000")
+    }
+
+    func testJiraKeyFoundInBranchWhenTitleHasNone() {
         let ctx = makeContext(title: "Fix flaky login redirect", headRef: "ABC-1234-fix-redirect")
-        XCTAssertEqual(JiraService.ticketKey(in: ctx), "ABC-1234")
+        XCTAssertEqual(jiraRef(ctx), "ABC-1234")
     }
 
-    func testTicketKeyFoundInCommitMessage() {
+    func testJiraKeyFoundInCommitMessage() {
         let ctx = makeContext(
             title: "Fix flaky login redirect", headRef: "fix-redirect",
             commits: [CommitInfo(sha: "abc", message: "fix redirect (ABC-9)", author: "x")]
         )
-        XCTAssertEqual(JiraService.ticketKey(in: ctx), "ABC-9")
+        XCTAssertEqual(jiraRef(ctx), "ABC-9")
     }
 
-    func testNoTicketKeyFound() {
-        let ctx = makeContext(title: "Fix flaky login redirect", body: "no ticket here")
-        XCTAssertNil(JiraService.ticketKey(in: ctx))
+    func testNoJiraKeyFound() {
+        XCTAssertNil(jiraRef(makeContext(title: "Fix flaky login redirect", body: "no ticket here")))
     }
 
-    func testTicketKeyIgnoresLowercase() {
+    func testJiraKeyIgnoresLowercase() {
         // "v1-2" style version strings shouldn't false-positive as ticket keys.
-        let ctx = makeContext(title: "bump to v1-2 release")
-        XCTAssertNil(JiraService.ticketKey(in: ctx))
+        XCTAssertNil(jiraRef(makeContext(title: "bump to v1-2 release")))
+    }
+
+    /// The Jira tracker reports its own kind, so the Summary chip and the ELI5 prompt can
+    /// say "Jira ticket" rather than guessing from the key's shape.
+    func testJiraRefCarriesTrackerIdentity() {
+        let ref = JiraTracker().reference(in: makeContext(title: "PROJ-1 do a thing"))
+        XCTAssertEqual(ref?.tracker, .jira)
+        XCTAssertEqual(ref?.displayKey, "PROJ-1")
     }
 
     /// Real `acli` call against a real ticket — gated like IntegrationSmokeTests since it
     /// needs network + a working acli auth session. Confirms the ADF description actually
     /// flattens to readable plain text, not just that the regex matches a key.
+    ///
+    /// Needs a ticket key that exists on whatever Jira site `acli` is signed in to, so it
+    /// is skipped unless CONTOUR_JIRA_TEST_KEY names one.
     func testFetchRealJiraTicket() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
                            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + acli call).")
-        let ticket = await JiraService().fetchTicket(key: "PROJ-40000")
-        let unwrapped = try XCTUnwrap(ticket, "acli fetch failed — check `acli auth status`")
-        XCTAssertEqual(unwrapped.key, "PROJ-40000")
+        let key = try XCTUnwrap(ProcessInfo.processInfo.environment["CONTOUR_JIRA_TEST_KEY"],
+                                "Set CONTOUR_JIRA_TEST_KEY to a ticket your acli session can read.")
+        let ticket = await JiraTracker().fetch(IssueRef(id: key, tracker: .jira))
+        let unwrapped = try XCTUnwrap(ticket, "acli fetch failed — check `acli jira auth status`")
+        XCTAssertEqual(unwrapped.key, key)
+        XCTAssertEqual(unwrapped.kind, .jira)
         XCTAssertFalse(unwrapped.summary.isEmpty)
         XCTAssertFalse(unwrapped.description.isEmpty)
-        XCTAssertTrue(unwrapped.url.contains("/browse/PROJ-40000"))
+        XCTAssertTrue(unwrapped.url.contains("/browse/\(key)"))
         print("summary:", unwrapped.summary)
         print("description:\n", unwrapped.description)
         print("url:", unwrapped.url)

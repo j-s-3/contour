@@ -162,12 +162,38 @@ enum Shell {
     /// Checks common install locations first (no subprocess needed). Falls back to
     /// `/usr/bin/env` so PATH entries from asdf, nvm, or a custom Homebrew prefix still
     /// resolve exactly like they would in Terminal.
+    /// Search order for a bare command name.
+    ///
+    /// A GUI app launched from Finder inherits a minimal PATH (`/usr/bin:/bin:/usr/sbin:
+    /// /sbin`), so relying on `env` alone finds Homebrew and user-local installs only when
+    /// Contour happens to be started from a terminal. `~/.local/bin` matters specifically:
+    /// it is where Claude Code installs by default.
+    static func searchPaths(for name: String) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            "/opt/homebrew/bin/\(name)",
+            "/usr/local/bin/\(name)",
+            "\(home)/.local/bin/\(name)",
+            "\(home)/bin/\(name)",
+            "/usr/bin/\(name)",
+            "/bin/\(name)",
+        ]
+    }
+
+    /// Absolute path for a command, or nil if nothing executable was found. Used by
+    /// `EnvironmentProbe` to report what is actually installed.
+    static func which(_ name: String) -> String? {
+        if name.hasPrefix("/") {
+            return FileManager.default.isExecutableFile(atPath: name) ? name : nil
+        }
+        return searchPaths(for: name).first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
     private static func resolveExecutable(_ name: String) -> URL {
         if name.hasPrefix("/") { return URL(fileURLWithPath: name) }
-        let known = ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)", "/bin/\(name)"]
-        for path in known where FileManager.default.isExecutableFile(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
+        if let found = which(name) { return URL(fileURLWithPath: found) }
+        // Last resort: let `env` try PATH, which still works when Contour was launched
+        // from a shell that knows about an install location not listed above.
         return URL(fileURLWithPath: "/usr/bin/env")
     }
 

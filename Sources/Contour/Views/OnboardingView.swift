@@ -66,7 +66,7 @@ struct AnalyzingView: View {
     let log: [PipelineProgressEntry]
 
     private static let orderedStages: [PipelineStage] = [
-        .fetching, .checkingOut, .cacheCheck, .jira, .architecture, .intent, .eli5,
+        .fetching, .checkingOut, .cacheCheck, .ticket, .architecture, .intent, .eli5,
         .decisions, .tradeoffs, .flows, .judgment
     ]
 
@@ -122,7 +122,7 @@ struct AnalyzingView: View {
         case .fetching: return "Fetch"
         case .checkingOut: return "Checkout"
         case .cacheCheck: return "Cache"
-        case .jira: return "Jira"
+        case .ticket: return "Issue"
         case .behaviorChange: return "Behavior"
         case .architecture: return "Architecture"
         case .intent: return "Intent"

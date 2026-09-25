@@ -6,10 +6,21 @@ import Foundation
 /// messages) and pulls its summary/description to ground the "Problem to be solved" ELI5
 /// statement in what was actually asked for, not just what the diff appears to do.
 ///
-/// Entirely optional: if `acli` isn't installed, isn't authenticated, no ticket key is
-/// found, or the lookup fails for any reason, this returns `nil` and the pipeline
-/// continues without it — a missing Jira ticket should never fail PR analysis.
-struct JiraService {
+/// Opt-in: only offered when `acli` is on PATH, and only used when the user selects it.
+/// Entirely best-effort, like every tracker — if `acli` isn't installed, isn't
+/// authenticated, no ticket key is found, or the lookup fails for any reason, this
+/// returns `nil` and the pipeline continues without it. A missing ticket must never fail
+/// PR analysis.
+struct JiraTracker: IssueTracker {
+    let id: TrackerID = .jira
+
+    func reference(in context: RawPRContext) -> IssueRef? {
+        Self.ticketKey(in: context).map { IssueRef(id: $0, tracker: .jira) }
+    }
+
+    func fetch(_ ref: IssueRef) async -> TicketInfo? {
+        await fetchTicket(key: ref.id)
+    }
 
     /// Matches keys like `PROJ-40000`, `ABC-1234` — an uppercase project prefix (2+
     /// letters, optionally with digits) followed by a dash and a number.
@@ -38,7 +49,7 @@ struct JiraService {
     /// Fetches ticket summary/description via `acli jira workitem view <key> --json`.
     /// Returns `nil` on any failure (not installed, not authed, ticket not found, ADF
     /// parse failure) rather than throwing, per this service's best-effort contract.
-    func fetchTicket(key: String) async -> JiraTicketInfo? {
+    func fetchTicket(key: String) async -> TicketInfo? {
         guard let output = try? await Shell.run("acli", ["jira", "workitem", "view", key, "--json"]) else {
             return nil
         }
@@ -51,7 +62,7 @@ struct JiraService {
         let description = (fields["description"] as? [String: Any]).map(Self.flattenADF) ?? ""
         let url = await Self.browseURL(forKey: key, selfLink: obj["self"] as? String)
 
-        return JiraTicketInfo(key: key, summary: summary, description: description, url: url)
+        return TicketInfo(kind: .jira, key: key, summary: summary, description: description, url: url)
     }
 
     /// Derives a human-facing `/browse/<key>` URL. Prefers the public site host from
@@ -66,7 +77,9 @@ struct JiraService {
         if let selfLink, let url = URL(string: selfLink), let host = url.host {
             return "https://\(host)/browse/\(key)"
         }
-        return "https://atlassian.net/browse/\(key)" // last-resort fallback, still shows the key
+        // No site host discoverable; the key alone is still useful in the UI even though
+        // this URL won't resolve.
+        return "https://atlassian.net/browse/\(key)"
     }
 
     /// Parses the "Site: <host>" line from `acli jira auth status`'s plain-text output.

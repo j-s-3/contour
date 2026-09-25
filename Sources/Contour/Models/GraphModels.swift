@@ -660,7 +660,7 @@ struct PRSummary: Codable, Hashable, Sendable {
     var architectureImpact: Statement?
     var needsJudgment: [Statement] = []
     var uncertainties: [Statement] = []
-    var jiraTicket: JiraTicketInfo?
+    var ticket: TicketInfo?
     var problemToBeSolved: Statement?
     var howItWasSolved: Statement?
 }

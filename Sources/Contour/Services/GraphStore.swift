@@ -49,11 +49,18 @@ final class GraphStore {
 
     var current: NavigationTarget { path.last ?? .summary }
 
-    private let pipeline = AnalysisPipeline()
     private var runTask: Task<Void, Never>?
+
+    /// Read once per load rather than held, so a change in Settings takes effect on the
+    /// next PR without needing to rebuild the store.
+    @MainActor
+    private var preferences: Preferences { Preferences.shared }
 
     private(set) var lastPRURL: String?
 
+    /// MainActor-isolated because it reads `Preferences`, which is UI-owned observable
+    /// state. Every caller is a view action, so this costs nothing.
+    @MainActor
     func load(prURL: String, forceRefresh: Bool = false) {
         runTask?.cancel()
         phase = .running(stage: .fetching)
@@ -62,6 +69,21 @@ final class GraphStore {
         path = [.summary]
         forwardStack = []
         lastPRURL = prURL
+
+        // Contour can't analyze anything without a harness. This is the one hard
+        // requirement, and it fails here with an actionable message rather than several
+        // minutes into the run.
+        guard let harnessID = preferences.resolvedHarness else {
+            phase = .failed("""
+            No AI harness selected. Install pi or Claude Code, then pick one in             Settings (⌘,).
+            """)
+            return
+        }
+        let pipeline = AnalysisPipeline(
+            harnessID: harnessID,
+            trackerID: preferences.resolvedTracker,
+            githubAccess: preferences.resolvedGitHubAccess
+        )
 
         runTask = Task { [weak self] in
             guard let self else { return }

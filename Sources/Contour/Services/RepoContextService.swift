@@ -40,9 +40,15 @@ struct RepoContextService {
         let alreadyExists = FileManager.default.fileExists(atPath: dir.path)
         if !alreadyExists {
             try FileManager.default.createDirectory(at: dir.parent, withIntermediateDirectories: true)
+            // Plain `git clone`, not `gh repo clone`: git's credential helper -- which
+            // `gh` installs when it authenticates -- already covers private repos, so one
+            // path serves both public and private and Contour needs no `gh` here at all.
+            //
             // Clone the base repo (not the fork) so the base ref is always present; the
             // head ref is fetched separately below, which also covers cross-repo PRs.
-            _ = try await Shell.run("gh", ["repo", "clone", "\(context.owner)/\(context.repo)", dir.path])
+            _ = try await Shell.run("git", [
+                "clone", "https://github.com/\(context.owner)/\(context.repo).git", dir.path
+            ])
         }
 
         let currentHead = try? await Shell.run("git", ["rev-parse", "HEAD"], cwd: dir)

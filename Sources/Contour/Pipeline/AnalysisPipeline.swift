@@ -11,7 +11,7 @@ enum PipelineStage: String, CaseIterable {
     case fetching = "Fetching PR"
     case checkingOut = "Checking out repository"
     case cacheCheck = "Checking cache"
-    case jira = "Checking Jira"
+    case ticket = "Checking issue tracker"
     case behaviorChange = "Identifying behavior change"
     case architecture = "Analyzing architecture"
     case intent = "Extracting intent"
@@ -23,21 +23,31 @@ enum PipelineStage: String, CaseIterable {
     case done = "Done"
 }
 
-/// Orchestrates the whole pipeline from §10: GitHub fetch → local checkout → staged pi
-/// calls → assembled PRGraph. Stages run sequentially because each one after the first
+/// Orchestrates the whole pipeline from §10: GitHub fetch → local checkout → staged
+/// harness calls → assembled PRGraph. Stages run sequentially because each one after the first
 /// depends on component/decision IDs from an earlier stage for cross-linking — this is
 /// the graph's edges being built, not just independent summarization.
 actor AnalysisPipeline {
-    private let github = GitHubService()
     private let repoContext = RepoContextService()
-    private let analysis = AnalysisService()
-    private let jira = JiraService()
     private let cache = AnalysisCache()
+
+    /// All three pluggable choices are resolved once per run rather than read per stage,
+    /// so changing a setting mid-analysis can't produce a graph built half one way and
+    /// half the other.
+    private let harnessID: HarnessID
+    private let trackerID: TrackerID
+    private let github: GitHubService
+
+    init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto) {
+        self.harnessID = harnessID
+        self.trackerID = trackerID
+        self.github = GitHubService(mode: githubAccess)
+    }
 
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 4
+    static let pipelineVersion = 5
 
     struct Result: Sendable {
         var graph: PRGraph
@@ -53,14 +63,21 @@ actor AnalysisPipeline {
         forceRefresh: Bool = false,
         onProgress: @escaping @Sendable (PipelineStage, PipelineProgressEntry) -> Void
     ) async throws -> Result {
-        onProgress(.fetching, .init(stage: "Fetching PR", detail: "gh pr view"))
-        let ctx = try await github.fetchContext(prURL: prURL)
+        let source = try github.source()
+        onProgress(.fetching, .init(stage: "Fetching PR", detail: "via \(source.describesItself)"))
+        let ctx = try await source.fetchContext(prURL: prURL)
 
         onProgress(.checkingOut, .init(stage: "Checking out repository", detail: "\(ctx.owner)/\(ctx.repo) @ \(ctx.headSha.prefix(8))"))
         let checkout = try await repoContext.checkout(ctx)
 
+        // Built here rather than at init because the harness needs the checkout root to
+        // resolve the context file it hands the model.
+        let analysis = AnalysisService(
+            harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir)
+        )
+
         // A checkout is needed either way (cache hit or miss) so the code viewer has real
-        // files to read. The cache only saves the six `pi` calls, not the git operations.
+        // files to read. The cache only saves the harness calls, not the git operations.
         onProgress(.cacheCheck, .init(stage: "Checking cache", detail: "looking for a previous analysis of this exact commit"))
         if !forceRefresh, let cached = cache.load(
             owner: ctx.owner, repo: ctx.repo, number: ctx.number,
@@ -73,20 +90,24 @@ actor AnalysisPipeline {
         let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
         try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
 
-        // Best-effort Jira lookup: never fails the pipeline, just returns nil if there's
-        // no ticket, `acli` isn't set up, or the lookup errors for any reason (§ new Jira
-        // ELI5 feature).
-        var jiraTicket: JiraTicketInfo?
-        if let key = JiraService.ticketKey(in: ctx) {
-            onProgress(.jira, .init(stage: "Checking Jira", detail: "found \(key), fetching ticket"))
-            jiraTicket = await jira.fetchTicket(key: key)
-            if let jiraTicket {
-                onProgress(.jira, .init(stage: "Checking Jira", detail: "\(jiraTicket.key): \(jiraTicket.summary)"))
+        // Best-effort issue lookup: never fails the pipeline. Returns nil when there's no
+        // reference, when the tracker isn't set up, or when the lookup errors for any
+        // reason.
+        var ticket: TicketInfo?
+        let tracker = Self.tracker(trackerID, source: source, context: ctx)
+        if let ref = tracker.reference(in: ctx) {
+            onProgress(.ticket, .init(stage: "Checking issue tracker", detail: "found \(ref.displayKey), fetching it"))
+            ticket = await tracker.fetch(ref)
+            if let ticket {
+                onProgress(.ticket, .init(stage: "Checking issue tracker", detail: "\(ticket.key): \(ticket.summary)"))
             } else {
-                onProgress(.jira, .init(stage: "Checking Jira", detail: "\(key) referenced, but couldn't fetch it (acli not set up, or ticket not found)"))
+                onProgress(.ticket, .init(stage: "Checking issue tracker",
+                                          detail: "\(ref.displayKey) referenced, but couldn't fetch it"))
             }
         } else {
-            onProgress(.jira, .init(stage: "Checking Jira", detail: "no ticket key found in title/branch/commits"))
+            let where_ = trackerID == .none ? "issue lookup is turned off"
+                                            : "no reference found in title/body/branch/commits"
+            onProgress(.ticket, .init(stage: "Checking issue tracker", detail: where_))
         }
 
         // Stage 0: behavior change — the hero of Summary, everything else drills down from
@@ -111,10 +132,10 @@ actor AnalysisPipeline {
         ) { p in onProgress(.intent, .init(stage: "Extracting intent", detail: p.detail)) }
         let intent = try StageDecoding.decode(StageDecoding.IntentResult.self, stageLabel: "Extracting intent", from: intentRaw)
 
-        // Stage 2b: ELI5 — the two plain-language briefs, grounded in Jira when linked.
-        onProgress(.eli5, .init(stage: "Writing plain-language summary", detail: jiraTicket != nil ? "grounding in \(jiraTicket!.key)" : "reading PR description and code"))
+        // Stage 2b: ELI5 — the two plain-language briefs, grounded in the linked issue.
+        onProgress(.eli5, .init(stage: "Writing plain-language summary", detail: ticket.map { "grounding in \($0.key)" } ?? "reading PR description and code"))
         let eli5Raw = try await analysis.runStage(
-            prompt: PromptBuilder.eli5Prompt(jira: jiraTicket), cwd: checkout.rootDir, tier: .fast, stage: .eli5
+            prompt: PromptBuilder.eli5Prompt(ticket: ticket), cwd: checkout.rootDir, tier: .fast, stage: .eli5
         ) { p in onProgress(.eli5, .init(stage: "Writing plain-language summary", detail: p.detail)) }
         let eli5 = try StageDecoding.decode(StageDecoding.ELI5Result.self, stageLabel: "Writing plain-language summary", from: eli5Raw)
 
@@ -157,7 +178,7 @@ actor AnalysisPipeline {
             boundaries: arch.boundaries
         )
         partial.pr.architectureImpact = arch.architectureImpact
-        partial.pr.jiraTicket = jiraTicket
+        partial.pr.ticket = ticket
         partial.pr.problemToBeSolved = eli5.problemToBeSolved
         partial.pr.howItWasSolved = eli5.howItWasSolved
 
@@ -184,6 +205,16 @@ actor AnalysisPipeline {
 
         onProgress(.done, .init(stage: "Done", detail: "\(partial.decisions.count) decisions, \(partial.components.count) components"))
         return Result(graph: partial, checkout: checkout, diff: ctx.diff)
+    }
+
+    /// The GitHub tracker needs to know which repo a bare `#123` refers to, which is only
+    /// known once the PR has been fetched.
+    private static func tracker(_ id: TrackerID, source: any PRSource, context: RawPRContext) -> any IssueTracker {
+        switch id {
+        case .github: return GitHubIssueTracker(source: source).scoped(to: context)
+        case .jira: return JiraTracker()
+        case .none: return NoTracker()
+        }
     }
 
     private static func compactJSON<T: Encodable>(_ value: T) throws -> String {
