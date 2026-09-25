@@ -62,7 +62,6 @@ struct CommandPaletteView: View {
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
             .init(title: "Go to Tradeoffs", subtitle: nil, symbol: "arrow.left.arrow.right") { store.navigate(to: .tradeoffs) },
             .init(title: "Go to Flows", subtitle: nil, symbol: "arrow.triangle.branch") { store.navigate(to: .flows) },
-            .init(title: "Go to Entry points", subtitle: nil, symbol: "arrow.right.to.line") { store.navigate(to: .entryPoints) },
             .init(title: "Go to Raw diff", subtitle: nil, symbol: "doc.text") { store.navigate(to: .diff) },
             .init(title: "Open a different PR…", subtitle: nil, symbol: "arrow.uturn.left") { store.phase = .idle },
             .init(title: "Re-analyze (ignore cache)", subtitle: "re-runs all analysis stages for this PR", symbol: "arrow.clockwise") {
@@ -88,11 +87,6 @@ struct CommandPaletteView: View {
         for f in graph.flows {
             commands.append(.init(title: f.title, subtitle: "Flow", symbol: "arrow.triangle.branch") {
                 store.navigate(to: .flowDetail(f.id))
-            })
-        }
-        for e in graph.entryPoints {
-            commands.append(.init(title: e.title, subtitle: "Entry point", symbol: "arrow.right.to.line") {
-                store.navigate(to: .entryPointDetail(e.id))
             })
         }
         return commands

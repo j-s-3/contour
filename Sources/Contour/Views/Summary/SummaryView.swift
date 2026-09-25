@@ -171,10 +171,6 @@ struct SummaryView: View {
                 title: "Flows", detail: "\(graph.flows.count) traced",
                 symbol: "arrow.triangle.branch", target: .flows
             )
-            quickLink(
-                title: "Entry points", detail: "\(graph.entryPoints.count) triggers",
-                symbol: "arrow.right.to.line", target: .entryPoints
-            )
         }
     }
 

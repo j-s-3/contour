@@ -57,13 +57,6 @@ struct ArchitectureDiagramView: View {
                 .frame(width: layout.size.width, height: layout.size.height)
                 .allowsHitTesting(false)
 
-                // Edge labels double as hit targets — tapping one selects the relationship.
-                ForEach(layout.edges) { placed in
-                    edgeLabel(placed)
-                        .position(placed.labelPoint)
-                        .onTapGesture { onSelectEdge(placed.edge) }
-                }
-
                 ForEach(layout.nodes) { placed in
                     nodeBox(placed.component, onTrustBoundary: trustNodeIds.contains(placed.component.id))
                         .frame(width: placed.frame.width, height: placed.frame.height)
@@ -71,9 +64,24 @@ struct ArchitectureDiagramView: View {
                         .onTapGesture { onSelectNode(placed.component) }
                         .onHover { hoveredId = $0 ? placed.component.id : nil }
                 }
+
+                // Edge labels double as hit targets — tapping one selects the relationship.
+                // Drawn last (on top of node boxes): each label is width-capped to the
+                // column gap it lives in, so it shouldn't physically reach a node box, but
+                // if anything ever does overlap, the label must win, never get clipped
+                // behind an opaque box the way an unlabeled connector would.
+                ForEach(layout.edges) { placed in
+                    edgeLabel(placed)
+                        .position(placed.labelPoint)
+                        .onTapGesture { onSelectEdge(placed.edge) }
+                }
             }
             .frame(width: layout.size.width, height: layout.size.height)
             .padding(20)
+            // Pin content to the top-leading corner explicitly — a diagram smaller than
+            // the available pane must never appear vertically centered with dead space
+            // above it; it should read top-down like the rest of the app.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .overlay(alignment: .bottomLeading) { legend }
     }
@@ -88,10 +96,32 @@ struct ArchitectureDiagramView: View {
 
         var path = Path()
         path.move(to: placed.from)
-        let midX = (placed.from.x + placed.to.x) / 2
-        path.addCurve(to: placed.to,
-                      control1: CGPoint(x: midX, y: placed.from.y),
-                      control2: CGPoint(x: midX, y: placed.to.y))
+        if let via = placed.via {
+            // Routed edge: rise into the reserved skip lane close to the source, travel
+            // flat at that height clear of every row in between (the whole point — a
+            // midpoint-only arc can still dip back down over an intervening column if that
+            // column happens to share the target's row), then only descend once we're in
+            // the final gap immediately before the target column.
+            let span = placed.to.x - placed.from.x
+            let legLength = max(1, min(40, span * 0.25))
+            let riseX = placed.from.x + legLength
+            let descendX = max(riseX, placed.to.x - legLength)
+            let apexY = via.y
+            path.addCurve(to: CGPoint(x: riseX, y: apexY),
+                          control1: CGPoint(x: placed.from.x + legLength * 0.4, y: placed.from.y),
+                          control2: CGPoint(x: riseX, y: apexY))
+            if descendX > riseX {
+                path.addLine(to: CGPoint(x: descendX, y: apexY))
+            }
+            path.addCurve(to: placed.to,
+                          control1: CGPoint(x: descendX, y: apexY),
+                          control2: CGPoint(x: placed.to.x - legLength * 0.4, y: placed.to.y))
+        } else {
+            let midX = (placed.from.x + placed.to.x) / 2
+            path.addCurve(to: placed.to,
+                          control1: CGPoint(x: midX, y: placed.from.y),
+                          control2: CGPoint(x: midX, y: placed.to.y))
+        }
 
         var dash: [CGFloat] = []
         if e.flow == .async { dash = [6, 4] }
@@ -146,12 +176,15 @@ struct ArchitectureDiagramView: View {
                 Text(e.label.isEmpty ? "relates to" : e.label)
                     .font(.caption2.weight(e.change == .new ? .bold : .regular))
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 if e.change == .removed {
                     Text("removed").font(.system(size: 8).weight(.bold)).foregroundStyle(.red)
                 }
-            }
-            if let note = e.note, !note.isEmpty {
-                Text(note).font(.system(size: 8).weight(.bold)).foregroundStyle(e.change.color)
+                // The full note / critical-path callout lives in the inspector, not on the
+                // canvas — a small warning glyph is enough of a hint here to stay legible.
+                if e.onCriticalPath && e.change == .new {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                }
             }
         }
         .padding(.horizontal, 5).padding(.vertical, 2)
@@ -162,7 +195,12 @@ struct ArchitectureDiagramView: View {
                               lineWidth: selected ? 1.6 : (e.change == .new ? 1.2 : 0.8))
         )
         .opacity(dim ? 0.5 : 1)
-        .fixedSize()
+        // Capped, not `.fixedSize()`: a label wider than the column gap it lives in must
+        // truncate rather than spill into a neighboring node's box — the full text (plus
+        // any note) is always available via the tooltip and, when selected, the detail
+        // panel below the diagram.
+        .frame(maxWidth: GraphLayoutEngine.hGap - 24)
+        .help(e.note?.isEmpty == false ? "\(e.label) — \(e.note!)" : e.label)
     }
 
     // MARK: - Nodes
