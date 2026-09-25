@@ -41,6 +41,13 @@ struct AnonymousAPISource: PRSource {
         let author = ((pr["user"] as? [String: Any])?["login"] as? String) ?? "unknown"
         let body = (pr["body"] as? String) ?? ""
 
+        // The REST API's `state` is only "open" or "closed" — a merged PR reports
+        // "closed", with merged-ness in a separate field. `gh` collapses the two into
+        // OPEN/CLOSED/MERGED, so match that or the same PR reads differently depending on
+        // which source fetched it.
+        let isMerged = (pr["merged"] as? Bool) ?? (pr["merged_at"] is String)
+        let normalizedState = isMerged ? "MERGED" : state.uppercased()
+
         // The head repo may be a fork, or may have been deleted after merge.
         let headRepoObj = head["repo"] as? [String: Any]
         let headOwner = ((headRepoObj?["owner"] as? [String: Any])?["login"] as? String) ?? owner
@@ -80,7 +87,7 @@ struct AnonymousAPISource: PRSource {
         return RawPRContext(
             url: (pr["html_url"] as? String) ?? prURL,
             owner: owner, repo: repo, number: number, title: title, body: body,
-            author: author, state: state.uppercased(),
+            author: author, state: normalizedState,
             headRefName: headRefName, baseRefName: baseRefName,
             headSha: headSha, baseSha: baseSha, isCrossRepository: isCross,
             headCloneURL: "https://github.com/\(headOwner)/\(headRepoName).git",
