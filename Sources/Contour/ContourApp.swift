@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // Push any stored per-tier model overrides into AnalysisTier before the first run
+        // can read them.
+        MainActor.assumeIsolated { Preferences.shared.applyModelOverrides() }
     }
 }
 
@@ -27,6 +30,12 @@ struct ContourApp: App {
         .windowStyle(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
+        }
+
+        // ⌘, — the three pluggable choices (harness, GitHub access, issue tracker) plus
+        // per-tier model overrides.
+        Settings {
+            SettingsView()
         }
     }
 }

@@ -5,8 +5,33 @@ import SwiftUI
 struct ContentView: View {
     @State private var store = GraphStore()
     @State private var showPalette = false
+    /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
+    @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
 
     var body: some View {
+        Group {
+            if needsOnboarding {
+                WelcomeWizard { firstURL in
+                    needsOnboarding = false
+                    if let firstURL { store.load(prURL: firstURL) }
+                }
+            } else {
+                mainBody
+            }
+        }
+        .sheet(isPresented: $showPalette) {
+            CommandPaletteView(store: store, isPresented: $showPalette)
+        }
+        .background(
+            Button("") { showPalette = true }
+                .keyboardShortcut("k", modifiers: .command)
+                .opacity(0)
+        )
+        .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+    }
+
+    @ViewBuilder
+    private var mainBody: some View {
         Group {
             switch store.phase {
             case .idle:
@@ -23,15 +48,6 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showPalette) {
-            CommandPaletteView(store: store, isPresented: $showPalette)
-        }
-        .background(
-            Button("") { showPalette = true }
-                .keyboardShortcut("k", modifiers: .command)
-                .opacity(0)
-        )
-        .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
     }
 
     @ViewBuilder
