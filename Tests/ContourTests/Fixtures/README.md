@@ -27,3 +27,13 @@ Mixed provenance, deliberately:
   pin the generic "using <tool>" fallback.
 
 If you can run `pi` with working tools, re-capture this file and drop this caveat.
+
+### A note on the `system` events in `claude-stream.jsonl`
+
+`claude`'s real `system/init` event carries a full dump of the capturing machine's local
+configuration — installed plugins, MCP servers, skill names, session ids, and absolute
+home-directory paths. None of that belongs in a committed fixture, and none of it is
+load-bearing: `ClaudeHarness.interpret` ignores every `system` event regardless of
+payload. The `system` lines here are therefore trimmed to just the fields that identify
+the event, so the fixture still proves the noise is skipped without publishing one
+developer's environment.
