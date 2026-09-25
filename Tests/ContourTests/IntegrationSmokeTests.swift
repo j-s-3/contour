@@ -19,6 +19,9 @@ import XCTest
 ///   RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter IntegrationSmoke
 final class IntegrationSmokeTests: XCTestCase {
 
+    /// Small, public, and long-merged, so the run stays cheap and the target doesn't move.
+    static let defaultPR = "https://github.com/cli/cli/pull/1"
+
     func testFullPipelineAgainstRealTinyPR() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
                           "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + model calls).")
@@ -27,13 +30,19 @@ final class IntegrationSmokeTests: XCTestCase {
         let harness = env["CONTOUR_HARNESS"].flatMap(HarnessID.init(rawValue:)) ?? .claude
         let access = env["CONTOUR_GITHUB_ACCESS"].flatMap(GitHubAccessMode.init(rawValue:)) ?? .auto
 
+        // CONTOUR_PR_URL retargets the run, which is how MockAnalysisFixtures gets
+        // regenerated (alongside CONTOUR_DUMP_STAGES) against a PR rich enough to be worth
+        // capturing.
+        let prURL = env["CONTOUR_PR_URL"] ?? Self.defaultPR
+        let expected = try GitHubService.parse(prURL: prURL)
+
         let pipeline = AnalysisPipeline(harnessID: harness, trackerID: .github, githubAccess: access)
-        let result = try await pipeline.run(prURL: "https://github.com/cli/cli/pull/1") { stage, entry in
+        let result = try await pipeline.run(prURL: prURL) { stage, entry in
             print("[\(stage.rawValue)] \(entry.detail)")
         }
 
-        XCTAssertEqual(result.graph.pr.number, 1)
-        XCTAssertEqual(result.graph.pr.repo, "cli/cli")
+        XCTAssertEqual(result.graph.pr.number, expected.number)
+        XCTAssertEqual(result.graph.pr.repo, "\(expected.owner)/\(expected.repo)")
         XCTAssertFalse(result.graph.components.isEmpty)
         XCTAssertFalse(result.diff.isEmpty)
 

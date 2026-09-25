@@ -79,7 +79,29 @@ struct AnalysisService {
 
     /// Runs one analysis stage and returns its parsed JSON result plus a stream of
     /// progress lines the caller can forward to the UI as they arrive.
+    ///
+    /// Retries once if the model returns unparseable JSON. Observed in practice: a stage
+    /// came back with a stray bracket (`}]}]],`) partway through an otherwise complete
+    /// response. With seven stages per run, a single malformed response would otherwise
+    /// throw away the whole pipeline — including the stages already paid for. One retry
+    /// only; a second failure is a real problem worth surfacing, not something to keep
+    /// spending tokens on.
     func runStage(
+        prompt: String,
+        cwd: URL,
+        tier: AnalysisTier,
+        stage: PipelineStage,
+        onProgress: @escaping (AnalysisProgress) -> Void
+    ) async throws -> [String: Any] {
+        do {
+            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage, onProgress: onProgress)
+        } catch AnalysisServiceError.notJSON {
+            onProgress(AnalysisProgress(stageName: "", detail: "model returned malformed JSON, retrying once"))
+            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage, onProgress: onProgress)
+        }
+    }
+
+    private func runStageOnce(
         prompt: String,
         cwd: URL,
         tier: AnalysisTier,
@@ -129,7 +151,22 @@ struct AnalysisService {
         guard let parsed = Self.extractJSONObject(from: text) else {
             throw AnalysisServiceError.notJSON(harness: name, raw: text)
         }
+        Self.dumpIfRequested(parsed, stage: stage)
         return parsed
+    }
+
+    /// With `CONTOUR_DUMP_STAGES=<dir>` set, writes each stage's decoded JSON to
+    /// `<dir>/<stage>.json`. This is how `MockAnalysisFixtures` gets regenerated from a
+    /// real run rather than hand-written — hand-written fixtures drift from what the
+    /// models actually emit, which is the whole failure the fixtures exist to catch.
+    private static func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
+        guard let dir = ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"] else { return }
+        let url = URL(fileURLWithPath: dir, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: object, options: [.prettyPrinted, .sortedKeys]
+        ) else { return }
+        try? data.write(to: url.appendingPathComponent("\(stage).json"))
     }
 
     /// Every stage inherits this. It sets the trust boundary the design doc insists on:

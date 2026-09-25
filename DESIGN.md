@@ -1,5 +1,11 @@
 # Contour — design doc
 
+> Contour is a fork of Aperture. Aperture assumed exactly one of everything: `pi` as the
+> AI backend, `gh` as the only route to GitHub, and Jira as the only issue tracker. This
+> document has been updated so §8, §10, and §16 describe the pluggable design that
+> replaced those assumptions; see
+> `docs/superpowers/specs/2026-09-25-contour-design.md` for the change itself.
+
 A macOS-native pull request review application for GitHub, built around how humans
 should review software when most of the code is AI-generated.
 
@@ -172,7 +178,7 @@ lookups is a graph traversal, not a hand-written per-screen reference.
 
 ## 7. Code-navigation experience
 
-`RepoContextService` checks the PR out at its real head SHA on disk (via `gh repo clone`
+`RepoContextService` checks the PR out at its real head SHA on disk (via `git clone`
 + fetching GitHub's synthetic `refs/pull/<n>/head`), so both the AI and the code viewer
 read real files rather than diff hunks. Three zoom levels on any reference: the exact
 lines, expand-context, and whole-file. Base-side references (`RefSide.base`) read the
@@ -181,13 +187,34 @@ definition/LSP-grade navigation is explicitly deferred (§17).
 
 ## 8. GitHub integration
 
-All of it goes through the `gh` CLI (`Services/GitHubService.swift`): `gh pr view --json
-...` for metadata/commits/comments/reviews, `gh pr diff` for the raw diff, `gh repo
-clone` + `git fetch origin refs/pull/<n>/head` for the checkout. No token handling, no
-GitHub SDK, no separate auth flow — the app inherits whatever `gh auth` is already
-configured, including GitHub Enterprise. Posting reviews back to GitHub is designed
-(one line-anchored comment per reviewer-marked decision via the REST reviews API) but
-deferred past MVP.
+Contour reads GitHub through one of two interchangeable `PRSource` implementations
+(`Services/PRSource.swift` picks between them), and holds no GitHub credential either way.
+
+- `GHCLISource` shells out to `gh` — `gh pr view --json ...` for
+  metadata/commits/comments/reviews, `gh pr diff` for the raw diff, `gh issue view` for a
+  linked issue. It inherits whatever `gh auth` is configured, including GitHub Enterprise,
+  and it is the only path that can read private repositories.
+- `AnonymousAPISource` uses GitHub's public REST API with no credentials at all, so a
+  public pull request can be reviewed on a machine that has nothing but `git`.
+
+Selection is a user setting (`auto` / `gh` / `anonymous`) defaulting to `auto`: use `gh`
+when it is installed and authenticated — private repos, and 5000 requests/hour — and
+otherwise the anonymous API at 60 requests/hour. A 404 or non-rate-limit 403 from the
+anonymous path means the repository is not publicly readable, and is reported as exactly
+that, naming `gh auth login` as the fix; rate limiting is distinguished from it by
+`X-RateLimit-Remaining`.
+
+Because `gh` wins whenever it is present, the anonymous path is the least-exercised one
+while being the first one a new user meets. Two things counter that: the `anonymous`
+setting forces it on demand, and a parity test asserts both sources produce identical
+`RawPRContext` values for the same PR.
+
+The checkout uses plain `git clone`, not `gh repo clone`. Git's credential helper — which
+`gh` installs when it authenticates — already covers private repositories, so a single
+code path serves both cases and the checkout depends on `gh` not at all.
+
+Posting reviews back to GitHub is designed (one line-anchored comment per reviewer-marked
+decision via the REST reviews API) but deferred past MVP.
 
 One real-world robustness detail worth calling out because it surfaced during
 development: PR base branches are frequently deleted after merge. Fetching the head ref
@@ -196,6 +223,24 @@ longer resolves. `RepoContextService.checkout` fetches the head ref (via the PR-
 ref, which survives branch deletion) and the base ref independently, and falls back to
 fetching the base commit by SHA if the branch-name fetch fails and the object isn't
 already present from the initial clone.
+
+## 8a. Issue-tracker integration
+
+The issue a PR came from grounds the plain-language "problem to be solved" statement in
+what was actually asked for, rather than in what the diff appears to do. Which tracker to
+consult is pluggable behind `IssueTracker` (`Tracker/IssueTracker.swift`):
+
+- `GitHubIssueTracker` is the default and requires nothing installed. It detects closing
+  keywords (`Fixes #123`), cross-repo references (`owner/repo#123`), bare `#123` mentions,
+  and issue numbers embedded in branch names, in that order of confidence, and fetches
+  through whichever `PRSource` is already in use.
+- `JiraTracker` shells out to `acli`. It is offered only when `acli` is on PATH and stays
+  off until the user enables it — detecting `acli` never silently changes where Contour
+  looks.
+
+The contract is best-effort and load-bearing in both directions: a missing, unreachable,
+or unparseable issue returns nil and the pipeline continues. No issue lookup may ever fail
+a review.
 
 ## 9. Repository-context acquisition
 
@@ -208,30 +253,53 @@ AI backend on `pi` rather than a bare completion API (§10).
 
 ## 10. AI analysis pipeline
 
-The whole AI backend is the `pi` CLI, invoked exactly like `gh`: shelled out to, no API
-key held by this app, whatever provider/model `pi` is configured with is what runs.
-`Services/AnalysisService.swift` builds each invocation as:
+The AI backend is a CLI the user has already installed and signed in to. Contour holds no
+provider key and inherits whatever model and provider that CLI is configured with.
 
-```
-pi --mode json --no-session --tools read,grep,find,ls --thinking <low|high> \
-   --append-system-prompt <grounding rules> \
-   -p "@.contour-context.md" "<stage-specific prompt>"
-```
+Which CLI is a user setting. `Harness` (`Harness/Harness.swift`) is the seam, and it
+abstracts exactly the two things that differ between them — how you invoke one, and how
+you read its output stream. `AnalysisService` keeps everything shared: the grounding
+system prompt, defensive JSON extraction, the mock short-circuit, the retry.
 
-Two properties of this are load-bearing and were validated against a real `pi`
-invocation during development, not assumed:
+| Concern | `pi` | `claude` |
+| --- | --- | --- |
+| Non-interactive | `-p` | `-p` |
+| Stream format | `--mode json` | `--output-format stream-json --verbose` |
+| Ephemeral session | `--no-session` | default under `-p` |
+| Read-only tools | `--tools read,grep,find,ls` | `--allowedTools Read,Grep,Glob` |
+| Effort tier | `--thinking low\|high` | `--effort low\|high` |
+| Context file | `@file` as its own argv token | contents inlined into the prompt |
+| Progress event | `tool_execution_start` | `assistant` → `content[].tool_use` |
+| Final text | `message_end` → last text block | `result`/`success` → `.result` |
+
+Several properties are load-bearing and were validated by running both CLIs during
+development, not assumed:
 
 - **`@file` must be its own argv token.** `pi` resolves an `@path` reference by scanning
   the raw argument for a leading `@`; passing `"@file\n\nrest of the prompt"` as a single
   string causes `pi` to treat the entire remainder as part of the path and fail with
   "File not found". The fix is passing the file reference and the prompt body as two
-  separate positional arguments after `-p`.
+  separate positional arguments after `-p`. `claude` has no equivalent convention, so
+  `ClaudeHarness` inlines the file's contents instead; both must deliver the same text.
+- **The final message lives in a different place per CLI.** `pi` puts it in the last text
+  *block* of the assistant's `message_end` — and a `thinking` block with a null `text` can
+  follow the real answer, so the extraction filters on block type rather than taking the
+  last block. `claude` reports it once, on a separate `result` event.
+- **Unknown events must be ignored, not treated as errors.** `claude` interleaves
+  `system/hook_started`, `system/hook_response`, and `rate_limit_event` lines with real
+  content, and both CLIs gain event types over time.
 - **Bare model names are ambiguous across multi-provider setups.** Passing `--model
-  haiku` matched an unauthenticated provider in one real test environment. The app does
-  not pin a model/provider by default — `AnalysisTier.modelPattern` is `nil` unless a
-  future Settings screen sets an override, so `--model` is omitted and `pi`'s own
-  configured default handles it. Effort is still tiered via `--thinking` (`low` for
-  mechanical stages, `high` for judgment-heavy ones).
+  haiku` matched an unauthenticated provider in one real test environment. Contour pins no
+  model by default — `AnalysisTier.modelPattern` is nil unless Settings sets a per-tier
+  override — so the model flag is omitted entirely and each CLI's own default applies.
+- **Which binary a bare command name resolves to matters.** Two installs of the same CLI
+  can accept different flags; resolution consults the inherited `PATH` first and only then
+  a list of common install locations, which a Finder-launched app needs because it inherits
+  a minimal `PATH`.
+- **Models occasionally emit malformed JSON.** One observed stage returned an otherwise
+  complete response containing a stray bracket. With seven stages per run, that would throw
+  away a whole pipeline including the stages already paid for, so a stage retries once on
+  unparseable JSON — and only once.
 
 Six sequential stages, each reading the previous stage's output for cross-linking IDs
 (`Pipeline/AnalysisPipeline.swift`, prompts in `Pipeline/PromptBuilder.swift`):
@@ -243,16 +311,17 @@ Six sequential stages, each reading the previous stage's output for cross-linkin
 3. **Decisions** (high effort) — the handful of decisions worth a reviewer's attention,
    linked to components.
 4. **Tradeoffs** (high effort) — named poles per decision that embodies one.
-5. **Flows + entry points** (high effort) — traced by `pi` actually reading the call
-   chain, not guessed.
+5. **Flows + entry points** (high effort) — traced by the harness actually reading the
+   call chain, not guessed.
 6. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
    graph so far and is asked specifically for what a senior engineer would want to judge,
    plus honest open questions.
 
-Every stage's system prompt instructs `pi` to treat anything inside
+Every stage's system prompt instructs the harness to treat anything inside
 `<UNTRUSTED_PR_CONTENT>` as data, never instructions — the mitigation for prompt
-injection via a malicious PR description/comment/commit message, given `pi` is agentic
-and reads attacker-influenceable text. Every invocation is restricted to read-only tools
+injection via a malicious PR description/comment/commit message, given the harness is
+agentic and reads attacker-influenceable text. Every invocation is restricted to read-only
+tools
 (`read,grep,find,ls` — no `bash`, `edit`, or `write`).
 
 Each stage's raw `[String: Any]` response is decoded through `StageDecoding` into
@@ -339,16 +408,34 @@ backed by a CodeRef your tools actually resolved") rather than a separate mechan
 verification pass in this MVP — mechanical CodeRef verification against the checkout is
 a near-term hardening item, not yet wired in.
 
-## 16. Security considerations for private repositories
+## 16. Security considerations
 
-No token handling anywhere in this app: `gh` owns GitHub auth, `pi` owns model-provider
-auth, and both are inherited from whatever the user already has configured. Code stays
-local — the checkout lives in `~/Library/Application Support/Contour/repos/`, and the
-only thing that leaves the machine is whatever `pi`'s own configured provider call sends
-(governed by `pi`'s own config, not this app's). The concrete mitigation for the one real
-risk this design introduces — an agentic tool reading attacker-influenceable PR text —
-is the `<UNTRUSTED_PR_CONTENT>` wrapping plus the read-only tool restriction described in
-§10; there is no `bash` access at any point in the analysis pipeline.
+No token handling anywhere in this app: `gh` owns GitHub auth (when used at all), the
+chosen harness owns model-provider auth, and both are inherited from whatever the user
+already has configured. Public pull requests need no credential of any kind. Code stays
+local — the checkout lives in `~/Library/Application Support/Contour/repos/`, and the only
+thing that leaves the machine is whatever the harness's own configured provider call sends,
+governed by that CLI's config rather than this app's.
+
+Two distinct prompt-injection surfaces exist, and they need different mitigations:
+
+1. **PR-derived text** (title, description, commits, comments) is attacker-influenceable
+   prose the harness must read. Mitigated by wrapping it in `<UNTRUSTED_PR_CONTENT>` and
+   instructing the harness, in every stage's system prompt, to treat it as data.
+2. **Instruction files inside the checkout.** Both supported harnesses auto-discover
+   `CLAUDE.md` / `AGENTS.md`, skills, hooks, and plugins from the working directory. For a
+   tool whose entire job is analyzing arbitrary pull requests from the internet, those
+   files are attacker-controlled content that would be loaded as *instructions* — and the
+   `<UNTRUSTED_PR_CONTENT>` wrapper does nothing about them, because it only wraps prose.
+
+The second surface is mitigated by disabling project-resident customization on every
+invocation: `--no-context-files --no-extensions --no-skills` for `pi`, and `--restricted
+--safe-mode` for `claude`. `--bare` would also disable CLAUDE.md discovery for `claude` but
+was rejected: it forces `ANTHROPIC_API_KEY`-only auth and would break anyone signed in
+through a subscription.
+
+Beyond that, every invocation is read-only (no `bash`, no edit, no write, no WebFetch),
+ephemeral, and session-less, so nothing a PR contains can persist into a later analysis.
 
 ## 17. MVP scope (implemented)
 

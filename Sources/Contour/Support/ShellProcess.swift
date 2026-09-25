@@ -162,15 +162,24 @@ enum Shell {
     /// Checks common install locations first (no subprocess needed). Falls back to
     /// `/usr/bin/env` so PATH entries from asdf, nvm, or a custom Homebrew prefix still
     /// resolve exactly like they would in Terminal.
-    /// Search order for a bare command name.
+    /// Search order for a bare command name: the inherited `PATH` first, then a list of
+    /// common install locations.
     ///
-    /// A GUI app launched from Finder inherits a minimal PATH (`/usr/bin:/bin:/usr/sbin:
-    /// /sbin`), so relying on `env` alone finds Homebrew and user-local installs only when
-    /// Contour happens to be started from a terminal. `~/.local/bin` matters specifically:
-    /// it is where Claude Code installs by default.
+    /// PATH must come first so Contour runs the same binary the user's shell does. This is
+    /// not hypothetical — two `claude` installs (an older Homebrew one and a newer
+    /// `~/.local/bin` one) differ in which flags they accept, and preferring a hardcoded
+    /// directory silently ran the wrong one.
+    ///
+    /// The fallback list still matters: a GUI app launched from Finder inherits a minimal
+    /// PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), so without it Homebrew and user-local
+    /// installs are invisible unless Contour was started from a terminal. `~/.local/bin`
+    /// is there specifically because Claude Code installs to it by default.
     static func searchPaths(for name: String) -> [String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return [
+        let fromPATH = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map { "\($0)/\(name)" }
+        let fallbacks = [
             "/opt/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
             "\(home)/.local/bin/\(name)",
@@ -178,6 +187,7 @@ enum Shell {
             "/usr/bin/\(name)",
             "/bin/\(name)",
         ]
+        return fromPATH + fallbacks
     }
 
     /// Absolute path for a command, or nil if nothing executable was found. Used by

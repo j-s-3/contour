@@ -109,3 +109,35 @@ struct PreferencesTests {
         AnalysisTier.modelOverrides = [:]
     }
 }
+
+/// Executable resolution. Contour shells out to CLIs by bare name, so which binary that
+/// resolves to is a correctness concern, not a detail.
+struct ExecutableResolutionTests {
+
+    /// The inherited PATH must win over the hardcoded fallbacks. Two installs of the same
+    /// CLI can differ in which flags they accept, and running one the user's shell never
+    /// would produces "unknown option" failures that look like Contour bugs.
+    @Test func pathEntriesPrecedeHardcodedFallbacks() {
+        let paths = Shell.searchPaths(for: "claude")
+        let homebrew = paths.firstIndex(of: "/opt/homebrew/bin/claude")
+        guard let homebrew else { return }  // fallbacks always present, but be defensive
+
+        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
+        // Every entry derived from PATH sits before the fallback block.
+        for (index, candidate) in paths.enumerated() where index < homebrew {
+            let dir = (candidate as NSString).deletingLastPathComponent
+            #expect(pathDirs.contains(Substring(dir)))
+        }
+    }
+
+    @Test func fallbacksIncludeUserLocalBin() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(Shell.searchPaths(for: "claude").contains("\(home)/.local/bin/claude"))
+    }
+
+    /// An absolute path is taken as-is, so a Settings override could name an exact binary.
+    @Test func absolutePathsAreNotSearched() {
+        #expect(Shell.which("/definitely/not/here/claude") == nil)
+        #expect(Shell.which("/bin/sh") == "/bin/sh")
+    }
+}
