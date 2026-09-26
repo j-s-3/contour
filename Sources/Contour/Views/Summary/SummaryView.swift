@@ -304,11 +304,14 @@ struct SummaryView: View {
     // MARK: - Explore the change
 
     private var exploreTheChange: some View {
-        let systems = graph.components.filter { $0.level <= .system }.count
+        // What the PR did to the structure, in words — never a count of parts it touched,
+        // which says more about the diff than about the architecture.
+        let architecture = graph.architecture.map { "\($0.impact.label) architectural impact" }
+            ?? "\(graph.topLevelParts.count) parts"
         return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Explore the change")
             HStack(spacing: 12) {
-                ExploreTile(title: "Architecture", detail: "\(systems) \(systems == 1 ? "system" : "systems") touched",
+                ExploreTile(title: "Architecture", detail: architecture,
                             symbol: "square.stack.3d.up") { navigate(.architecture) }
                 ExploreTile(title: "Flows", detail: "\(graph.flows.count) traced",
                             symbol: "arrow.triangle.branch") { navigate(.flows) }

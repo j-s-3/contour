@@ -144,6 +144,34 @@ struct ArchitectureModelTests {
         #expect(graph.drawablePart(for: "impl")?.id == "a")
     }
 
+    // MARK: - Contextual chat
+
+    /// Asking about a part hands the harness where it sits, what this PR changed about it,
+    /// what's inside it and what implements it, and the review questions that concern it.
+    @Test func askingAboutAPartCarriesItsArchitecturalContext() throws {
+        var graph = batGraph()
+        graph.architecture = ArchitectureAssessment(impact: .low, headline: "No structural change")
+        let resolved = try #require(graph.resolve(.component("inspection")))
+        #expect(resolved.detail.contains("What this PR changed about it: first line → buffered sample"))
+        #expect(resolved.detail.contains("Parts inside it: Text / binary classification, Encoding detection"))
+        #expect(resolved.detail.contains("overall architectural impact: low — No structural change"))
+        #expect(resolved.detail.contains("Overview question about this part: Is detection that depends on pipe chunking acceptable?"))
+        #expect(resolved.flowIds == ["pipe"])
+        #expect(resolved.decisionIds == ["how-much", "impl"])
+
+        let child = try #require(graph.resolve(.component("classification")))
+        #expect(child.lineage.last == "Content Inspection")
+        #expect(child.detail.contains("Implemented by: InputReader::try_new"))
+    }
+
+    @Test func askingAboutARelationshipSaysWhatCrossesIt() throws {
+        let graph = batGraph()
+        let resolved = try #require(graph.resolve(.relationship("input-sample")))
+        #expect(resolved.summary.contains { $0.hasPrefix("first line → buffered sample") })
+        #expect(resolved.detail.contains("previously carried: first line"))
+        #expect(resolved.detail.contains("Overview question about this relationship: Is detection that depends on pipe chunking acceptable?"))
+    }
+
     @Test func assessmentDecodesLeniently() throws {
         let json = #"{"impact": "sideways", "headline": "No structural change"}"#
         let assessment = try JSONDecoder().decode(ArchitectureAssessment.self, from: Data(json.utf8))

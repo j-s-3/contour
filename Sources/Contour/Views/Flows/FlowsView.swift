@@ -137,6 +137,14 @@ struct FlowsView: View {
                         if step.caution != nil {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption2)
                         }
+                        Spacer(minLength: 8)
+                        if let part = graph.drawablePart(for: step.componentId ?? "") {
+                            Button { actions.navigate(.componentDetail(part.id)) } label: {
+                                Label(part.title, systemImage: "square.stack.3d.up").font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Show in Architecture")
+                        }
                     }
                     if let stateDelta = step.stateDelta {
                         Text(stateDelta).font(.caption).foregroundStyle(.secondary)
