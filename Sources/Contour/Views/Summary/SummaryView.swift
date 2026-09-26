@@ -249,11 +249,12 @@ struct SummaryView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.orange.opacity(0.22)))
     }
 
-    /// "Review →" goes where the judgment is recorded — the related decision — and when
-    /// there isn't one, straight into a conversation about the item.
+    /// "Review →" goes where the judgment is recorded — the decision the question belongs
+    /// to, with the question shown there — and when there isn't one, straight into a
+    /// conversation about the item.
     private func review(_ item: Consideration) {
-        if let decisionId = item.relatedIds.first(where: { graph.decision($0) != nil }) {
-            navigate(.decisionDetail(decisionId))
+        if graph.reviewDecisionId(for: item) != nil {
+            navigate(.consideration(item.id))
         } else {
             actions.ask(.consideration(item.id))
         }
@@ -311,7 +312,8 @@ struct SummaryView: View {
                             symbol: "square.stack.3d.up") { navigate(.architecture) }
                 ExploreTile(title: "Flows", detail: "\(graph.flows.count) traced",
                             symbol: "arrow.triangle.branch") { navigate(.flows) }
-                ExploreTile(title: "Decisions", detail: "\(graph.decisions.count) \(graph.decisions.count == 1 ? "decision" : "decisions")",
+                let progress = graph.reviewProgress
+                ExploreTile(title: "Decisions", detail: "\(progress.reviewed) of \(progress.total) reviewed",
                             symbol: "checklist") { navigate(.decisions) }
             }
         }
@@ -377,8 +379,8 @@ private struct ConsiderationRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .opacity(hovered || isExpanded ? 1 : 0.75)
-                .help(item.relatedIds.contains { graph.decision($0) != nil }
-                      ? "Open the related decision" : "Ask about this")
+                .help(graph.reviewDecisionId(for: item) != nil
+                      ? "Review the decision this question is about" : "Ask about this")
             }
             .contentShape(Rectangle())
             .onTapGesture(perform: onToggle)

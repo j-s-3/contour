@@ -93,8 +93,8 @@ separate document per lens.
 
 ### 4.1 Window shell
 
-Three-column `NavigationSplitView`: a sidebar of lenses (Summary, Architecture,
-Decisions, Tradeoffs, Flows, Entry points, Raw diff) plus review progress, and a main
+Three-column `NavigationSplitView`: a sidebar grouped as Overview / System (Architecture,
+Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
@@ -141,15 +141,29 @@ architecture to review judgment. When a graph has no rich edges (an old cached a
 
 ### 4.4 Decisions
 
-One full structured record per decision — Decision, Rationale, Alternatives,
-Consequences, Confidence, Evidence — each field independently provenance-tagged, plus an
-accept / question / discuss control that rolls up into the review-progress bar. See
-`Views/Decisions/DecisionsView.swift`.
+Where the reviewer makes judgments: the Overview says what deserves thought, Decisions
+records it. Each decision is drawn as the question the engineer had to answer, the options
+on the table with the chosen one marked, drawn in the shape that fits (two approaches on a
+line, an ordered threshold scale, or a radio list; never a forced two-sided spectrum), a
+why of at most two lines with provenance as a quiet note, and the tradeoff the choice made
+as a one-line spectrum. Then come explicit **Looks good / Question / Discuss** buttons:
+Question opens a note to the author, and Discuss opens a conversation. Everything else
+(how it's implemented, full rationale, alternatives, consequences, the architecture,
+relationships and flows it affects, evidence) sits behind More….
+
+Design decisions show by default. Implementation decisions are collapsed under
+Implementation details and don't count toward review progress, which means "n of the
+consequential decisions consciously judged" and sits on the sidebar's Decisions row. An
+Overview question's "Review →" opens its first related decision, highlights it briefly,
+and shows the question there as "Question from Overview". The lens is keyboard-driven
+(J/K or ↑/↓ move, A/Q/C judge, M more). A "One at a time" mode reads like a design review.
+Graphs without `question`/`options`/`why` are condensed by `PRGraph.brief(for:)`. See
+`Views/Decisions/DecisionsView.swift` and `Models/DecisionBriefing.swift`.
 
 ### 4.5 Tradeoffs
 
-Two named poles per tradeoff and which side the implementation actually landed on,
-without a verdict on whether that was correct. See `Views/Tradeoffs/TradeoffsView.swift`.
+Not a screen. A tradeoff exists because a decision exists, so it is drawn inside its
+decision: two qualities being traded and where the choice landed, never a verdict.
 
 ### 4.6 Flows
 

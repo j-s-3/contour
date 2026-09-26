@@ -47,7 +47,7 @@ enum ChatContextBuilder {
     /// for something that touches none.
     static func availableExpansions(for resolved: ResolvedSubject) -> [ContextExpansion] {
         var out: [ContextExpansion] = []
-        if !resolved.decisionIds.isEmpty, resolved.kind != .decision { out.append(.relatedDecisions) }
+        if !resolved.decisionIds.isEmpty, ![.decision, .option].contains(resolved.kind) { out.append(.relatedDecisions) }
         if !resolved.flowIds.isEmpty, resolved.kind != .flow { out.append(.relatedFlows) }
         if !resolved.refs.isEmpty, resolved.kind != .code { out.append(.implementation) }
         if resolved.kind != .pullRequest { out.append(.entirePR) }
@@ -66,8 +66,11 @@ enum ChatContextBuilder {
         case .decision:
             return ["Why was this chosen?", "What alternatives were considered?", "What are the risks?",
                     "Do we really need this?", "Show me the evidence"]
+        case .option:
+            return ["Why did they choose this?", "What if they'd picked the other option?",
+                    "What does this cost?", "Show me where this is decided"]
         case .tradeoff:
-            return ["Why was this tradeoff accepted?", "What happens if we choose the other side?",
+            return ["Why was this tradeoff accepted?", "How likely is the downside in practice?", "What happens if we choose the other side?",
                     "How significant is the impact?", "Where is this implemented?"]
         case .flow:
             return ["Walk me through this", "Where can this fail?", "What happens concurrently?",
@@ -169,7 +172,7 @@ enum ChatContextBuilder {
         switch subject {
         case .component(let id): return "[[component:\(id)]]"
         case .relationship(let id): return "[[relationship:\(id)]]"
-        case .decision(let id): return "[[decision:\(id)]]"
+        case .decision(let id), .decisionOption(let id, _): return "[[decision:\(id)]]"
         case .tradeoff(let id): return "[[tradeoff:\(id)]]"
         case .flow(let id), .flowStep(let id, _), .storyStep(let id, _): return "[[flow:\(id)]]"
         default: return nil
@@ -200,8 +203,10 @@ enum ChatContextBuilder {
         }
 
         let decisions = resolved.decisionIds.compactMap(graph.decision).filter { d in
-            if case .decision(let id) = resolved.subject { return d.id != id }
-            return true
+            switch resolved.subject {
+            case .decision(let id), .decisionOption(let id, _): return d.id != id
+            default: return true
+            }
         }
         if !decisions.isEmpty {
             out += "## Related decisions\n"
