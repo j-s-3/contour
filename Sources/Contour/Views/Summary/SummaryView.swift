@@ -109,8 +109,35 @@ struct SummaryView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            factsLine
         }
         .reviewContextMenu(.pullRequest)
+    }
+
+    /// Size, CI, reviews, open threads and age: what a reviewer checks first, as one quiet
+    /// line. Color is kept for CI's verdict and the facts that should stop a reviewer —
+    /// requested changes, open threads; everything else stays secondary.
+    private var factsLine: some View {
+        let facts = graph.pr.glanceFacts()
+        return HStack(spacing: 6) {
+            ForEach(Array(facts.enumerated()), id: \.offset) { index, fact in
+                if index > 0 { dot }
+                Text(verbatim: fact.text)
+                    .foregroundStyle(factColor(fact.tone))
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+
+    private func factColor(_ tone: GlanceFact.Tone) -> AnyShapeStyle {
+        switch tone {
+        case .plain: AnyShapeStyle(.secondary)
+        case .good: AnyShapeStyle(Color.green)
+        case .caution: AnyShapeStyle(Color.orange)
+        case .bad: AnyShapeStyle(Color.red)
+        }
     }
 
     private var dot: some View { Text("\u{00b7}").foregroundStyle(.tertiary) }

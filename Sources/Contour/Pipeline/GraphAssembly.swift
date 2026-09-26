@@ -24,7 +24,8 @@ extension PRGraph {
             repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
             state: ctx.state, branch: ctx.headRefName, baseBranch: ctx.baseRefName, headSha: ctx.headSha,
             baseSha: ctx.baseSha, intent: shellIntent(title: ctx.title),
-            filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions
+            filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions,
+            glance: ctx.glance
         ))
     }
 
@@ -42,6 +43,7 @@ extension PRGraph {
         pr.filesChanged = fresh.filesChanged
         pr.additions = fresh.additions
         pr.deletions = fresh.deletions
+        pr.glance = fresh.glance
     }
 
     mutating func apply(_ result: StageResult) {

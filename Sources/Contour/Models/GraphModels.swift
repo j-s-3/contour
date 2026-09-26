@@ -993,6 +993,9 @@ struct PRSummary: Codable, Hashable, Sendable {
     /// produced before it existed still decode; `PRGraph.thingsToThinkAbout` falls back to
     /// `needsJudgment`/`uncertainties` for those.
     var considerations: [Consideration]?
+    /// CI, review and thread state for the Overview's facts line. Optional so graphs saved
+    /// before it existed still decode; `refreshMetadata` fills it in on the next open.
+    var glance: PRGlance?
 }
 
 /// The full knowledge graph for one PR. This is what the pipeline assembles (from
