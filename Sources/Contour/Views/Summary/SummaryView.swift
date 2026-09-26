@@ -18,9 +18,9 @@ import SwiftUI
 ///
 /// It opens before the analysis behind it has finished, so every section has a reserved
 /// place from the start: "✦ Understanding the change…" becomes the plain-language answer,
-/// then the before/after hero; "Loading…" becomes the why; the things to think about fill
-/// in as the analysis finds them. Placeholders are replaced in place and nothing above
-/// the reviewer's reading position is inserted later, so the page doesn't jump.
+/// then the before/after hero; "Loading…" becomes the why; the things to think about
+/// appear once judgment has weighed everything. Placeholders are replaced in place and
+/// nothing above the reviewer's reading position is inserted later, so the page doesn't jump.
 struct SummaryView: View {
     let graph: PRGraph
     var analysis = AnalysisState(isComplete: true)
@@ -57,10 +57,12 @@ struct SummaryView: View {
                         .padding(.top, 26)
                 }
 
-                if !graph.thingsToThinkAbout.isEmpty {
-                    thingsToThinkAbout
-                        .padding(.top, 36)
-                } else if !judgmentStatus.isSettled {
+                if let items = graph.thingsToThinkAbout(during: analysis) {
+                    if !items.isEmpty {
+                        thingsToThinkAbout(items)
+                            .padding(.top, 36)
+                    }
+                } else {
                     thingsToThinkAboutPlaceholder
                         .padding(.top, 36)
                 }
@@ -297,8 +299,7 @@ struct SummaryView: View {
 
     // MARK: - Things to think about
 
-    private var thingsToThinkAbout: some View {
-        let items = graph.thingsToThinkAbout
+    private func thingsToThinkAbout(_ items: [Consideration]) -> some View {
         let visible = showAllConsiderations ? items : Array(items.prefix(considerationBudget))
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -341,8 +342,8 @@ struct SummaryView: View {
                 .padding(.bottom, 4)
             }
 
-            // Until judgment lands this list is the behavior change's own question; say
-            // more are coming rather than let it pass for the full list.
+            // While an earlier revision's list is being revalidated, say a fresh one is
+            // coming rather than let it pass for a conclusion about this code.
             if !judgmentStatus.isSettled {
                 WorkingLine(text: judgmentWorkingText, font: .caption)
                     .padding(.leading, 58)
