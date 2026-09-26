@@ -296,8 +296,10 @@ defaults to Delta: unchanged stages recede, new stages are green, removed ones d
 and a changed stage carries its own BEFORE / AFTER lines ("first line" → "up to 1 KB").
 The header gives the ten-second version: one or two sentences of what happens, and one
 line on what this PR changed. Decisions that shape a point in the flow, and Overview
-review questions about it, hang as notes beside the connection where they matter (at most
-three per stage, then "+N more"); clicking one opens it in Decisions, and each decision
+review questions about it, hang as notes beside the connection where they matter. The
+diagram spreads to the canvas width: notes widen and side-by-side branches move apart to
+keep them readable, and every note is drawn on a wide canvas (a narrow one shows three per
+stage, then "+N more"); clicking one opens it in Decisions, and each decision
 card links back with "Appears in: <flow>". Provenance is not shown on traced stages — only
 an inferred stage gets a "?".
 

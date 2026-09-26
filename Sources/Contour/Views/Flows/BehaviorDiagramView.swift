@@ -48,8 +48,9 @@ struct BehaviorDiagramView: View {
     @State private var hoveredId: String?
 
     var body: some View {
-        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations)
         GeometryReader { geo in
+            let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations,
+                                                            availableWidth: geo.size.width)
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(layout.boundaries) { boundaryBox($0) }
