@@ -294,11 +294,35 @@ struct PromptBuilder {
 
         componentIds should link each decision to the component(s) above that it changed.
 
-        Classify each decision's level: "system" for a product/architecture-shaping decision a
-        reviewer would want to see by default (e.g. choosing to trigger reindexing
-        synchronously vs. async), "implementation" for a decision that only matters once you're
-        already reading the code (e.g. which collection type, which retry-count constant). Default
-        to "system" when unsure — only mark "implementation" when it's clearly code-level detail.
+        Classify each decision's level by one test: would a staff engineer reviewing the DESIGN
+        care about this choice? "system" is for choices where human judgment is valuable —
+        synchronous vs. asynchronous, consistency vs. latency, streaming vs. buffering, local vs.
+        distributed state, API compatibility vs. cleanup, eager vs. lazy work, failing vs. falling
+        back, event-driven vs. scheduled, stronger correctness vs. a simpler implementation.
+        "implementation" is for everything that only matters once you're reading the code: which
+        API call, which helper or library routine to reuse, which collection type, an edge-case
+        guard, a constant. Expect most PRs to have one to three "system" decisions; mark the rest
+        "implementation" rather than promoting them.
+
+        The reviewer sees each decision as a question with its options drawn visually, so write
+        these fields to a strict budget — they are what the reviewer reads first:
+        - question: the question the engineer had to answer, at most ~12 words, ending in "?",
+          no file paths, class or method names (e.g. "How much data should binary detection
+          inspect?", "Should detection wait for more stream data?"). The title stays the
+          implementation-shaped label.
+        - options: the real options that were on the table, exactly one with "chosen": true.
+          label: 1-5 words, a noun phrase a reviewer understands without the code ("First
+          line", "First 1 KB", "Use what's buffered"). detail: optional, 1-4 words naming what
+          that option buys ("deterministic classification", "never blocks"). Usually two; list
+          three or more only when there genuinely were three or more.
+        - shape: "binary" for two approaches; "threshold" when the options are points on one
+          ordered scale (sizes, limits, strictness) — list them in order; "options" for three or
+          more unordered alternatives. Do not force a two-sided spectrum onto a choice that isn't
+          one.
+        - why: why this option was chosen, ONE sentence of at most ~20 words, with its own
+          provenance ("claim" when the author said it, "interpretation" when it's your read).
+        Put the longer reasoning in rationale, alternatives and consequences — those are only
+        shown when the reviewer drills in.
         Respond with ONLY this JSON object:
         {
           "decisions": [
@@ -306,6 +330,10 @@ struct PromptBuilder {
               "id": "short-stable-slug",
               "title": "Short label, e.g. 'Use SQS rather than a synchronous call'",
               "level": "system|implementation",
+              "question": "Should indexing run on the publish path?",
+              "options": [{"label": "Synchronous call", "detail": "immediate result", "chosen": false}, {"label": "Queue it", "detail": "publish stays fast", "chosen": true}],
+              "shape": "binary|threshold|options",
+              "why": {"text": "one sentence", "provenance": "claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null},
               "decision": {"text": "what choice was made", "provenance": "fact", "confidence": null, "source": null},
               "rationale": [{"text": "...", "provenance": "claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null}],
               "alternatives": [{"text": "an obvious alternative and why it's plausible", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
@@ -329,10 +357,13 @@ struct PromptBuilder {
         \(decisionList)
 
         For each decision above that embodies a genuine tradeoff (not all will), surface the axis:
-        two named poles (e.g. "simplicity" vs "flexibility", "consistency" vs "better abstraction",
-        "synchronous" vs "asynchronous", "backwards compatibility" vs "cleanup", "operational
-        complexity" vs "implementation simplicity") and which side this implementation actually
-        landed on. Do not judge whether the choice was correct — only make the tradeoff visible so
+        what the choice gained versus what it gave up. The reviewer already sees the decision's
+        options ("first line" vs "first 1 KB"), so the poles must name the QUALITIES being traded
+        ("minimal buffering" vs "better detection", "deterministic detection" vs "streaming
+        behavior"), never restate the options. Two named poles (e.g. "simplicity" vs
+        "flexibility", "consistency" vs "better abstraction", "synchronous" vs "asynchronous",
+        "backwards compatibility" vs "cleanup", "operational complexity" vs "implementation
+        simplicity") and which side this implementation actually landed on. Do not judge whether the choice was correct — only make the tradeoff visible so
         a human can decide. Keep poleA/poleB/chosen to short phrases (a few words), never full
         sentences — the UI renders them as a one-line slider, not a paragraph. Set poleAWeight to a
         number from 0 (fully poleA) to 1 (fully poleB) reflecting where the implementation landed.
@@ -455,7 +486,9 @@ struct PromptBuilder {
           establish from the repo.
         - explanation: the longer reasoning, evidence summary, and possible fixes — this is only
           shown when the reviewer drills in, so detail belongs here, not in question/detail.
-        - relatedIds: the decision/component/flow ids it concerns; refs: supporting CodeRefs.
+        - relatedIds: the decision/component/flow ids it concerns, the single most relevant
+          decision FIRST — the reviewer's "Review →" opens that decision and records their
+          judgment there; refs: supporting CodeRefs.
         If the behavior change's humanQuestion is still the most important question, include it
         (condensed to the budget) as the first consideration. Merge overlapping items rather than
         listing near-duplicates.
