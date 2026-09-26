@@ -189,7 +189,7 @@ struct FlowsView: View {
                 Text(summary)
                     .font(.body)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
                     .frame(maxWidth: 760, alignment: .leading)
             }
             changeLine(behavior)
@@ -207,7 +207,7 @@ struct FlowsView: View {
                     .foregroundStyle(.blue)
                 Text(text)
                     .font(.callout.weight(.medium))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
             }
             .frame(maxWidth: 760, alignment: .leading)
         } else if !behavior.hasChange {
