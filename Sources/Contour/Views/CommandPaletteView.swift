@@ -67,6 +67,11 @@ struct CommandPaletteView: View {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }
         ]
+        // Appended, never first: Return on an empty query runs the first command.
+        if store.canStopAnalysis {
+            commands.append(.init(title: "Stop analysis", subtitle: "keeps what's already here; stopped sections can be retried",
+                                  symbol: "stop.circle") { store.stopAnalysis() })
+        }
         guard let graph = store.graph else { return commands }
         for d in graph.decisions {
             commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {

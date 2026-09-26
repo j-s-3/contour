@@ -29,6 +29,8 @@ private final class DataBox: @unchecked Sendable {
 enum Shell {
 
     /// Run a command to completion and return stdout as a String. Throws on non-zero exit.
+    /// Cancelling the calling task terminates the process, so stopping an analysis
+    /// mid-checkout doesn't leave the checkout running on.
     @discardableResult
     static func run(
         _ executable: String,
@@ -36,56 +38,67 @@ enum Shell {
         cwd: URL? = nil,
         stdin: String? = nil
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            process.executableURL = resolveExecutable(executable)
-            process.arguments = resolvedArguments(executable, arguments)
-            if let cwd { process.currentDirectoryURL = cwd }
+        try Task.checkCancellation()
+        let process = Process()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                process.executableURL = resolveExecutable(executable)
+                process.arguments = resolvedArguments(executable, arguments)
+                if let cwd { process.currentDirectoryURL = cwd }
 
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            process.standardOutput = outPipe
-            process.standardError = errPipe
+                let outPipe = Pipe()
+                let errPipe = Pipe()
+                process.standardOutput = outPipe
+                process.standardError = errPipe
 
-            if let stdin {
-                let inPipe = Pipe()
-                process.standardInput = inPipe
-                inPipe.fileHandleForWriting.write(Data(stdin.utf8))
-                try? inPipe.fileHandleForWriting.close()
-            }
+                if let stdin {
+                    let inPipe = Pipe()
+                    process.standardInput = inPipe
+                    inPipe.fileHandleForWriting.write(Data(stdin.utf8))
+                    try? inPipe.fileHandleForWriting.close()
+                }
 
-            let outBox = DataBox()
-            let errBox = DataBox()
-            outPipe.fileHandleForReading.readabilityHandler = { handle in
-                let d = handle.availableData
-                if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil }
-                else { outBox.append(d) }
-            }
-            errPipe.fileHandleForReading.readabilityHandler = { handle in
-                let d = handle.availableData
-                if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
-                else { errBox.append(d) }
-            }
+                let outBox = DataBox()
+                let errBox = DataBox()
+                outPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let d = handle.availableData
+                    if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil }
+                    else { outBox.append(d) }
+                }
+                errPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let d = handle.availableData
+                    if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
+                    else { errBox.append(d) }
+                }
 
-            process.terminationHandler = { proc in
-                let out = String(data: outBox.snapshot(), encoding: .utf8) ?? ""
-                let err = String(data: errBox.snapshot(), encoding: .utf8) ?? ""
-                if proc.terminationStatus == 0 {
-                    continuation.resume(returning: out)
-                } else {
-                    continuation.resume(throwing: ProcessError(
-                        command: "\(executable) \(arguments.joined(separator: " "))",
-                        exitCode: proc.terminationStatus,
-                        stderr: err.isEmpty ? out : err
-                    ))
+                process.terminationHandler = { proc in
+                    let out = String(data: outBox.snapshot(), encoding: .utf8) ?? ""
+                    let err = String(data: errBox.snapshot(), encoding: .utf8) ?? ""
+                    if proc.terminationStatus == 0 {
+                        continuation.resume(returning: out)
+                    } else {
+                        continuation.resume(throwing: ProcessError(
+                            command: "\(executable) \(arguments.joined(separator: " "))",
+                            exitCode: proc.terminationStatus,
+                            stderr: err.isEmpty ? out : err
+                        ))
+                    }
+                }
+
+                // Cancelled while this was being set up: `onCancel` found nothing running
+                // to terminate, so don't start it now.
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(throwing: error)
                 }
             }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
         }
     }
 

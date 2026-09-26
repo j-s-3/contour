@@ -112,7 +112,11 @@ navigates, scrolls, or takes focus.
 A compact toolbar indicator (the resolving Contour mark with "Analyzing PR… 3 remaining"
 → "Analysis complete", which then recedes; §4.1a) opens the details: each section's
 status with Retry for failures, then, behind disclosures, the pipeline's own stages, the
-latency metrics, and the raw technical log. Contextual chat works from the moment the shell appears: the harness can
+latency metrics, and the raw technical log. The same popover (and ⌘K) offers **Stop
+analysis**: harness calls cost real tokens, so the reviewer can end them without leaving
+the PR. Stopping terminates the running harness processes, keeps everything that has
+landed (including decisions already streamed in), and marks each unfinished section
+"Stopped" with its own Retry, so it resumes one section at a time. Contextual chat works from the moment the shell appears: the harness can
 read the checkout itself and doesn't need the precomputed analysis.
 
 ### 4.1a Welcome, analysis, and the Contour mark

@@ -64,13 +64,15 @@ struct AnalysisMetrics: Codable, Sendable {
         if behavior { mark(.beforeAfter, at: now) }
         if graph?.decisions.isEmpty == false { mark(.firstDecision, at: now) }
         // What changed, before/after and why are on screen — or couldn't be, and the
-        // Overview is as useful as it's going to get.
-        if state.status(.behaviorChange).isSettled && state.status(.understanding).isSettled {
+        // Overview is as useful as it's going to get. A stopped stage wasn't given the
+        // chance, so it doesn't count toward either milestone.
+        let overview = [state.status(.behaviorChange), state.status(.understanding)]
+        if overview.allSatisfy({ $0.isSettled && $0 != .stopped }) {
             mark(.usefulOverview, at: now)
         }
         if state.status(.architecture) == .done { mark(.architecture, at: now) }
         if state.status(.flows) == .done { mark(.flows, at: now) }
-        if state.isComplete { mark(.fullAnalysis, at: now) }
+        if state.isComplete, state.stoppedSections.isEmpty { mark(.fullAnalysis, at: now) }
     }
 
     static var fileURL: URL {

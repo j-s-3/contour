@@ -45,7 +45,9 @@ enum PipelineStage: String, CaseIterable, Codable, Sendable {
 
 /// Where one stage is. `stale` is a slice carried over from an analysis of an earlier
 /// revision of the same PR: shown so the reviewer isn't staring at nothing, marked so it's
-/// never mistaken for a conclusion about the current code.
+/// never mistaken for a conclusion about the current code. `stopped` is a stage the
+/// reviewer stopped before it finished: whatever it had on screen stays, and it waits for
+/// its own Retry rather than resuming by itself.
 enum StageStatus: Equatable, Sendable {
     case pending
     /// `detail` is the latest meaningful progress ("2 found so far"), not a tool-call trace.
@@ -53,11 +55,21 @@ enum StageStatus: Equatable, Sendable {
     case done
     case failed(String)
     case stale
+    case stopped
 
+    /// Nothing more will happen to this stage unless the reviewer asks for it.
     var isSettled: Bool {
         switch self {
-        case .done, .failed: return true
+        case .done, .failed, .stopped: return true
         case .pending, .running, .stale: return false
+        }
+    }
+
+    /// Failed or stopped: the section offers Retry.
+    var canRetry: Bool {
+        switch self {
+        case .failed, .stopped: return true
+        case .pending, .running, .done, .stale: return false
         }
     }
 
@@ -133,12 +145,13 @@ struct AnalysisState: Equatable, Sendable {
     func status(_ stage: PipelineStage) -> StageStatus { stages[stage] ?? .pending }
 
     /// A section is as far along as its least-finished stage; any failure wins so the
-    /// reviewer sees it.
+    /// reviewer sees it. A stage resumed after a stop reads as running, not stopped.
     func sectionStatus(_ section: ReviewSection) -> StageStatus {
         let statuses = section.stages.map(status)
         if let failed = statuses.first(where: { $0.failure != nil }) { return failed }
         if statuses.allSatisfy({ $0 == .done }) { return .done }
         if let running = statuses.first(where: \.isRunning) { return running }
+        if statuses.contains(.stopped) { return .stopped }
         if statuses.contains(.stale) { return .stale }
         return .pending
     }
@@ -149,5 +162,30 @@ struct AnalysisState: Equatable, Sendable {
 
     var failedSections: [ReviewSection] {
         ReviewSection.allCases.filter { sectionStatus($0).failure != nil }
+    }
+
+    var stoppedSections: [ReviewSection] {
+        ReviewSection.allCases.filter { sectionStatus($0) == .stopped }
+    }
+
+    /// Some analysis is still to come, so "Stop analysis" has something to stop.
+    var canStop: Bool { remainingCount > 0 }
+
+    /// The stage a section's Retry re-runs: its first failed or stopped one. The context
+    /// section's plumbing stages aren't analysis, so retrying one reopens the whole PR.
+    func retryStage(for section: ReviewSection) -> PipelineStage? {
+        section.stages.first { status($0).canRetry }
+    }
+
+    /// What stopping changes: every stage that hasn't settled, including ones that never
+    /// started, becomes stopped. Landed stages keep their `done` and failures their message.
+    /// The issue lookup is the exception — it's best-effort and never a section of its own,
+    /// so it's simply over; resuming Understanding looks the issue up again.
+    static func stopping(_ statuses: [PipelineStage: StageStatus]) -> [PipelineStage: StageStatus] {
+        var changes: [PipelineStage: StageStatus] = [:]
+        for stage in PipelineStage.allCases where !(statuses[stage] ?? .pending).isSettled {
+            changes[stage] = stage == .ticket ? .done : .stopped
+        }
+        return changes
     }
 }

@@ -41,6 +41,9 @@ enum PipelineEvent: Sendable {
 ///
 /// Every analysis stage fails on its own: the slice stays empty, the section says so and
 /// offers a retry, and everything else carries on. Only fetch and checkout are fatal.
+///
+/// The reviewer can stop it at any point (`stop()`): what landed stays, and each stage that
+/// hadn't is marked stopped and offers the same Retry, so it resumes one section at a time.
 actor AnalysisPipeline {
     private let repoContext = RepoContextService()
     private let cache: AnalysisCache
@@ -75,6 +78,8 @@ actor AnalysisPipeline {
     /// Stages whose slice was produced for this exact revision.
     private var completed: Set<PipelineStage> = []
     private var runTask: Task<Void, Never>?
+    /// Retries run outside `runTask`, so stopping has to reach them separately.
+    private var retryTasks: [PipelineStage: Task<Void, Never>] = [:]
 
     init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
          cache: AnalysisCache = AnalysisCache()) {
@@ -95,17 +100,45 @@ actor AnalysisPipeline {
         runTask = Task { await run(prURL: prURL, forceRefresh: forceRefresh) }
     }
 
+    /// Ends the run for good: nothing more is reported, and the stream closes.
     func cancel() {
-        runTask?.cancel()
+        cancelInFlight()
         continuation.finish()
     }
 
-    /// Re-runs one failed stage — the per-section Retry.
-    func retry(_ stage: PipelineStage) async {
-        guard analysis != nil, statuses[stage]?.failure != nil else { return }
-        if stage == .understanding { await lookUpTicket() }
-        await execute(stage)
+    /// "Stop analysis": ends everything in flight — cancelling a task tears down its
+    /// harness subprocess — and marks every stage that hadn't settled as stopped. What
+    /// already landed stays on screen, and unlike `cancel()` the stream stays open, so each
+    /// stopped stage can be resumed on its own with `retry(_:)`.
+    func stop() {
+        cancelInFlight()
+        let changes = AnalysisState.stopping(statuses)
+        guard !changes.isEmpty else { return }
+        // An interrupted issue lookup found nothing; let a resumed Understanding try again.
+        if changes[.ticket] != nil { ticketLookedUp = false }
+        for stage in PipelineStage.allCases { if let status = changes[stage] { setStatus(stage, status) } }
+        let stopped = PipelineStage.allCases.filter { changes[$0] == .stopped }
+        continuation.yield(.log(PipelineProgressEntry(
+            stage: "Stopped", detail: "stopped by the reviewer: \(stopped.map(\.shortLabel).joined(separator: ", "))")))
         finishIfSettled()
+    }
+
+    /// Re-runs one failed or stopped stage — the per-section Retry.
+    func retry(_ stage: PipelineStage) {
+        guard analysis != nil, PipelineStage.analysis.contains(stage), statuses[stage]?.canRetry == true else { return }
+        retryTasks[stage] = Task {
+            if stage == .understanding { await lookUpTicket() }
+            await execute(stage)
+            guard !Task.isCancelled else { return }
+            finishIfSettled()
+        }
+    }
+
+    private func cancelInFlight() {
+        runTask?.cancel()
+        runTask = nil
+        for task in retryTasks.values { task.cancel() }
+        retryTasks = [:]
     }
 
     // MARK: - The run
@@ -128,6 +161,7 @@ actor AnalysisPipeline {
             self.checkout = checkout
             continuation.yield(.checkout(checkout))
             setStatus(.checkingOut, .done)
+            try Task.checkCancellation()
 
             // Built here rather than at init because the harness needs the checkout root to
             // resolve the context file it hands the model.
@@ -145,6 +179,8 @@ actor AnalysisPipeline {
                 return
             }
             await runStages(toRun)
+            // Stopped partway: `stop()` has already settled every stage and reported it.
+            guard !Task.isCancelled else { return }
             finishIfSettled()
         } catch is CancellationError {
             return
@@ -234,7 +270,7 @@ actor AnalysisPipeline {
     /// Best-effort issue lookup: never fails the pipeline. Leaves `ticket` nil when there's
     /// no reference, when the tracker isn't set up, or when the lookup errors.
     private func lookUpTicket() async {
-        guard !ticketLookedUp, let ctx else { return }
+        guard !ticketLookedUp, let ctx, !Task.isCancelled else { return }
         ticketLookedUp = true
         setStatus(.ticket, .running(detail: nil))
         defer { setStatus(.ticket, .done) }
@@ -403,8 +439,10 @@ actor AnalysisPipeline {
             continuation.yield(.revalidating(fromHead: nil))
         }
         let failed = PipelineStage.analysis.filter { statuses[$0]?.failure != nil }
+        let stopped = PipelineStage.analysis.filter { statuses[$0] == .stopped }
         let summary = "\(graph?.decisions.count ?? 0) decisions, \(graph?.components.count ?? 0) components"
             + (failed.isEmpty ? "" : "; failed: \(failed.map(\.shortLabel).joined(separator: ", "))")
+            + (stopped.isEmpty ? "" : "; stopped: \(stopped.map(\.shortLabel).joined(separator: ", "))")
         continuation.yield(.log(PipelineProgressEntry(stage: "Done", detail: summary)))
         continuation.yield(.complete)
     }
