@@ -328,21 +328,25 @@ struct SectionPendingView: View {
     }
 }
 
-/// A section whose analysis failed: says so, and offers a retry and a conversation instead.
-/// The rest of the review is unaffected.
+/// A section whose analysis failed: says what didn't happen, and offers a retry and a
+/// conversation instead. The rest of the review is unaffected. `message` is the
+/// reviewer-facing line (`PipelineStage.failureMessage(for:)`); the raw response and stderr
+/// stay behind "Show log" in the analysis details, never here.
 struct SectionFailedView: View {
     let section: ReviewSection
     let message: String
     var onRetry: () -> Void
     var onAsk: (() -> Void)?
 
-    @State private var showMessage = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("\(section.title) analysis failed", systemImage: "exclamationmark.triangle.fill")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary, .orange)
+            Text(message)
+                .font(.callout)
+                .frame(maxWidth: 640, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Everything else in this review is still available.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -353,15 +357,11 @@ struct SectionFailedView: View {
                     Button("Ask about \(section.title.lowercased())…", action: onAsk)
                 }
             }
-            DisclosureGroup("What went wrong", isExpanded: $showMessage) {
-                Text(message)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: 640, alignment: .leading)
-                    .padding(.top, 4)
-            }
-            .font(.caption)
+            Text("The technical details are in the analysis log — click the analysis status in the toolbar, then Show log.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: 640, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

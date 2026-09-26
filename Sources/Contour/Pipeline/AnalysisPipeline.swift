@@ -276,8 +276,10 @@ actor AnalysisPipeline {
             // slice that would read as a conclusion about this code.
             graph?.clear(stage)
             stale.remove(stage)
+            // The technical account (raw response, stderr) goes to the log; the section
+            // gets a line the reviewer can act on.
             log(stage, "failed: \(error.localizedDescription)")
-            setStatus(stage, .failed(error.localizedDescription))
+            setStatus(stage, .failed(stage.failureMessage(for: error)))
             publish()
         }
     }

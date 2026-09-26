@@ -181,6 +181,28 @@ struct ProgressiveAnalysisTests {
         #expect(state.remainingCount == 4)
     }
 
+    /// A failed section tells the reviewer which part failed and why in their terms — never
+    /// the model's raw output or a CLI's stderr, which stay in the technical log.
+    @Test func failureMessagesNameTheSectionAndNeverQuoteRawOutput() {
+        let raw = #"{"components": [{"id": "parser", "name": "Pars"#
+        let notJSON = AnalysisServiceError.notJSON(harness: "claude", raw: raw)
+        #expect(PipelineStage.architecture.failureMessage(for: notJSON)
+                == "Couldn't map the architecture. The model's answer wasn't readable.")
+        #expect(notJSON.localizedDescription.contains(raw), "the log keeps the raw response")
+
+        let stderr = "fatal: rate limited, retry after 30s"
+        let processFailed = AnalysisServiceError.processFailed(
+            harness: "claude", ProcessError(command: "claude -p", exitCode: 1, stderr: stderr))
+        let decoding = StageDecodingError(stageLabel: "Tracing flows", underlying: CancellationError(), rawJSON: raw)
+        for (stage, error) in [(PipelineStage.decisions, processFailed as Error), (.flows, decoding),
+                               (.judgment, AnalysisServiceError.emptyResponse(harness: "claude"))] {
+            let message = stage.failureMessage(for: error)
+            #expect(message.hasPrefix(stage.failureHeadline + ". "))
+            #expect(!message.contains(stderr) && !message.contains(raw) && !message.contains("{"))
+        }
+        #expect(!PipelineStage.flows.checkoutFailureMessage.contains("fatal"))
+    }
+
     // MARK: - Cache
 
     private func tempCache() -> AnalysisCache {

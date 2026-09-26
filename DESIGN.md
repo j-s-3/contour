@@ -543,7 +543,10 @@ it lands, so nothing can arrive after and duplicate it.
 Every analysis stage **fails on its own**. Its slice stays empty, the section says so and
 offers Retry (and a conversation instead), and every other section carries on; Judgment
 runs with whatever exists. Only fetching and checking out the PR are fatal — and a
-checkout failure after the review has opened still leaves the raw diff on screen.
+checkout failure after the review has opened still leaves the raw diff on screen. The
+section says what failed in the reviewer's terms ("Couldn't map the architecture. The
+model's answer wasn't readable."); the model's raw response and the CLI's stderr go only
+to the technical log behind "Show log".
 
 Every stage's system prompt instructs the harness to treat anything inside
 `<UNTRUSTED_PR_CONTENT>` as data, never instructions — the mitigation for prompt

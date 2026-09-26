@@ -181,9 +181,12 @@ final class GraphStore {
                 phase = .failed(message)
             } else {
                 // The PR is on screen but couldn't be checked out: keep the shell and the
-                // raw diff, and say why each section is empty.
+                // raw diff, and say why each section is empty. The underlying error (git's
+                // stderr, usually) goes to the technical log rather than into every section.
+                progressLog.append(PipelineProgressEntry(stage: PipelineStage.checkingOut.rawValue,
+                                                         detail: "failed: \(message)"))
                 for stage in PipelineStage.analysis where analysis.status(stage) != .done {
-                    analysis.stages[stage] = .failed(message)
+                    analysis.stages[stage] = .failed(stage.checkoutFailureMessage)
                 }
                 analysis.isComplete = true
             }
