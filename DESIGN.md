@@ -98,12 +98,22 @@ Decisions, Tradeoffs, Flows, Entry points, Raw diff) plus review progress, and a
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
-### 4.2 Summary (landing page)
+### 4.2 Overview (landing page)
 
-Intent, a component change-map bar, architecture impact statement, numbered key
-decisions with reviewer-state glyphs, tradeoffs/entry-points side by side, a "needs human
-judgment" section, an uncertainties section, and a review-progress bar. Everything here
-links into its full lens. See `Views/Summary/SummaryView.swift`.
+A thirty-second briefing from a staff engineer, not a dashboard: one centered column
+(max ~1240pt) that reads top to bottom — title and metadata; **What changed**, the
+before/after stage diagram as the hero (3–6 short stages per side, green for a step this PR
+adds, dashed for a step that no longer happens, an optional success/failure outcome on the
+last stage); **Why** and **Consequence** at one or two lines each; **Things to think
+about**, 1–5 question-shaped items (a question plus one sentence) that merge what used to
+be separate needs-judgment and uncertainty lists, distinguished only by a subtle badge;
+**Other behavior changes**, one line each, expanding inline; and **Explore the change**,
+three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
+with a tooltip rather than a colored badge. Review progress lives in the sidebar. Longer
+reasoning, evidence, and file locations are drill-down only — an expansion, a click, or
+right-click → Ask about this…. The judgment stage writes `considerations` to these budgets;
+older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
+`Views/Summary/SummaryView.swift`.
 
 ### 4.3 Architecture
 
@@ -160,6 +170,30 @@ actions, and a guaranteed `esc` back to wherever the reviewer came from in the
 conceptual review — the navigation stack (`GraphStore.path`/`forwardStack`) is what makes
 "never lose your place" an actual guarantee rather than a hope. See
 `Views/Evidence/CodeViewerView.swift`.
+
+### 4.9 Contextual chat
+
+Every boxed element — before/after stages, why/consequence, things to think about,
+architecture nodes and relationships, decisions, tradeoffs, flows and their steps, code
+references — carries the same right-click menu (`.reviewContextMenu`): **Ask about this…**
+(⌘⇧A), then Open details, related decisions/flows, Show in code, Open on GitHub, and Copy
+Link. Asking opens a conversation in the window's inspector column, so it survives
+navigation: code citations in an answer open the code viewer beside the thread, and the
+reviewer can pull the lines they're viewing into the conversation.
+
+A click is a `ReviewSubject` — an address into the graph, not a copy of it. `PRGraph.resolve`
+turns it into the object plus its lineage and neighbors (a relationship brings both
+endpoints; a code range brings the concepts that cite it), and `ChatContextBuilder` writes
+that as a focused, hierarchical context document. The default is narrow; the reviewer can
+widen it per conversation (related decisions, related flows, implementation excerpts, the
+entire PR). Each turn runs through the same `Harness` as the analysis stages — same
+read-only tools, same instruction-file hardening, same untrusted-content rule — with a
+chat-specific system prompt that asks for answers at the selected object's level of
+abstraction, code cited as `path:start-end`, and review objects linked as `[[kind:id]]`;
+both become inline links. Invocations are ephemeral, so the conversation so far is replayed
+into each turn. Answers stream (`HarnessEvent.textDelta`) where the CLI supports it.
+Conversations persist for the review session, one per subject. See `Chat/` and
+`Views/Chat/`.
 
 ## 5. Interaction model
 

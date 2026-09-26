@@ -48,5 +48,8 @@ struct TradeoffsView: View {
         }
         .padding(14)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .reviewContextMenu(.tradeoff(t.id))
+        .id(t.id)
     }
 }

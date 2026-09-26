@@ -66,7 +66,8 @@ behavior. Precedence is **environment > stored setting > what's detected on the 
 | `CONTOUR_HARNESS` | `pi`, `claude` | Which AI CLI to drive |
 | `CONTOUR_TRACKER` | `github`, `jira`, `none` | Where to look for the originating issue |
 | `CONTOUR_GITHUB_ACCESS` | `auto`, `gh`, `anonymous` | How to reach GitHub |
-| `CONTOUR_MOCK_ANALYSIS` | `1` | Use canned analysis instead of calling a model |
+| `CONTOUR_MOCK_ANALYSIS` | `1` | Use canned analysis (and canned chat answers) instead of calling a model |
+| `CONTOUR_OPEN_PR_URL` | a PR URL | Open straight into that PR on launch |
 | `CONTOUR_DUMP_STAGES` | a directory | Write each stage's raw JSON there |
 
 ### Harness

@@ -49,6 +49,17 @@ struct ClaudeHarness: Harness {
         return args
     }
 
+    /// `--include-partial-messages` adds `stream_event` lines carrying text deltas. Only
+    /// chat asks for them: an analysis stage wants one JSON object, not a preview of it.
+    func conversationArguments(prompt: String, contextFile: String, tier: AnalysisTier,
+                               systemPrompt: String) throws -> [String] {
+        var args = try arguments(prompt: prompt, contextFile: contextFile, tier: tier, systemPrompt: systemPrompt)
+        if let verbose = args.firstIndex(of: "--verbose") {
+            args.insert("--include-partial-messages", at: verbose + 1)
+        }
+        return args
+    }
+
     private func promptWithContext(prompt: String, contextFile: String) throws -> String {
         let url = contextDirectory.appendingPathComponent(contextFile)
         // A missing context file is not fatal: the stage prompt alone still describes the
@@ -88,6 +99,15 @@ struct ClaudeHarness: Harness {
                 ))
             }
             return nil
+
+        case "stream_event":
+            guard let inner = event["event"] as? [String: Any],
+                  (inner["type"] as? String) == "content_block_delta",
+                  let delta = inner["delta"] as? [String: Any],
+                  (delta["type"] as? String) == "text_delta",
+                  let text = delta["text"] as? String, !text.isEmpty
+            else { return nil }
+            return .textDelta(text)
 
         case "result":
             // Errors surface as an empty/failed stage upstream; the subtype is checked so a

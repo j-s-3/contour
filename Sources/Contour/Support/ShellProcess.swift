@@ -151,6 +151,12 @@ enum Shell {
                 }
             }
 
+            // A consumer that stops listening (a cancelled chat turn, a PR reload mid-run)
+            // must not leave the CLI running and billing in the background.
+            continuation.onTermination = { _ in
+                if process.isRunning { process.terminate() }
+            }
+
             do {
                 try process.run()
             } catch {

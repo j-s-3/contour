@@ -75,6 +75,35 @@ struct ProvenanceBadge: View {
     }
 }
 
+/// Provenance as quiet metadata: a single tertiary glyph whose tooltip says whether a line
+/// is the author's claim, an observed fact, or an AI inference (and how confident). Used
+/// where the statement itself should dominate — the Overview — while keeping §15's
+/// distinction one hover away rather than dropping it.
+struct ProvenanceMark: View {
+    let provenance: Provenance
+    let confidence: Confidence?
+    var source: String? = nil
+
+    var body: some View {
+        Image(systemName: provenance.glyph)
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .help(helpText)
+            .accessibilityLabel(helpText)
+    }
+
+    private var helpText: String {
+        var text: String
+        switch provenance {
+        case .fact: text = "Observed fact"
+        case .claim: text = "The author's claim"
+        case .interpretation: text = "AI inference" + (confidence.map { " · \($0.label.lowercased()) confidence" } ?? "")
+        }
+        if let source, !source.isEmpty { text += " — \(source)" }
+        return text
+    }
+}
+
 /// Renders one Statement with its provenance badge and, if present, its source pointer —
 /// the "fact vs claim vs interpretation" distinction made visible at the point of use.
 struct StatementView: View {
@@ -126,6 +155,7 @@ struct CodeRefChip: View {
         .foregroundStyle(.blue)
         .padding(.horizontal, 6).padding(.vertical, 3)
         .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+        .reviewContextMenu(.codeRef(ref))
     }
 }
 

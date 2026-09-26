@@ -15,6 +15,7 @@ struct CodeViewerView: View {
     @State private var errorMessage: String?
 
     private let repoContext = RepoContextService()
+    @Environment(\.reviewActions) private var actions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,6 +32,9 @@ struct CodeViewerView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .task(id: ref) { await load() }
+        .onAppear { actions.focus(.codeRef(ref)) }
+        .onChange(of: ref) { _, new in actions.focus(.codeRef(new)) }
+        .onDisappear { actions.focus(nil) }
     }
 
     private var header: some View {
@@ -54,6 +58,14 @@ struct CodeViewerView: View {
             }
 
             Spacer()
+
+            // "Why this line?" — asks about exactly this range, carrying the concepts it
+            // supports along as context.
+            Button { actions.ask(.codeRef(ref)) } label: {
+                Label("Ask about these lines", systemImage: "sparkles")
+            }
+            .buttonStyle(.plain)
+            .help("Ask about this code… (⌘⇧A)")
 
             Button {
                 contextLines += 8
@@ -94,6 +106,7 @@ struct CodeViewerView: View {
         }
         .padding(.vertical, 8)
         .textSelection(.enabled)
+        .reviewContextMenu(.codeRef(ref))
     }
 
     private func load() async {

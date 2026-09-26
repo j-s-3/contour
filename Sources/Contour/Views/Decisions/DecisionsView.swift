@@ -6,6 +6,8 @@ import SwiftUI
 /// as a one-line slider per decision rather than a separate wall of text.
 struct DecisionsView: View {
     let graph: PRGraph
+    /// A decision the navigation target asked for; scrolled to and briefly highlighted.
+    var focusDecisionId: String? = nil
     var onSetState: (String, ReviewerState) -> Void
     var onOpenEvidence: (CodeRef) -> Void
     var onOpenTradeoff: (String) -> Void
@@ -20,16 +22,19 @@ struct DecisionsView: View {
             ContentUnavailableView("No standout decisions", systemImage: "questionmark.diamond",
                 description: Text("This PR didn't surface anything a reviewer would need to interrogate."))
         } else {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(systemDecisions.enumerated()), id: \.element.id) { index, decision in
                         DecisionCard(
                             index: index + 1, decision: decision,
                             tradeoffs: graph.tradeoffs(for: decision.id),
+                            isFocused: decision.id == focusDecisionId,
                             onSetState: { onSetState(decision.id, $0) },
                             onOpenEvidence: onOpenEvidence,
                             onOpenTradeoff: onOpenTradeoff
                         )
+                        .id(decision.id)
                     }
                     if systemDecisions.isEmpty {
                         Text("No system-level decisions surfaced — check implementation decisions below.")
@@ -43,7 +48,16 @@ struct DecisionsView: View {
                 .frame(maxWidth: 1300, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
+            .onAppear { scroll(proxy) }
+            .onChange(of: focusDecisionId) { _, _ in scroll(proxy) }
+            }
         }
+    }
+
+    private func scroll(_ proxy: ScrollViewProxy) {
+        guard let id = focusDecisionId else { return }
+        if implementationDecisions.contains(where: { $0.id == id }) { showImplementation = true }
+        DispatchQueue.main.async { withAnimation { proxy.scrollTo(id, anchor: .top) } }
     }
 
     private var implementationSection: some View {
@@ -65,10 +79,12 @@ struct DecisionsView: View {
                     DecisionCard(
                         index: index + 1, decision: decision,
                         tradeoffs: graph.tradeoffs(for: decision.id),
+                        isFocused: decision.id == focusDecisionId,
                         onSetState: { onSetState(decision.id, $0) },
                         onOpenEvidence: onOpenEvidence,
                         onOpenTradeoff: onOpenTradeoff
                     )
+                    .id(decision.id)
                 }
             }
         }
@@ -79,6 +95,7 @@ private struct DecisionCard: View {
     let index: Int
     let decision: DecisionNode
     let tradeoffs: [TradeoffNode]
+    var isFocused = false
     var onSetState: (ReviewerState) -> Void
     var onOpenEvidence: (CodeRef) -> Void
     var onOpenTradeoff: (String) -> Void
@@ -103,6 +120,7 @@ private struct DecisionCard: View {
 
             ForEach(tradeoffs) { t in
                 TradeoffSliderRow(tradeoff: t, onOpenDecision: nil, onOpen: { onOpenTradeoff(t.id) })
+                    .reviewContextMenu(.tradeoff(t.id))
             }
 
             if hasMoreDetail {
@@ -130,6 +148,12 @@ private struct DecisionCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(borderColor, lineWidth: decision.reviewerState == .unreviewed ? 0 : 1.4)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.accentColor.opacity(isFocused ? 0.55 : 0), lineWidth: 2)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .reviewContextMenu(.decision(decision.id))
     }
 
     private var hasMoreDetail: Bool {

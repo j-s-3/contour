@@ -26,7 +26,7 @@ struct HarnessContractTests {
             switch harness.interpret(line) {
             case .progress(let d): progress.append(d)
             case .finalText(let t): final = t
-            case nil: continue
+            case .textDelta, nil: continue
             }
         }
         return (progress, final)
@@ -189,5 +189,44 @@ struct HarnessContractTests {
         defer { AnalysisTier.modelOverrides = [:] }
         let piPinned = try PiHarness().arguments(prompt: "p", contextFile: "c", tier: .fast, systemPrompt: "s")
         #expect(piPinned[piPinned.firstIndex(of: "--model")! + 1] == "haiku")
+    }
+}
+
+/// Contextual chat streams its answer; analysis stages never do. Both halves of that are
+/// pinned here: the delta shapes each CLI emits, and that only the conversation argv asks
+/// for them — without giving up any of the hardening.
+struct HarnessStreamingTests {
+
+    @Test func claudeReadsTextDeltasFromPartialMessages() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Because "}}}"#
+        #expect(ClaudeHarness().interpret(line) == .textDelta("Because "))
+        let thinking = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}}"#
+        #expect(ClaudeHarness().interpret(thinking) == nil)
+    }
+
+    @Test func piReadsTextDeltasFromMessageUpdates() {
+        let line = #"{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Because "}}"#
+        #expect(PiHarness().interpret(line) == .textDelta("Because "))
+        let thinking = #"{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}"#
+        #expect(PiHarness().interpret(thinking) == nil)
+    }
+
+    @Test func onlyConversationArgumentsAskClaudeToStream() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let harness = ClaudeHarness(contextDirectory: dir)
+        let stage = try harness.arguments(prompt: "p", contextFile: "c", tier: .fast, systemPrompt: "s")
+        let chat = try harness.conversationArguments(prompt: "p", contextFile: "c", tier: .fast, systemPrompt: "s")
+        #expect(!stage.contains("--include-partial-messages"))
+        #expect(chat.contains("--include-partial-messages"))
+        for flag in ["--restricted", "--safe-mode", "--allowedTools"] {
+            #expect(chat.contains(flag))
+        }
+    }
+
+    @Test func piConversationArgumentsKeepTheHardening() throws {
+        let chat = try PiHarness().conversationArguments(prompt: "p", contextFile: "c", tier: .fast, systemPrompt: "s")
+        for flag in ["--no-context-files", "--no-extensions", "--no-skills", "--no-session"] {
+            #expect(chat.contains(flag))
+        }
     }
 }

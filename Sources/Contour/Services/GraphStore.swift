@@ -23,6 +23,7 @@ enum NavigationTarget: Hashable {
     case diff
     case decisionDetail(String)
     case componentDetail(String)
+    case edgeDetail(String)
     case tradeoffDetail(String)
     case flowDetail(String)
     case evidence(CodeRef)
@@ -56,6 +57,17 @@ final class GraphStore {
 
     private(set) var lastPRURL: String?
 
+    /// The harness this PR was analyzed with. Contextual chat reuses it so a conversation
+    /// never talks to a different model than the one that built the review.
+    private(set) var harnessID: HarnessID?
+
+    /// Every contextual conversation for this PR (§ contextual chat).
+    let conversations = ConversationStore()
+
+    /// What "Ask about this" (⌘⇧A) means with nothing right-clicked: the element the
+    /// current lens has selected, published by that lens.
+    var focusedSubject: ReviewSubject?
+
     /// MainActor-isolated because it reads `Preferences`, which is UI-owned observable
     /// state. Every caller is a view action, so this costs nothing.
     @MainActor
@@ -67,6 +79,8 @@ final class GraphStore {
         path = [.summary]
         forwardStack = []
         lastPRURL = prURL
+        conversations.reset()
+        focusedSubject = nil
 
         // Contour can't analyze anything without a harness. This is the one hard
         // requirement, and it fails here with an actionable message rather than several
@@ -77,6 +91,7 @@ final class GraphStore {
             """)
             return
         }
+        self.harnessID = harnessID
         let pipeline = AnalysisPipeline(
             harnessID: harnessID,
             trackerID: preferences.resolvedTracker,
@@ -122,6 +137,35 @@ final class GraphStore {
     func goForward() {
         guard let next = forwardStack.popLast() else { return }
         path.append(next)
+    }
+
+    // MARK: - Contextual chat
+
+    @MainActor
+    func ask(about subject: ReviewSubject) {
+        conversations.open(subject)
+    }
+
+    @MainActor
+    func send(_ text: String, in conversation: Conversation) {
+        guard let graph else { return }
+        conversations.send(text, in: conversation, graph: graph, checkout: checkout, harnessID: harnessID)
+    }
+
+    /// The subject implied by where the reviewer is, for ⌘⇧A with nothing selected.
+    var subjectForCurrentLocation: ReviewSubject {
+        if let focusedSubject { return focusedSubject }
+        switch current {
+        case .componentDetail(let id): return .component(id)
+        case .edgeDetail(let id): return .relationship(id)
+        case .decisionDetail(let id): return .decision(id)
+        case .tradeoffDetail(let id): return .tradeoff(id)
+        case .flowDetail(let id): return .flow(id)
+        case .evidence(let ref): return .codeRef(ref)
+        default:
+            if let change = graph?.dominantBehaviorChange { return .behaviorChange(change.id) }
+            return .pullRequest
+        }
     }
 
     var canGoBack: Bool { path.count > 1 }

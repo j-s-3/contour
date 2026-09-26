@@ -5,8 +5,11 @@ import SwiftUI
 /// `steps` detail beneath it, progressive disclosure rather than a wall of text.
 struct FlowsView: View {
     let graph: PRGraph
+    /// A flow the navigation target asked for.
+    var focusFlowId: String? = nil
     var onOpenEvidence: (CodeRef) -> Void
 
+    @Environment(\.reviewActions) private var actions
     @State private var selectedFlowId: String?
     @State private var expandedStoryIndex: Int?
 
@@ -20,8 +23,13 @@ struct FlowsView: View {
                 storyPane.frame(minWidth: 340)
             }
             .onAppear {
+                if let focusFlowId { selectedFlowId = focusFlowId }
                 if selectedFlowId == nil { selectedFlowId = graph.flows.first?.id }
+                actions.focus(selectedFlowId.map { .flow($0) })
             }
+            .onChange(of: focusFlowId) { _, new in if let new { selectedFlowId = new; expandedStoryIndex = nil } }
+            .onChange(of: selectedFlowId) { _, new in actions.focus(new.map { .flow($0) }) }
+            .onDisappear { actions.focus(nil) }
         }
     }
 
@@ -30,6 +38,7 @@ struct FlowsView: View {
     private var flowPicker: some View {
         List(graph.flows, selection: Binding(get: { selectedFlowId }, set: { selectedFlowId = $0; expandedStoryIndex = nil })) { flow in
             Text(flow.title).tag(flow.id as String?)
+                .reviewContextMenu(.flow(flow.id))
         }
         .listStyle(.sidebar)
     }
@@ -39,11 +48,21 @@ struct FlowsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
                 if let flow = currentFlow {
-                    Text(flow.title).font(.title3.weight(.semibold)).padding(.bottom, 6)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(flow.title).font(.title3.weight(.semibold))
+                        Spacer()
+                        Button { actions.ask(.flow(flow.id)) } label: {
+                            Label("Ask", systemImage: "sparkles").font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Ask about this flow… (⌘⇧A)")
+                    }
+                    .padding(.bottom, 6)
+                    .reviewContextMenu(.flow(flow.id))
                     if flow.storySteps.isEmpty {
                         Text("No story-level steps recorded — see implementation steps below.")
                             .font(.callout).foregroundStyle(.secondary)
-                        implementationSteps(flow.steps)
+                        implementationSteps(flow.steps, flowId: flow.id)
                     } else {
                         ForEach(Array(flow.storySteps.enumerated()), id: \.offset) { index, story in
                             storyRow(index: index, story: story, isLast: index == flow.storySteps.count - 1, flow: flow)
@@ -80,13 +99,15 @@ struct FlowsView: View {
                     }
                     .padding(.bottom, isLast ? 0 : 14)
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .reviewContextMenu(.storyStep(flowId: flow.id, index: index))
 
             if expandedStoryIndex == index {
                 let relatedSteps = matchingSteps(for: index, in: flow)
                 if !relatedSteps.isEmpty {
-                    implementationSteps(relatedSteps)
+                    implementationSteps(relatedSteps, flowId: flow.id)
                         .padding(.leading, 18)
                         .padding(.bottom, 10)
                 }
@@ -106,7 +127,7 @@ struct FlowsView: View {
         return Array(flow.steps[start..<end])
     }
 
-    private func implementationSteps(_ steps: [FlowStep]) -> some View {
+    private func implementationSteps(_ steps: [FlowStep], flowId: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(steps) { step in
                 VStack(alignment: .leading, spacing: 4) {
@@ -135,7 +156,10 @@ struct FlowsView: View {
                     }
                 }
                 .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .reviewContextMenu(.flowStep(flowId: flowId, stepId: step.id))
             }
         }
     }

@@ -118,14 +118,16 @@ enum StageDecoding {
     }
 
     struct JudgmentResult: Decodable {
+        var considerations: [Consideration]
         var needsJudgment: [Statement]
         var uncertainties: [Statement]
         var questions: [QuestionNode]
         var changeMap: [ChangeMapEntry]?
 
-        enum CodingKeys: String, CodingKey { case needsJudgment, uncertainties, questions, changeMap }
+        enum CodingKeys: String, CodingKey { case considerations, needsJudgment, uncertainties, questions, changeMap }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            considerations = try c.decodeIfPresent([Consideration].self, forKey: .considerations) ?? []
             needsJudgment = try c.decodeIfPresent([Statement].self, forKey: .needsJudgment) ?? []
             uncertainties = try c.decodeIfPresent([Statement].self, forKey: .uncertainties) ?? []
             questions = try c.decodeIfPresent([QuestionNode].self, forKey: .questions) ?? []

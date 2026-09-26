@@ -36,6 +36,14 @@ struct ContentView: View {
                 .opacity(0)
         )
         .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+        .onAppear {
+            // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
+            // rather than pasting a URL on every launch.
+            if !needsOnboarding, case .idle = store.phase,
+               let url = ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"], !url.isEmpty {
+                store.load(prURL: url)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
@@ -67,7 +75,31 @@ struct ContentView: View {
             sidebar(graph)
         } detail: {
             detailContent(graph)
+                // The chat is an inspector on the detail column rather than a sheet or a
+                // pane inside a lens: it persists across navigation, so following a code
+                // citation keeps the thread beside the code instead of replacing it.
+                .inspector(isPresented: Binding(
+                    get: { store.conversations.isPresented },
+                    set: { store.conversations.isPresented = $0 }
+                )) {
+                    ContextualChatView(store: store, graph: graph)
+                        .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
+                }
         }
+        .environment(\.reviewActions, ReviewActions(
+            graph: graph,
+            prURL: store.lastPRURL,
+            ask: { subject in withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: subject) } },
+            navigate: { store.navigate(to: $0) },
+            focus: { store.focusedSubject = $0 }
+        ))
+        .background(
+            Button("") {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: store.subjectForCurrentLocation) }
+            }
+            .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
+            .opacity(0)
+        )
         // `Text(verbatim:)`, not a bare string literal: the `navigationTitle` overload that
         // takes a literal binds it as a `LocalizedStringKey`, which formats an interpolated
         // Int for the current locale — so PR #14039 rendered as "#14,039". A PR number is
@@ -80,9 +112,23 @@ struct ContentView: View {
                 Button { store.goForward() } label: { Image(systemName: "chevron.right") }
                     .disabled(!store.canGoForward)
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        if store.conversations.isPresented {
+                            store.conversations.close()
+                        } else if store.conversations.active != nil {
+                            store.conversations.isPresented = true
+                        } else {
+                            store.ask(about: store.subjectForCurrentLocation)
+                        }
+                    }
+                } label: {
+                    Image(systemName: store.conversations.isPresented ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
+                }
+                .help("Conversations — ask about what you're looking at (⌘⇧A)")
             }
         }
     }
@@ -90,7 +136,7 @@ struct ContentView: View {
     private func sidebar(_ graph: PRGraph) -> some View {
         List {
             Section("Overview") {
-                sidebarRow("Summary", "house", .summary)
+                sidebarRow("Overview", "house", .summary)
             }
             Section("System") {
                 sidebarRow("Architecture", "square.stack.3d.up", .architecture)
@@ -104,12 +150,22 @@ struct ContentView: View {
                 sidebarRow("Raw diff", "doc.text", .diff)
             }
             Section("Progress") {
+                // Review progress is status, not PR understanding, so it lives here — compact
+                // and always visible — rather than as a card on the Overview.
                 let p = graph.reviewProgress
                 VStack(alignment: .leading, spacing: 4) {
+                    Label {
+                        Text(verbatim: "\(p.reviewed) / \(p.total) reviewed").monospacedDigit()
+                    } icon: {
+                        Image(systemName: p.total > 0 && p.reviewed == p.total ? "checkmark.circle.fill" : "checkmark.circle")
+                            .foregroundStyle(p.total > 0 && p.reviewed == p.total ? .green : .secondary)
+                    }
+                    .font(.callout)
                     ProgressView(value: p.total == 0 ? 0 : Double(p.reviewed), total: Double(max(p.total, 1)))
-                    Text("\(p.reviewed)/\(p.total) decisions reviewed").font(.caption).foregroundStyle(.secondary)
+                        .controlSize(.small)
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
+                .help("Decisions you've accepted, questioned, or marked for discussion")
             }
         }
         .listStyle(.sidebar)
@@ -129,11 +185,20 @@ struct ContentView: View {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
              (.tradeoffs, .tradeoffs), (.flows, .flows), (.diff, .diff):
             return true
-        case (.componentDetail(_), .architecture), (.decisionDetail(_), .decisions),
+        case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
              (.tradeoffDetail(_), .tradeoffs), (.flowDetail(_), .flows):
             return true
         default:
             return false
+        }
+    }
+
+    /// The node or edge a navigation target asks Architecture to select, if any.
+    private var architectureFocus: ArchitectureView.Selection? {
+        switch store.current {
+        case .componentDetail(let id): return .node(id)
+        case .edgeDetail(let id): return .edge(id)
+        default: return nil
         }
     }
 
@@ -142,15 +207,17 @@ struct ContentView: View {
         switch store.current {
         case .summary:
             SummaryView(graph: graph) { store.navigate(to: $0) }
-        case .architecture, .componentDetail(_):
+        case .architecture, .componentDetail(_), .edgeDetail(_):
             ArchitectureView(
                 graph: graph,
+                focus: architectureFocus,
                 onOpenEvidence: { store.navigate(to: .evidence($0)) },
                 onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
             )
         case .decisions, .decisionDetail(_):
             DecisionsView(
                 graph: graph,
+                focusDecisionId: { if case .decisionDetail(let id) = store.current { return id } else { return nil } }(),
                 onSetState: { store.setReviewerState($1, forDecision: $0) },
                 onOpenEvidence: { store.navigate(to: .evidence($0)) },
                 onOpenTradeoff: { store.navigate(to: .tradeoffDetail($0)) }
@@ -162,7 +229,11 @@ struct ContentView: View {
                 onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
             )
         case .flows, .flowDetail(_):
-            FlowsView(graph: graph, onOpenEvidence: { store.navigate(to: .evidence($0)) })
+            FlowsView(
+                graph: graph,
+                focusFlowId: { if case .flowDetail(let id) = store.current { return id } else { return nil } }(),
+                onOpenEvidence: { store.navigate(to: .evidence($0)) }
+            )
         case .files:
             ContentUnavailableView("No file view", systemImage: "doc.text")
         case .diff:

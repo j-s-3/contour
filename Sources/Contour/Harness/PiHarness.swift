@@ -51,6 +51,15 @@ struct PiHarness: Harness {
                 pattern: args?["pattern"] as? String
             ))
 
+        // pi streams by default in json mode: `message_update` wraps the provider's own
+        // event, and text arrives as `text_delta` fragments.
+        case "message_update":
+            guard let inner = event["assistantMessageEvent"] as? [String: Any],
+                  (inner["type"] as? String) == "text_delta",
+                  let text = inner["delta"] as? String, !text.isEmpty
+            else { return nil }
+            return .textDelta(text)
+
         case "message_end":
             guard let message = event["message"] as? [String: Any],
                   (message["role"] as? String) == "assistant",

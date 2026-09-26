@@ -57,7 +57,7 @@ struct CommandPaletteView: View {
 
     private var allCommands: [PaletteCommand] {
         var commands: [PaletteCommand] = [
-            .init(title: "Go to Summary", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
+            .init(title: "Go to Overview", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
             .init(title: "Go to Architecture", subtitle: nil, symbol: "square.stack.3d.up") { store.navigate(to: .architecture) },
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
             .init(title: "Go to Tradeoffs", subtitle: nil, symbol: "arrow.left.arrow.right") { store.navigate(to: .tradeoffs) },

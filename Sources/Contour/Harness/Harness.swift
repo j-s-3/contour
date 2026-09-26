@@ -32,6 +32,10 @@ enum HarnessEvent: Equatable, Sendable {
     case progress(String)
     /// The stage's final assistant message, expected to contain the stage's JSON.
     case finalText(String)
+    /// A fragment of assistant text as it is generated. Only emitted when the CLI was asked
+    /// to stream (`conversationArguments`); analysis stages never see it. The authoritative
+    /// answer is still `finalText` — deltas are a preview for contextual chat.
+    case textDelta(String)
 }
 
 enum HarnessError: LocalizedError {
@@ -61,6 +65,12 @@ protocol Harness: Sendable {
     func arguments(prompt: String, contextFile: String, tier: AnalysisTier,
                    systemPrompt: String) throws -> [String]
 
+    /// The argv for one contextual-chat turn. Same read-only, instruction-file-free
+    /// hardening as `arguments`; the only difference a conformer may add is asking its CLI
+    /// to stream text fragments so the answer can render as it is written.
+    func conversationArguments(prompt: String, contextFile: String, tier: AnalysisTier,
+                               systemPrompt: String) throws -> [String]
+
     /// Interpret one line of the CLI's output stream. Returns nil for anything Contour
     /// doesn't care about — heartbeats, hook chatter, rate-limit notices, malformed
     /// lines. Unknown events must never be treated as errors: both CLIs add event types
@@ -71,6 +81,11 @@ protocol Harness: Sendable {
 
 extension Harness {
     var executable: String { id.executable }
+
+    func conversationArguments(prompt: String, contextFile: String, tier: AnalysisTier,
+                               systemPrompt: String) throws -> [String] {
+        try arguments(prompt: prompt, contextFile: contextFile, tier: tier, systemPrompt: systemPrompt)
+    }
 }
 
 /// Builds the concrete harness for a choice. Kept trivial on purpose: adding a third CLI

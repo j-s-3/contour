@@ -290,6 +290,14 @@ enum BehaviorStageTag: String, Codable, Hashable, Sendable {
     case both
 }
 
+/// How a pipeline ends, when the ending is the point — "Server rejects the request" before,
+/// "Start session" after. Only a pipeline's final stage normally carries one; every other
+/// stage leaves it nil and renders as a plain step.
+enum BehaviorOutcome: String, Codable, Hashable, Sendable {
+    case success
+    case failure
+}
+
 /// One box in the before/after pipeline diagram. Label is deliberately short (2-5 words,
 /// present tense, e.g. "Publish page") — class/method names belong in `componentIds`/
 /// `refs`, never in the label itself.
@@ -300,13 +308,16 @@ struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
     var componentIds: [String] = []
     var flowId: String?
     var refs: [CodeRef] = []
+    var outcome: BehaviorOutcome?
 
     init(id: String = UUID().uuidString, label: String, tag: BehaviorStageTag,
-         componentIds: [String] = [], flowId: String? = nil, refs: [CodeRef] = []) {
+         componentIds: [String] = [], flowId: String? = nil, refs: [CodeRef] = [],
+         outcome: BehaviorOutcome? = nil) {
         self.id = id; self.label = label; self.tag = tag
         self.componentIds = componentIds; self.flowId = flowId; self.refs = refs
+        self.outcome = outcome
     }
-    enum CodingKeys: String, CodingKey { case id, label, tag, componentIds, flowId, refs }
+    enum CodingKeys: String, CodingKey { case id, label, tag, componentIds, flowId, refs, outcome }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
@@ -315,6 +326,9 @@ struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
         flowId = try c.decodeIfPresent(String.self, forKey: .flowId)
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
+        // An unrecognized outcome string degrades to a plain step rather than failing the
+        // whole behavior change.
+        outcome = (try? c.decodeIfPresent(BehaviorOutcome.self, forKey: .outcome)) ?? nil
     }
 }
 
@@ -628,6 +642,58 @@ struct QuestionNode: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+// MARK: - Things to think about (the reviewer's judgment, as questions)
+
+/// Whether an item is a judgment call the reviewer should weigh (a concern or decision) or
+/// something the analysis could not establish (an open question). The Overview renders both
+/// in one list; this only picks a subtle glyph.
+enum ConsiderationKind: String, Codable, Hashable, Sendable {
+    case concern
+    case question
+}
+
+/// One "thing to think about": a question a staff engineer would put to the reviewer, plus
+/// one short sentence of why it matters. Deliberately tiny — it must be understood in about
+/// five seconds. Everything longer (`explanation`, evidence, related nodes) is drill-down.
+struct Consideration: Codable, Hashable, Sendable, Identifiable {
+    var id: String
+    /// Phrased as a question, roughly a dozen words.
+    var question: String
+    /// One short sentence of context.
+    var detail: String
+    var kind: ConsiderationKind = .concern
+    var provenance: Provenance = .interpretation
+    var confidence: Confidence?
+    /// Longer reasoning, shown only on expansion or in contextual chat.
+    var explanation: String?
+    /// Decision/component/flow ids this item concerns.
+    var relatedIds: [String] = []
+    var refs: [CodeRef] = []
+
+    init(id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
+         provenance: Provenance = .interpretation, confidence: Confidence? = nil,
+         explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = []) {
+        self.id = id; self.question = question; self.detail = detail; self.kind = kind
+        self.provenance = provenance; self.confidence = confidence; self.explanation = explanation
+        self.relatedIds = relatedIds; self.refs = refs
+    }
+    enum CodingKeys: String, CodingKey {
+        case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        question = try c.decode(String.self, forKey: .question)
+        detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        kind = (try? c.decodeIfPresent(ConsiderationKind.self, forKey: .kind)) ?? .concern
+        provenance = (try? c.decodeIfPresent(Provenance.self, forKey: .provenance)) ?? .interpretation
+        confidence = try? c.decodeIfPresent(Confidence.self, forKey: .confidence)
+        explanation = try c.decodeIfPresent(String.self, forKey: .explanation)
+        relatedIds = try c.decodeIfPresent([String].self, forKey: .relatedIds) ?? []
+        refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
+    }
+}
+
 struct ChangeMapEntry: Codable, Hashable, Sendable, Identifiable {
     var id: String { name }
     var name: String
@@ -663,6 +729,10 @@ struct PRSummary: Codable, Hashable, Sendable {
     var ticket: TicketInfo?
     var problemToBeSolved: Statement?
     var howItWasSolved: Statement?
+    /// Short, question-shaped review items from the judgment stage. Optional so graphs
+    /// produced before it existed still decode; `PRGraph.thingsToThinkAbout` falls back to
+    /// `needsJudgment`/`uncertainties` for those.
+    var considerations: [Consideration]?
 }
 
 /// The full knowledge graph for one PR. This is what the pipeline assembles (from

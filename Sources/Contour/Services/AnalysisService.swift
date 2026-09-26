@@ -135,7 +135,7 @@ struct AnalysisService {
                     onProgress(AnalysisProgress(stageName: "", detail: detail))
                 case .finalText(let text):
                     finalText = text
-                case nil:
+                case .textDelta, nil:
                     continue
                 }
             }

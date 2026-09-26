@@ -63,6 +63,7 @@ struct ArchitectureDiagramView: View {
                         .position(x: placed.frame.midX, y: placed.frame.midY)
                         .onTapGesture { onSelectNode(placed.component) }
                         .onHover { hoveredId = $0 ? placed.component.id : nil }
+                        .reviewContextMenu(.component(placed.component.id))
                 }
 
                 // Edge labels double as hit targets — tapping one selects the relationship.
@@ -74,6 +75,7 @@ struct ArchitectureDiagramView: View {
                     edgeLabel(placed)
                         .position(placed.labelPoint)
                         .onTapGesture { onSelectEdge(placed.edge) }
+                        .reviewContextMenu(.relationship(placed.edge.id))
                 }
             }
             .frame(width: layout.size.width, height: layout.size.height)

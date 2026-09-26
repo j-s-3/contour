@@ -47,7 +47,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 5
+    static let pipelineVersion = 6
 
     struct Result: Sendable {
         var graph: PRGraph
@@ -76,6 +76,11 @@ actor AnalysisPipeline {
             harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir)
         )
 
+        // Written before the cache check, not after: contextual chat reads this file too, and
+        // it has to be there when the analysis itself came from the cache.
+        let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
+        try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
+
         // A checkout is needed either way (cache hit or miss) so the code viewer has real
         // files to read. The cache only saves the harness calls, not the git operations.
         onProgress(.cacheCheck, .init(stage: "Checking cache", detail: "looking for a previous analysis of this exact commit"))
@@ -86,9 +91,6 @@ actor AnalysisPipeline {
             onProgress(.done, .init(stage: "Done", detail: "using cached analysis — \(cached.graph.decisions.count) decisions, \(cached.graph.components.count) components"))
             return Result(graph: cached.graph, checkout: checkout, diff: cached.diff)
         }
-
-        let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
-        try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
 
         // Best-effort issue lookup: never fails the pipeline. Returns nil when there's no
         // reference, when the tracker isn't set up, or when the lookup errors for any
@@ -189,6 +191,7 @@ actor AnalysisPipeline {
         ) { p in onProgress(.judgment, .init(stage: "Identifying what needs judgment", detail: p.detail)) }
         let judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, stageLabel: "Identifying what needs judgment", from: judgmentRaw)
 
+        partial.pr.considerations = judgment.considerations
         partial.pr.needsJudgment = judgment.needsJudgment
         partial.pr.uncertainties = judgment.uncertainties
         partial.questions = judgment.questions

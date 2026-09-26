@@ -70,12 +70,22 @@ struct PromptBuilder {
         entries in behaviorChanges — but only when they're truly separate; do not split one
         behavior into artificial pieces. Order the most important one first.
 
+        Budgets — the reviewer reads this in about 30 seconds, so they are strict:
+        - title: one short headline sentence in plain language, e.g. "Claude runs now adapt
+          reasoning effort to the selected model". No identifiers.
+        - before/after: 3-6 stages each. Prefer fewer.
+        - When the ending is the point of the change, mark that pipeline's final stage with
+          "outcome": "failure" (e.g. "Server rejects request") or "success" (e.g. "Start
+          session"). Leave "outcome" null on every other stage.
+
         For the dominant behavior change also write:
-        - why: why this changed, in one short sentence — tag "claim" and quote/paraphrase if the
-          author stated it, otherwise "interpretation" with a confidence.
-        - consequence: the single most important downstream effect, in one short sentence.
+        - why: why this changed, in one short sentence (at most ~25 words) — tag "claim" and
+          quote/paraphrase if the author stated it, otherwise "interpretation" with a confidence.
+        - consequence: the single most important downstream effect, in one short sentence (at
+          most ~25 words).
         - humanQuestion: the one question a human reviewer most needs to answer about this change
-          (not a generic question — specific to what you found).
+          (not a generic question — specific to what you found), phrased as a question of at
+          most ~15 words.
 
         Respond with ONLY this JSON object:
         {
@@ -84,10 +94,10 @@ struct PromptBuilder {
               "id": "short-stable-slug",
               "title": "Short label for this behavior change",
               "before": [
-                {"label": "2-5 word present-tense stage", "tag": "beforeOnly|both", "componentIds": [], "flowId": null, "refs": []}
+                {"label": "2-5 word present-tense stage", "tag": "beforeOnly|both", "componentIds": [], "flowId": null, "refs": [], "outcome": "success|failure"|null}
               ],
               "after": [
-                {"label": "2-5 word present-tense stage", "tag": "afterOnly|both", "componentIds": [], "flowId": null, "refs": []}
+                {"label": "2-5 word present-tense stage", "tag": "afterOnly|both", "componentIds": [], "flowId": null, "refs": [], "outcome": "success|failure"|null}
               ],
               "why": {"text": "...", "provenance": "claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null},
               "consequence": {"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null},
@@ -435,8 +445,24 @@ struct PromptBuilder {
         architectureImpact and intent statements you were given, unchanged, for the final summary
         object if you have them; otherwise omit those two fields.
 
+        Finally, distill everything above into "considerations": the 1-5 things a staff engineer
+        would tell the reviewer to think about before approving, most important first. These are
+        what the reviewer sees first, and each must be understood in about five seconds:
+        - question: phrased as a question, at most ~12 words, no file paths, line numbers, class
+          or method names (e.g. "Should unsupported effort be silently ignored?").
+        - detail: ONE short sentence (at most ~20 words) saying why it matters.
+        - kind: "concern" for a judgment call or risk; "question" for something you could not
+          establish from the repo.
+        - explanation: the longer reasoning, evidence summary, and possible fixes — this is only
+          shown when the reviewer drills in, so detail belongs here, not in question/detail.
+        - relatedIds: the decision/component/flow ids it concerns; refs: supporting CodeRefs.
+        If the behavior change's humanQuestion is still the most important question, include it
+        (condensed to the budget) as the first consideration. Merge overlapping items rather than
+        listing near-duplicates.
+
         Respond with ONLY this JSON object:
         {
+          "considerations": [{"id": "short-slug", "question": "...?", "detail": "...", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "explanation": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],
           "needsJudgment": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "uncertainties": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "questions": [{"id": "short-slug", "text": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],

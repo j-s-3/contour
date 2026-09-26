@@ -15,8 +15,13 @@ import SwiftUI
 /// this view did. An edge's embodied decisions link straight into the Decisions lens.
 struct ArchitectureView: View {
     let graph: PRGraph
+    /// A node or edge the navigation target asked for ("Open details" on a component, a
+    /// chat link to a relationship). Takes precedence over the default selection.
+    var focus: Selection? = nil
     var onOpenEvidence: (CodeRef) -> Void
     var onOpenDecision: (String) -> Void
+
+    @Environment(\.reviewActions) private var actions
 
     enum Selection: Equatable {
         case node(String)
@@ -56,9 +61,24 @@ struct ArchitectureView: View {
             detailPanel
                 .frame(minHeight: 150, idealHeight: 210, maxHeight: 260)
         }
-        .onAppear { if selection == .none { selection = defaultSelection } }
+        .onAppear {
+            if let focus { selection = focus } else if selection == .none { selection = defaultSelection }
+            publishFocus()
+        }
+        .onChange(of: focus) { _, new in if let new { selection = new } }
+        .onChange(of: selection) { _, _ in publishFocus() }
+        .onDisappear { actions.focus(nil) }
         .onChange(of: mode) { _, _ in reconcileSelection() }
         .onChange(of: zoom) { _, _ in reconcileSelection() }
+    }
+
+    /// Tells the window what "this" is for ⌘⇧A.
+    private func publishFocus() {
+        switch selection {
+        case .node(let id): actions.focus(.component(id))
+        case .edge(let id): actions.focus(.relationship(id))
+        case .none: actions.focus(nil)
+        }
     }
 
     // MARK: - Chrome
@@ -186,8 +206,11 @@ struct ArchitectureView: View {
                 Image(systemName: changed ? "checkmark.circle.fill" : "minus.circle")
                     .foregroundStyle(changed ? .green : .secondary)
                 ChangeKindBadge(kind: node.changeKind)
+                askButton(.component(node.id))
             }
         }
+        .contentShape(Rectangle())
+        .reviewContextMenu(.component(node.id))
 
         if let purpose = node.summary {
             field("RESPONSIBILITY") { StatementView(statement: purpose) }
@@ -250,8 +273,11 @@ struct ArchitectureView: View {
                 pill(edge.flow == .async ? "Asynchronous" : "Synchronous",
                      color: edge.flow == .async ? .secondary : .primary)
                 if edge.isTrustBoundary { pill("Trust boundary", color: .orange, glyph: "lock.shield") }
+                askButton(.relationship(edge.id))
             }
         }
+        .contentShape(Rectangle())
+        .reviewContextMenu(.relationship(edge.id))
 
         field("DIRECTION") {
             HStack(spacing: 6) {
@@ -290,6 +316,16 @@ struct ArchitectureView: View {
 
     // MARK: Inspector building blocks
 
+    /// A visible door into the same "Ask about this…" the context menu offers, for
+    /// reviewers who don't think to right-click.
+    private func askButton(_ subject: ReviewSubject) -> some View {
+        Button { actions.ask(subject) } label: {
+            Label("Ask", systemImage: "sparkles").font(.caption)
+        }
+        .buttonStyle(.borderless)
+        .help("Ask about this… (⌘⇧A)")
+    }
+
     private func inspectorHeader(kind: String, title: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(kind.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
@@ -316,6 +352,7 @@ struct ArchitectureView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .reviewContextMenu(.relationship(e.id))
             }
         }
     }
@@ -332,6 +369,7 @@ struct ArchitectureView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .reviewContextMenu(.decision(d.id))
             }
         }
     }
