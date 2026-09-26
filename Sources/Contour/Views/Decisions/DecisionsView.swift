@@ -11,15 +11,20 @@ import SwiftUI
 /// Everything else (full rationale, alternatives, consequences, what it affects, evidence)
 /// is behind More…, a right-click, or a conversation.
 ///
-/// Design choices are shown by default; implementation choices are collapsed so they never
-/// compete with them. The lens is built for a sequential, keyboard-only loop — J/K to move,
-/// A/Q/C to judge — and has a one-at-a-time mode that reads like a design review.
+/// The lens directs scarce attention: the decisions where the reviewer's judgment appears to
+/// matter most are shown as Decisions to Review; everything else the analysis found is
+/// collapsed under Other Decisions, compact but still inspectable. Significance decides which
+/// is which, never abstraction level — and the reviewer can move a decision either way.
+/// The lens is built for a sequential, keyboard-only loop — J/K to move, A/Q/C to judge —
+/// and has a one-at-a-time mode that reads like a design review.
 struct DecisionsView: View {
     let graph: PRGraph
     /// Where navigation asked the lens to open.
     var focus: Focus?
     var onSetState: (String, ReviewerState) -> Void
     var onSetNote: (String, String) -> Void
+    /// Add to review (true) / Not worth reviewing (false).
+    var onSetToReview: (String, Bool) -> Void
 
     struct Focus: Equatable {
         var decisionId: String
@@ -38,14 +43,16 @@ struct DecisionsView: View {
     /// The decision briefly lit up after navigating to it.
     @State private var arrivedId: String?
     @State private var expandedIds: Set<String> = []
-    @State private var showImplementation = false
+    @State private var showOther = false
     @FocusState private var keyboardFocused: Bool
     @FocusState private var noteFocus: String?
 
-    private var primary: [DecisionNode] { graph.primaryDecisions }
-    private var implementation: [DecisionNode] { graph.implementationDecisions }
-    /// The review sequence J/K walks: design choices, then implementation choices once shown.
-    private var sequence: [DecisionNode] { primary + (showImplementation ? implementation : []) }
+    private var toReview: [DecisionNode] { graph.decisionsToReview }
+    private var other: [DecisionNode] { graph.otherDecisions }
+    /// Other Decisions open by default only when nothing was proposed for review.
+    private var otherShown: Bool { showOther || toReview.isEmpty }
+    /// The review sequence J/K walks: decisions to review, then other decisions once shown.
+    private var sequence: [DecisionNode] { toReview + (otherShown ? other : []) }
     private var selected: DecisionNode? { graph.decision(selectedId) ?? sequence.first }
 
     var body: some View {
@@ -90,7 +97,7 @@ struct DecisionsView: View {
         let progress = graph.reviewProgress
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Decisions")
+                Text("Decisions to Review")
                     .font(.system(size: 26, weight: .semibold))
                 Spacer()
                 Picker("Layout", selection: $mode) {
@@ -103,61 +110,120 @@ struct DecisionsView: View {
                 .help("Review every decision in a list, or one at a time")
             }
             HStack(spacing: 10) {
-                Text(primary.count == 1
-                     ? "The design choice this PR made. Do you agree?"
-                     : "The \(primary.count) design choices this PR made. Do you agree?")
+                Text(Self.framing(toReview: toReview.count, total: graph.decisions.count))
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                ReviewProgressDots(decisions: primary)
-                Text(verbatim: "\(progress.reviewed) of \(progress.total) reviewed")
-                    .monospacedDigit()
+                if !toReview.isEmpty {
+                    ReviewProgressDots(decisions: toReview)
+                    Text(verbatim: "\(progress.reviewed) of \(progress.total) reviewed")
+                        .monospacedDigit()
+                }
             }
             .font(.callout)
             .foregroundStyle(.secondary)
         }
     }
 
+    /// Says what the list is for — where the reviewer's time is best spent — without claiming
+    /// the analysis ranked importance perfectly, and that more was found than is shown.
+    static func framing(toReview: Int, total: Int) -> String {
+        let others = total - toReview
+        if toReview == 0 {
+            return "No choice in this PR stood out as needing your judgment. "
+                + (others == 1 ? "The one decision identified is below." : "The \(others) decisions identified are below.")
+        }
+        let lead = toReview == 1
+            ? "1 choice in this PR appears worth your attention"
+            : "\(toReview) choices in this PR appear worth your attention"
+        let found = others > 0 ? ", out of \(total) identified" : ""
+        return lead + found + (toReview == 1 ? ". Do you agree with it?" : ". Do you agree with them?")
+    }
+
     // MARK: - List mode
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(Array(primary.enumerated()), id: \.element.id) { index, decision in
+            ForEach(Array(toReview.enumerated()), id: \.element.id) { index, decision in
                 card(decision, number: index + 1)
             }
-            if !implementation.isEmpty {
-                implementationSection
-                    .padding(.top, 16)
+            if !other.isEmpty {
+                otherSection
+                    .padding(.top, toReview.isEmpty ? 0 : 16)
             }
         }
     }
 
-    private var implementationSection: some View {
+    private var otherSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("IMPLEMENTATION DETAILS")
-                .font(.caption.weight(.semibold))
-                .tracking(0.6)
+            HStack(alignment: .firstTextBaseline) {
+                Text("OTHER DECISIONS")
+                    .font(.caption.weight(.semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(verbatim: "\(other.count)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            if !toReview.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { showOther.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showOther ? "chevron.down" : "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 12)
+                        Text(showOther
+                             ? "Hide lower-impact decisions"
+                             : other.count == 1 ? "Show 1 lower-impact decision" : "Show \(other.count) lower-impact decisions")
+                    }
+                    .font(.callout)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) { showImplementation.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: showImplementation ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 12)
-                    Text(showImplementation
-                         ? "Hide implementation decisions"
-                         : "Show implementation decisions (\(implementation.count))")
-                }
-                .font(.callout)
-                .contentShape(Rectangle())
+                .help("Decisions the analysis found but judged less in need of your attention — you can add any of them to review")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
 
-            if showImplementation {
-                ForEach(implementation) { decision in
-                    card(decision, number: nil)
+            if otherShown {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(other.enumerated()), id: \.element.id) { index, decision in
+                        if index > 0 { Divider() }
+                        row(decision)
+                    }
                 }
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.18)))
             }
+        }
+    }
+
+    private func row(_ decision: DecisionNode) -> some View {
+        OtherDecisionRow(
+            decision: decision,
+            brief: graph.brief(for: decision),
+            graph: graph,
+            reason: graph.attentionReason(for: decision),
+            isSelected: selected?.id == decision.id && keyboardFocused,
+            isArrived: arrivedId == decision.id,
+            isExpanded: expandedIds.contains(decision.id),
+            onAddToReview: { setToReview(decision, true) },
+            onToggleExpanded: { toggleExpanded(decision.id) },
+            onSelect: { selectedId = decision.id; keyboardFocused = true }
+        )
+        .id(decision.id)
+    }
+
+    /// A decision to review in the list or one-at-a-time, or an other decision's compact row.
+    @ViewBuilder
+    private func item(_ decision: DecisionNode) -> some View {
+        if let index = toReview.firstIndex(where: { $0.id == decision.id }) {
+            card(decision, number: index + 1)
+        } else {
+            row(decision)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.18)))
         }
     }
 
@@ -167,6 +233,7 @@ struct DecisionsView: View {
             brief: graph.brief(for: decision),
             graph: graph,
             number: number,
+            attentionReason: graph.attentionReason(for: decision),
             arrivedFromConsiderationId: focus?.decisionId == decision.id ? focus?.considerationId : nil,
             isSelected: selected?.id == decision.id && keyboardFocused,
             isArrived: arrivedId == decision.id,
@@ -175,6 +242,7 @@ struct DecisionsView: View {
             onSetState: { judge(decision, $0) },
             onSetNote: { onSetNote(decision.id, $0) },
             onToggleExpanded: { toggleExpanded(decision.id) },
+            onNotWorthReviewing: { setToReview(decision, false) },
             onSelect: { selectedId = decision.id; keyboardFocused = true }
         )
         .id(decision.id)
@@ -190,14 +258,14 @@ struct DecisionsView: View {
                     .font(.callout.weight(.medium))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                card(current, number: primary.firstIndex(where: { $0.id == current.id }).map { $0 + 1 })
+                item(current)
                 HStack {
                     Button { step(-1) } label: { Label("Previous", systemImage: "arrow.left") }
                         .disabled(index == 0)
                     Spacer()
-                    if !implementation.isEmpty, !showImplementation, index == sequence.count - 1 {
-                        Button("Review implementation details (\(implementation.count))") {
-                            showImplementation = true
+                    if !other.isEmpty, !otherShown, index == sequence.count - 1 {
+                        Button("Other decisions (\(other.count))") {
+                            showOther = true
                             step(1)
                         }
                         .buttonStyle(.link)
@@ -245,7 +313,7 @@ struct DecisionsView: View {
             if selectedId == nil { selectedId = sequence.first?.id }
             return
         }
-        if implementation.contains(where: { $0.id == id }) { showImplementation = true }
+        if other.contains(where: { $0.id == id }) { showOther = true }
         selectedId = id
         withAnimation(.easeOut(duration: 0.2)) { arrivedId = id }
         DispatchQueue.main.async {
@@ -265,7 +333,10 @@ struct DecisionsView: View {
         default: break
         }
         guard let decision = selected else { return .ignored }
-        switch press.characters.lowercased() {
+        let key = press.characters.lowercased()
+        // Other decisions aren't judged — add one to review first.
+        if ["a", "q", "c"].contains(key), !graph.isToReview(decision) { return .ignored }
+        switch key {
         case "j": step(1, proxy: proxy)
         case "k": step(-1, proxy: proxy)
         case "a": judge(decision, .accepted, proxy: proxy)
@@ -314,6 +385,18 @@ struct DecisionsView: View {
         }
     }
 
+    /// Add to review / Not worth reviewing. A decision added to review is selected where it
+    /// lands; one taken out hands the selection to the next decision still to review.
+    private func setToReview(_ decision: DecisionNode, _ toReview: Bool) {
+        let next = toReview ? nil : self.toReview.drop { $0.id != decision.id }.dropFirst().first
+        withAnimation(.easeInOut(duration: 0.2)) {
+            onSetToReview(decision.id, toReview)
+            expandedIds.remove(decision.id)
+        }
+        selectedId = toReview ? decision.id : (next ?? self.toReview.first { $0.id != decision.id })?.id
+        keyboardFocused = true
+    }
+
     private func toggleExpanded(_ id: String) {
         withAnimation(.easeInOut(duration: 0.18)) {
             if expandedIds.contains(id) { expandedIds.remove(id) } else { expandedIds.insert(id) }
@@ -329,8 +412,10 @@ private struct DecisionCard: View {
     let decision: DecisionNode
     let brief: DecisionBrief
     let graph: PRGraph
-    /// Design choices are numbered; implementation choices aren't.
+    /// Decisions to review are numbered.
     let number: Int?
+    /// Why this decision is highlighted, as quiet metadata under the question.
+    let attentionReason: String
     var arrivedFromConsiderationId: String?
     var isSelected: Bool
     var isArrived: Bool
@@ -339,6 +424,7 @@ private struct DecisionCard: View {
     var onSetState: (ReviewerState) -> Void
     var onSetNote: (String) -> Void
     var onToggleExpanded: () -> Void
+    var onNotWorthReviewing: () -> Void
     var onSelect: () -> Void
 
     @Environment(\.reviewActions) private var actions
@@ -362,6 +448,10 @@ private struct DecisionCard: View {
                 ReviewedChip(state: decision.reviewerState)
             }
 
+            whyHighlighted
+                .padding(.leading, 36)
+                .padding(.top, -10)
+
             DecisionChoiceView(decisionId: decision.id, brief: brief)
                 .padding(.leading, 36)
 
@@ -376,6 +466,15 @@ private struct DecisionCard: View {
             HStack(spacing: 8) {
                 ReviewButtons(state: decision.reviewerState, onSet: onSetState)
                 Spacer()
+                Button(action: onNotWorthReviewing) {
+                    Label("Not worth reviewing", systemImage: "arrow.down.to.line")
+                        .font(.callout)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Move this to Other Decisions — it stops counting toward review progress")
+                .padding(.trailing, 8)
                 Button(action: onToggleExpanded) {
                     HStack(spacing: 4) {
                         Text(isExpanded ? "Less" : "More…")
@@ -417,6 +516,22 @@ private struct DecisionCard: View {
         .shadow(color: Color.accentColor.opacity(isArrived ? 0.35 : 0), radius: 10)
         .contentShape(RoundedRectangle(cornerRadius: 14))
         .onTapGesture(perform: onSelect)
+    }
+
+    /// Why this is highlighted — what it could affect and why it matters, in one quiet line.
+    /// Reasoning, never a score.
+    private var whyHighlighted: some View {
+        let impacts = decision.impacts.prefix(3).map(\.label).joined(separator: " · ")
+        var line = Text("")
+        if decision.reviewerPlacement == .review { line = line + Text("You added this to review. ") }
+        if !impacts.isEmpty { line = line + Text("Impacts \(impacts)").fontWeight(.medium) + Text(" — ") }
+        line = line + Text(attentionReason)
+        return line
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .help("Why this is highlighted for review")
     }
 
     // WHAT WE'RE TRADING / WHY THIS SIDE?, aligned on one label column.
@@ -509,6 +624,124 @@ private struct DecisionCard: View {
     }
 }
 
+// MARK: - An other decision
+
+/// An other decision, compact: the question, what was chosen, and why it isn't among the
+/// decisions to review. Still fully usable — Show opens the drawn choice, reasoning and
+/// evidence; Ask… opens a conversation; Add to review promotes it to a full decision.
+private struct OtherDecisionRow: View {
+    let decision: DecisionNode
+    let brief: DecisionBrief
+    let graph: PRGraph
+    let reason: String
+    var isSelected: Bool
+    var isArrived: Bool
+    var isExpanded: Bool
+    var onAddToReview: () -> Void
+    var onToggleExpanded: () -> Void
+    var onSelect: () -> Void
+
+    @Environment(\.reviewActions) private var actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: decision.reviewerState == .unreviewed ? "circle" : decision.reviewerState.symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(decision.reviewerState.tint)
+                    .frame(width: 16)
+                Text(brief.question)
+                    .font(.body.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .reviewContextMenu(.decision(decision.id))
+                Spacer(minLength: 12)
+                ReviewedChip(state: decision.reviewerState)
+            }
+
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 6) {
+                GridRow {
+                    label("Chosen")
+                    Text(brief.chosen.map { $0.label + ($0.detail.map { " — \($0)" } ?? "") } ?? brief.answer)
+                        .font(.callout)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                GridRow {
+                    label("Why it's here")
+                    Text(reason)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let question = graph.overviewQuestions(reviewedOn: decision.id).first {
+                    GridRow {
+                        label("Overview asks")
+                        Text(question.question)
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .reviewContextMenu(.consideration(question.id))
+                    }
+                }
+            }
+            .padding(.leading, 26)
+
+            HStack(spacing: 14) {
+                Button(action: onAddToReview) {
+                    Label("Add to review", systemImage: "arrow.up.to.line")
+                }
+                .help("Make this one of the decisions you review — it will count toward review progress")
+                Button { actions.ask(.decision(decision.id)) } label: {
+                    Label("Ask…", systemImage: "sparkles")
+                }
+                Button(action: onToggleExpanded) {
+                    HStack(spacing: 4) {
+                        Text(isExpanded ? "Hide" : "Show")
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+                .help("The options, reasoning, what it affects, and evidence (M)")
+            }
+            .buttonStyle(.link)
+            .font(.callout)
+            .padding(.leading, 26)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 16) {
+                    DecisionChoiceView(decisionId: decision.id, brief: brief)
+                        .padding(.top, 6)
+                    DecisionDrillDown(decision: decision, graph: graph, moreQuestions: [])
+                }
+                .padding(.leading, 26)
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(Color.accentColor.opacity(isArrived ? 0.08 : 0))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.accentColor.opacity(isSelected ? 0.7 : 0))
+                .frame(width: 3)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.bold))
+            .tracking(0.5)
+            .foregroundStyle(.secondary)
+            // Fixed, so the value column lines up across rows (each row is its own grid).
+            .frame(width: 104, alignment: .leading)
+            .gridColumnAlignment(.leading)
+    }
+}
+
 /// The number in a circle, which becomes the verdict once there is one.
 private struct DecisionBadge: View {
     let number: Int?
@@ -557,7 +790,7 @@ private struct ReviewedChip: View {
     }
 }
 
-/// One dot per design choice, filled once judged.
+/// One dot per decision to review, filled once judged.
 private struct ReviewProgressDots: View {
     let decisions: [DecisionNode]
 
@@ -965,7 +1198,7 @@ private struct DecisionDrillDown: View {
                 }
             }
             HStack(spacing: 14) {
-                Text("\(decision.level.label) decision · analysis confidence \(decision.confidence.label.lowercased())")
+                Text("\(decision.level.label)-level choice · analysis confidence \(decision.confidence.label.lowercased())")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Button { actions.ask(.decision(decision.id)) } label: {

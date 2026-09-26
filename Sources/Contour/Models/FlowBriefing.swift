@@ -180,13 +180,14 @@ extension PRGraph {
             }
         } else if flow.behavior == nil {
             let changed = behavior.nodes.filter { $0.change != .existing && $0.componentId != nil }
-            for d in primaryDecisions {
+            for d in decisionsToReview {
                 if let node = changed.first(where: { d.componentIds.contains($0.componentId!) }) {
                     decisionNode[d.id] = node.id
                 }
             }
         }
-        for d in decisions where decisionNode[d.id] != nil {
+        // Only decisions to review are drawn in the flow; the rest stay in Decisions.
+        for d in decisions where decisionNode[d.id] != nil && isToReview(d) {
             let brief = brief(for: d)
             out.append(FlowAnnotation(
                 kind: .decision, targetId: d.id, nodeId: decisionNode[d.id]!,

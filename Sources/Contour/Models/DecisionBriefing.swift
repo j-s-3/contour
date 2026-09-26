@@ -31,18 +31,79 @@ struct DecisionBrief: Hashable {
 /// stripped, stands in for the why.
 extension PRGraph {
 
-    /// Decisions a staff engineer would weigh — shown by default and counted by review
-    /// progress. When the analysis marked everything as implementation detail, everything
-    /// counts rather than nothing.
-    var primaryDecisions: [DecisionNode] {
-        let system = decisions.filter { $0.level <= .system }
-        return system.isEmpty ? decisions : system
+    // MARK: - Where the reviewer's attention goes
+
+    /// The decisions worth the reviewer's conscious judgment, most significant first — shown
+    /// by default and counted by review progress. Significance decides this, never abstraction
+    /// level: an implementation choice about failure semantics belongs here, a
+    /// component-ownership choice with no behavioral consequence doesn't. The reviewer's own
+    /// placement overrides the analysis; decisions they added come last.
+    var decisionsToReview: [DecisionNode] {
+        let proposed = decisions.filter { $0.reviewerPlacement == nil && significance(of: $0) == .high }
+        let added = decisions.filter { $0.reviewerPlacement == .review }
+        return proposed + added
     }
 
-    /// Implementation choices: collapsed by default, never competing with the design choices.
-    var implementationDecisions: [DecisionNode] {
-        let primary = Set(primaryDecisions.map(\.id))
-        return decisions.filter { !primary.contains($0.id) }
+    /// Everything else the analysis found: still inspectable, askable and promotable, but
+    /// collapsed so it never competes for attention.
+    var otherDecisions: [DecisionNode] {
+        let review = Set(decisionsToReview.map(\.id))
+        return decisions
+            .filter { !review.contains($0.id) }
+            .sorted { significance(of: $0) > significance(of: $1) }
+    }
+
+    func isToReview(_ d: DecisionNode) -> Bool {
+        d.reviewerPlacement.map { $0 == .review } ?? (significance(of: d) == .high)
+    }
+
+    /// Moves a decision into or out of Decisions to Review. Moving it back to where the
+    /// analysis put it clears the override rather than recording a redundant one.
+    mutating func setToReview(_ toReview: Bool, forDecision id: String) {
+        guard let i = decisions.firstIndex(where: { $0.id == id }) else { return }
+        let proposed = significance(of: decisions[i]) == .high
+        decisions[i].reviewerPlacement = toReview == proposed ? nil : (toReview ? .review : .other)
+    }
+
+    /// How much a decision deserves the reviewer's judgment, from every signal available.
+    ///
+    /// The decisions stage assesses it directly. Graphs from before that assessment infer it
+    /// from the decision's primary tradeoff: a choice that moves substantially toward one side
+    /// of a real tension is likely consequential, one with no tradeoff likely isn't. Either
+    /// way, an Overview question reviewed on the decision raises it a step — the Overview
+    /// asking about a choice is strong evidence it deserves attention — without making every
+    /// decision it mentions a review item.
+    func significance(of d: DecisionNode) -> ReviewSignificance {
+        let base = d.significance ?? Self.inferredSignificance(d)
+        return overviewQuestions(reviewedOn: d.id).isEmpty ? base : base.raised
+    }
+
+    /// Where a tradeoff's chosen position must be, at least, from the middle for the choice to
+    /// count as a substantial move toward one side.
+    static let substantialLean = 0.25
+
+    static func inferredSignificance(_ d: DecisionNode) -> ReviewSignificance {
+        guard let tradeoff = d.primaryTradeoff else { return .low }
+        return abs(tradeoff.chosenPosition - 0.5) >= substantialLean ? .high : .medium
+    }
+
+    /// Why a decision is where it is, in a sentence — "why this is highlighted" for a decision
+    /// to review, "why it's here" for the rest. The analysis's own reason when it gave one.
+    func attentionReason(for d: DecisionNode) -> String {
+        if let reason = d.significanceReason { return reason }
+        let asked = !overviewQuestions(reviewedOn: d.id).isEmpty
+        let tradeoff = d.primaryTradeoff
+        let leans = tradeoff.map { abs($0.chosenPosition - 0.5) >= Self.substantialLean } ?? false
+        if isToReview(d) {
+            if let tradeoff, leans {
+                return "Leans hard toward \(tradeoff.chosenDimension) at the cost of \(tradeoff.otherDimension)"
+                    + (asked ? ", and the Overview asks about it." : ".")
+            }
+            return asked ? "The Overview raises a question about it." : "No specific consequence was identified."
+        }
+        if asked { return "The Overview asks about it, but no substantial tradeoff was identified." }
+        if tradeoff != nil { return "A modest tradeoff with limited downstream consequence." }
+        return "No material tradeoff or consequence identified."
     }
 
     func brief(for d: DecisionNode) -> DecisionBrief {

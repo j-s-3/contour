@@ -325,9 +325,11 @@ struct PromptBuilder {
         rely on by reading the actual code):
         \(componentList)
 
-        Extract the meaningful ENGINEERING DECISIONS embodied by this PR. A decision is a
-        consequential choice a senior reviewer would want to interrogate — not "renamed a
-        variable". Aim for the handful (typically 2-6) that actually matter; do not pad the list.
+        Extract the meaningful ENGINEERING DECISIONS embodied by this PR: every real choice
+        between plausible alternatives, at any level — not "renamed a variable". Discover them
+        all first (typically 3-10; do not pad the list), then assess each one's review
+        significance. Significance, not omission, is how the reviewer's attention gets focused.
+        List decisions most significant first.
 
         For each decision, read the relevant code yourself before writing rationale/consequences.
         Do NOT invent rationale: if the author didn't state a reason, say so and mark the
@@ -337,15 +339,51 @@ struct PromptBuilder {
         componentIds should link each decision to the architecture part(s) above that it shapes —
         the most specific (indented) part when one fits.
 
-        Classify each decision's level by one test: would a staff engineer reviewing the DESIGN
-        care about this choice? "system" is for choices where human judgment is valuable —
-        synchronous vs. asynchronous, consistency vs. latency, streaming vs. buffering, local vs.
-        distributed state, API compatibility vs. cleanup, eager vs. lazy work, failing vs. falling
-        back, event-driven vs. scheduled, stronger correctness vs. a simpler implementation.
-        "implementation" is for everything that only matters once you're reading the code: which
-        API call, which helper or library routine to reuse, which collection type, an edge-case
-        guard, a constant. Expect most PRs to have one to three "system" decisions; mark the rest
-        "implementation" rather than promoting them.
+        Assess each decision on two SEPARATE dimensions. Never use one as a proxy for the other.
+
+        level — what kind of choice it is, descriptively: "behavior" (what users or callers
+        observe), "system" (how parts of the system interact: sync vs. async, where state
+        lives, what crosses a boundary), "component" (how a part is structured or where a
+        responsibility lives), "implementation" (how the code does it: which call, which data
+        structure, which guard, which constant).
+
+        significance — whether the reviewer should consciously agree with this choice before
+        approving. The test: would a strong senior/staff engineer plausibly want to stop and
+        consciously agree with it? Getting it wrong would materially affect correctness,
+        security, data integrity, reliability, concurrency, performance, scalability,
+        compatibility, failure behavior, operability, maintainability, user-visible behavior,
+        architectural constraints or the system's future evolution. Weigh:
+        - failure consequence: what happens if the assumption behind it is wrong?
+        - blast radius: how much of the system or of user behavior can it affect?
+        - reversibility: how hard would it be to change later (formats, public APIs, data)?
+        - novelty: does it set a new pattern others will copy?
+        - boundary crossing: does it move work across a transaction, trust, process,
+          persistence, service or async boundary?
+        - uncertainty: is important behavior not established by the evidence?
+        - tradeoff magnitude: does it move substantially toward one side of a real tension
+          (correctness vs. performance, consistency vs. availability, compatibility vs. a
+          cleaner API)? A tradeoff that merely can be described is not enough — assess the
+          actual consequence.
+        "high": a strong engineer would want to consciously agree with it. "medium": real but
+        contained consequences — worth knowing, not worth stopping for. "low": local, easily
+        changed, or no material consequence identified.
+        The amount of code involved is irrelevant, and so is the level. An implementation
+        choice can be the most significant decision in the PR: whether a retry is idempotent
+        (a few lines, but can duplicate customer data), whether an operation runs inside or
+        outside a transaction (changes consistency and failure semantics), whether an
+        exception is swallowed or propagated (can silently lose work) — those are "high".
+        Conversely, an architectural-looking choice can be trivial: whether a helper lives in
+        one service or another, when both behave identically, is "low". Be aggressively
+        selective with "high" — reviewer attention is scarce; a normal PR has roughly one to
+        five — but never downgrade a genuinely consequential decision to meet that number.
+        - impacts: the one to three things getting it wrong would affect, from: correctness,
+          security, dataIntegrity, reliability, concurrency, performance, scalability,
+          compatibility, failureBehavior, operability, maintainability, userBehavior,
+          architecture, evolution, complexity.
+        - significanceReason: ONE sentence, at most ~15 words, no code identifiers: for a
+          "high" decision, why it deserves attention ("Classification can vary with how the
+          stream is chunked."); otherwise, why it doesn't ("Local fallback; no behavioral
+          impact on typical input.").
 
         The reviewer sees each decision as a question with its options drawn visually, so write
         these fields to a strict budget — they are what the reviewer reads first:
@@ -384,8 +422,8 @@ struct PromptBuilder {
           in. explanation: what was given up and when it would bite, a sentence or two. refs:
           the code that shows the tradeoff. Do not judge whether the choice was correct — only
           make the tradeoff visible so a human can decide.
-          An implementation-level decision's tradeoffs are implementation-level too; don't
-          promote one to a system decision just because it has a tradeoff.
+          A tradeoff doesn't change a decision's level, and it doesn't by itself make the
+          decision significant; its consequence does.
         Put the longer reasoning in rationale, alternatives, consequences and tradeoff
         explanations — those are only shown when the reviewer drills in.
         Respond with ONLY this JSON object:
@@ -394,7 +432,10 @@ struct PromptBuilder {
             {
               "id": "short-stable-slug",
               "title": "Short label, e.g. 'Use SQS rather than a synchronous call'",
-              "level": "system|implementation",
+              "level": "behavior|system|component|implementation",
+              "significance": "high|medium|low",
+              "impacts": ["correctness", "failureBehavior"],
+              "significanceReason": "one sentence",
               "question": "Should indexing run on the publish path?",
               "options": [{"label": "Synchronous call", "detail": "immediate result", "chosen": false}, {"label": "Queue it", "detail": "publish stays fast", "chosen": true}],
               "shape": "binary|threshold|options|beforeAfter",
@@ -419,7 +460,9 @@ struct PromptBuilder {
         let componentList = componentOutline(components)
         let decisionList = decisions.isEmpty
             ? "(none)"
-            : decisions.map { "- \($0.id): \($0.question ?? $0.title)" }.joined(separator: "\n")
+            : decisions.map { d in
+                "- \(d.id)\(d.significance.map { " (\($0.rawValue) review significance)" } ?? ""): \(d.question ?? d.title)"
+            }.joined(separator: "\n")
         return """
         Known components (for linking):
         \(componentList)
@@ -562,7 +605,12 @@ struct PromptBuilder {
         object if you have them; otherwise omit those two fields.
 
         Finally, distill everything above into "considerations": the 1-5 things a staff engineer
-        would tell the reviewer to think about before approving, most important first. These are
+        would tell the reviewer to think about before approving, most important first. Each
+        decision carries a review significance ("high" ones are what the reviewer will be asked
+        to judge). Favor concerns about high-significance decisions. A consideration you anchor
+        to a decision marks it as deserving attention, so don't anchor a minor question (e.g.
+        about test coverage) to a low-significance decision unless it reveals a real
+        consequence the decision's significance missed. These are
         what the reviewer sees first, and each must be understood in about five seconds:
         - question: phrased as a question, at most ~12 words, no file paths, line numbers, class
           or method names (e.g. "Should unsupported effort be silently ignored?").

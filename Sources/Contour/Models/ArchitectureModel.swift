@@ -201,20 +201,20 @@ extension PRGraph {
         return flows.filter { f in f.steps.contains { $0.componentId.map(ids.contains) ?? false } }
     }
 
-    /// Decisions that shape this part or anything inside it — design-level ones first.
+    /// Decisions that shape this part or anything inside it — decisions to review first.
     func decisions(within id: String) -> [DecisionNode] {
         let ids = subtreeIds(of: id)
         let hits = decisions.filter { !Set($0.componentIds).isDisjoint(with: ids) }
-        let primary = Set(primaryDecisions.map(\.id))
+        let primary = Set(decisionsToReview.map(\.id))
         return hits.filter { primary.contains($0.id) } + hits.filter { !primary.contains($0.id) }
     }
 
-    /// Design decisions worth marking on the drawing, by the box or arrow they explain. Only
-    /// decisions a staff engineer would weigh are placed; implementation choices stay in the
-    /// inspector.
+    /// Consequential decisions marked on the drawing, by the box or arrow they explain. Only
+    /// decisions to review are placed — whatever their abstraction level; other decisions
+    /// stay in the inspector.
     func decisionAnchors(on level: ArchLevel) -> [ArchAnchor: [DecisionNode]] {
         var out: [ArchAnchor: [DecisionNode]] = [:]
-        for d in primaryDecisions {
+        for d in decisionsToReview {
             guard let anchor = anchor(for: d.componentIds, explicitEdges: edgeIds(embodying: d), on: level) else { continue }
             out[anchor, default: []].append(d)
         }
