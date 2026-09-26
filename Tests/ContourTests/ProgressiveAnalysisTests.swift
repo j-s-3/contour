@@ -239,4 +239,15 @@ struct ProgressiveAnalysisTests {
         #expect(metrics.elapsed(.usefulOverview) == 9)
         #expect(metrics.elapsed(.whatChanged) == 5, "first time only")
     }
+
+    // MARK: - Failure recovery
+
+    /// "Try again" with no PR to retry must not start an empty load; it falls back to the
+    /// start screen. (With a URL it reloads that URL, which needs a live pipeline to test.)
+    @Test @MainActor func reopenWithoutAPreviousURLReturnsToTheStartScreen() {
+        let store = GraphStore()
+        store.reopen()
+        #expect(store.phase == .idle)
+        #expect(store.lastPRURL == nil)
+    }
 }

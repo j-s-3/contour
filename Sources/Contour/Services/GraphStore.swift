@@ -126,7 +126,16 @@ final class GraphStore {
         }
     }
 
-    /// Leaves the current PR: stops its analysis and returns to the URL prompt.
+    /// Opens the last PR again from scratch — what "Try again" means when opening it
+    /// failed, so the reviewer never has to find and paste the URL a second time.
+    @MainActor
+    func reopen() {
+        guard let lastPRURL else { return close() }
+        load(prURL: lastPRURL)
+    }
+
+    /// Leaves the current PR: stops its analysis and returns to the URL prompt. The
+    /// prompt is pre-filled with `lastPRURL`, which survives the close.
     @MainActor
     func close() {
         stopAnalysis()
@@ -137,10 +146,7 @@ final class GraphStore {
     /// failure was upstream of every stage), so the whole PR is reopened instead.
     @MainActor
     func retry(_ stage: PipelineStage) {
-        guard let pipeline, checkout != nil else {
-            if let lastPRURL { load(prURL: lastPRURL) }
-            return
-        }
+        guard let pipeline, checkout != nil else { return reopen() }
         Task { await pipeline.retry(stage) }
     }
 
