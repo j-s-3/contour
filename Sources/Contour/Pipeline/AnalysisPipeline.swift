@@ -17,7 +17,6 @@ enum PipelineStage: String, CaseIterable {
     case intent = "Extracting intent"
     case eli5 = "Writing plain-language summary"
     case decisions = "Extracting decisions"
-    case tradeoffs = "Surfacing tradeoffs"
     case flows = "Tracing flows"
     case judgment = "Identifying what needs judgment"
     case done = "Done"
@@ -47,7 +46,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 7
+    static let pipelineVersion = 8
 
     struct Result: Sendable {
         var graph: PRGraph
@@ -56,7 +55,7 @@ actor AnalysisPipeline {
     }
 
     /// - Parameter forceRefresh: bypass any cached analysis for this exact
-    ///   (repo, headSha, baseSha, pipelineVersion) and re-run all six stages. Used by the
+    ///   (repo, headSha, baseSha, pipelineVersion) and re-run every analysis stage. Used by the
     ///   "Re-analyze (ignore cache)" command.
     func run(
         prURL: String,
@@ -142,27 +141,22 @@ actor AnalysisPipeline {
         let eli5 = try StageDecoding.decode(StageDecoding.ELI5Result.self, stageLabel: "Writing plain-language summary", from: eli5Raw)
 
         // Stage 3: decisions — the strong-tier stage; needs component IDs for componentIds links.
+        // Each decision carries its own tradeoffs: they are what makes a decision worth
+        // reviewing, not a separate artifact, so they're found in the same pass.
         onProgress(.decisions, .init(stage: "Extracting decisions", detail: "reading changed code"))
         let decisionsRaw = try await analysis.runStage(
             prompt: PromptBuilder.decisionsPrompt(components: arch.components), cwd: checkout.rootDir, tier: .strong, stage: .decisions
         ) { p in onProgress(.decisions, .init(stage: "Extracting decisions", detail: p.detail)) }
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, stageLabel: "Extracting decisions", from: decisionsRaw)
 
-        // Stage 4: tradeoffs — needs decision IDs.
-        onProgress(.tradeoffs, .init(stage: "Surfacing tradeoffs", detail: "deriving tradeoff axes"))
-        let tradeoffsRaw = try await analysis.runStage(
-            prompt: PromptBuilder.tradeoffsPrompt(decisions: decisions.decisions), cwd: checkout.rootDir, tier: .strong, stage: .tradeoffs
-        ) { p in onProgress(.tradeoffs, .init(stage: "Surfacing tradeoffs", detail: p.detail)) }
-        let tradeoffs = try StageDecoding.decode(StageDecoding.TradeoffsResult.self, stageLabel: "Surfacing tradeoffs", from: tradeoffsRaw)
-
-        // Stage 5: flows + entry points — needs component IDs.
+        // Stage 4: flows + entry points — needs component IDs.
         onProgress(.flows, .init(stage: "Tracing flows", detail: "finding entry points"))
         let flowsRaw = try await analysis.runStage(
             prompt: PromptBuilder.flowsPrompt(components: arch.components, entryHints: []), cwd: checkout.rootDir, tier: .strong, stage: .flows
         ) { p in onProgress(.flows, .init(stage: "Tracing flows", detail: p.detail)) }
         let flows = try StageDecoding.decode(StageDecoding.FlowsResult.self, stageLabel: "Tracing flows", from: flowsRaw)
 
-        // Stage 6: judgment + questions — final synthesis pass, sees everything so far.
+        // Stage 5: judgment + questions — final synthesis pass, sees everything so far.
         var partial = PRGraph(
             pr: PRSummary(
                 repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
@@ -172,7 +166,6 @@ actor AnalysisPipeline {
             ),
             components: arch.components,
             decisions: decisions.decisions,
-            tradeoffs: tradeoffs.tradeoffs,
             flows: flows.flows,
             entryPoints: flows.entryPoints,
             behaviorChanges: behavior.behaviorChanges,

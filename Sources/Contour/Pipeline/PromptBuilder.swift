@@ -317,12 +317,34 @@ struct PromptBuilder {
           three or more only when there genuinely were three or more.
         - shape: "binary" for two approaches; "threshold" when the options are points on one
           ordered scale (sizes, limits, strictness) — list them in order; "options" for three or
-          more unordered alternatives. Do not force a two-sided spectrum onto a choice that isn't
-          one.
+          more unordered alternatives; "beforeAfter" when the choice is fundamentally
+          architectural — exactly two options, the old structure first and the new (chosen)
+          one second, each label a short chain of 2-4 parts joined by "→" (e.g. "Reader →
+          Printer", "Reader → Inspector → Printer"). Do not force a two-sided spectrum onto a
+          choice that isn't one.
         - why: why this option was chosen, ONE sentence of at most ~20 words, with its own
           provenance ("claim" when the author said it, "interpretation" when it's your read).
-        Put the longer reasoning in rationale, alternatives and consequences — those are only
-        shown when the reviewer drills in.
+          The reviewer reads it as the answer to "why this side?".
+        - tradeoffs: what the choice gained versus what it gave up — the tension that makes the
+          decision worth reviewing. A tradeoff belongs to the decision that created it; never
+          report one on its own. Most decisions have zero or one; list more only when the
+          choice genuinely traded several things. Do NOT manufacture a tradeoff because the
+          schema allows one — leave the array empty when there's no real tension, or when the
+          options' details already say everything (e.g. "deterministic classification" vs
+          "never blocks" needs no second line). The reviewer already sees the options, so
+          dimensionA/dimensionB must name the QUALITIES being traded ("detection completeness"
+          vs "streaming behavior", "consistency" vs "latency", "backwards compatibility" vs
+          "cleanup"), a few words each, never restating the options. chosenPosition is a number
+          from 0 (fully dimensionA) to 1 (fully dimensionB) for where this PR landed.
+          prominence: "primary" for the one tension a reviewer must weigh (at most one per
+          decision), "secondary" for smaller ones, which stay hidden until the reviewer drills
+          in. explanation: what was given up and when it would bite, a sentence or two. refs:
+          the code that shows the tradeoff. Do not judge whether the choice was correct — only
+          make the tradeoff visible so a human can decide.
+          An implementation-level decision's tradeoffs are implementation-level too; don't
+          promote one to a system decision just because it has a tradeoff.
+        Put the longer reasoning in rationale, alternatives, consequences and tradeoff
+        explanations — those are only shown when the reviewer drills in.
         Respond with ONLY this JSON object:
         {
           "decisions": [
@@ -332,8 +354,9 @@ struct PromptBuilder {
               "level": "system|implementation",
               "question": "Should indexing run on the publish path?",
               "options": [{"label": "Synchronous call", "detail": "immediate result", "chosen": false}, {"label": "Queue it", "detail": "publish stays fast", "chosen": true}],
-              "shape": "binary|threshold|options",
+              "shape": "binary|threshold|options|beforeAfter",
               "why": {"text": "one sentence", "provenance": "claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null},
+              "tradeoffs": [{"dimensionA": "publish latency", "dimensionB": "search freshness", "chosenPosition": 0.8, "prominence": "primary|secondary", "explanation": {"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}, "refs": [{"path": "src/foo/Bar.java", "startLine": 10, "endLine": 40, "blobSha": null, "side": "head"}]}],
               "decision": {"text": "what choice was made", "provenance": "fact", "confidence": null, "source": null},
               "rationale": [{"text": "...", "provenance": "claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null}],
               "alternatives": [{"text": "an obvious alternative and why it's plausible", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
@@ -347,46 +370,7 @@ struct PromptBuilder {
         """
     }
 
-    // MARK: - Stage 4: Tradeoffs (strong tier)
-
-    static func tradeoffsPrompt(decisions: [DecisionNode]) -> String {
-        let decisionList = decisions.map { "- \($0.id): \($0.title)" }.joined(separator: "\n")
-        return """
-        Known decisions (for linking; re-derive the actual tradeoff from the code/decision, don't
-        just restate the title):
-        \(decisionList)
-
-        For each decision above that embodies a genuine tradeoff (not all will), surface the axis:
-        what the choice gained versus what it gave up. The reviewer already sees the decision's
-        options ("first line" vs "first 1 KB"), so the poles must name the QUALITIES being traded
-        ("minimal buffering" vs "better detection", "deterministic detection" vs "streaming
-        behavior"), never restate the options. Two named poles (e.g. "simplicity" vs
-        "flexibility", "consistency" vs "better abstraction", "synchronous" vs "asynchronous",
-        "backwards compatibility" vs "cleanup", "operational complexity" vs "implementation
-        simplicity") and which side this implementation actually landed on. Do not judge whether the choice was correct — only make the tradeoff visible so
-        a human can decide. Keep poleA/poleB/chosen to short phrases (a few words), never full
-        sentences — the UI renders them as a one-line slider, not a paragraph. Set poleAWeight to a
-        number from 0 (fully poleA) to 1 (fully poleB) reflecting where the implementation landed.
-        Respond with ONLY this JSON object:
-        {
-          "tradeoffs": [
-            {
-              "id": "short-stable-slug",
-              "title": "Short label",
-              "poleA": "simplicity",
-              "poleB": "flexibility",
-              "chosen": "poleA|poleB|a short label of where on the spectrum it landed",
-              "poleAWeight": 0.0,
-              "explanation": {"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null},
-              "decisionIds": ["decision-id"],
-              "refs": [{"path": "src/foo/Bar.java", "startLine": 10, "endLine": 40, "blobSha": null, "side": "head"}]
-            }
-          ]
-        }
-        """
-    }
-
-    // MARK: - Stage 5: Flows + entry points
+    // MARK: - Stage 4: Flows + entry points
 
     static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
         let componentList = components.map { "- \($0.id): \($0.title)" }.joined(separator: "\n")
@@ -455,7 +439,7 @@ struct PromptBuilder {
         """
     }
 
-    // MARK: - Stage 6: Needs-judgment + questions (strong tier, final synthesis)
+    // MARK: - Stage 5: Needs-judgment + questions (strong tier, final synthesis)
 
     static func judgmentPrompt(graphSoFar: String) -> String {
         """

@@ -12,14 +12,12 @@ struct DecisionsBriefingTests {
     private func fixtureGraph() throws -> PRGraph {
         let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
-        let tradeoffs = try StageDecoding.decode(StageDecoding.TradeoffsResult.self, from: MockAnalysisFixtures.response(for: .tradeoffs))
         let flows = try StageDecoding.decode(StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows))
         let judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = arch.components
         graph.architectureEdges = arch.edges
         graph.decisions = decisions.decisions
-        graph.tradeoffs = tradeoffs.tradeoffs
         graph.flows = flows.flows
         graph.pr.considerations = judgment.considerations
         return graph
@@ -40,8 +38,8 @@ struct DecisionsBriefingTests {
 
     @Test func designDecisionsLeadAndImplementationDecisionsWait() throws {
         let graph = try fixtureGraph()
-        #expect(graph.primaryDecisions.map(\.id) == ["inspect-buffered-prefix-not-first-line", "no-extra-blocking-read"])
-        #expect(graph.implementationDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
+        #expect(graph.primaryDecisions.map(\.id) == ["inspect-first-kb-not-first-line", "non-blocking-buffered-snapshot"])
+        #expect(graph.implementationDecisions.map(\.id) == ["fallback-to-first-line-when-longer", "skip-read-on-empty-input"])
     }
 
     /// Progress means "I judged n of the consequential decisions", so implementation
@@ -52,7 +50,7 @@ struct DecisionsBriefingTests {
         let impl = try #require(graph.decisions.firstIndex { $0.id == "skip-read-on-empty-input" })
         graph.decisions[impl].reviewerState = .accepted
         #expect(graph.reviewProgress.reviewed == 0)
-        let design = try #require(graph.decisions.firstIndex { $0.id == "no-extra-blocking-read" })
+        let design = try #require(graph.decisions.firstIndex { $0.id == "non-blocking-buffered-snapshot" })
         graph.decisions[design].reviewerState = .questioned
         #expect(graph.reviewProgress.reviewed == 1)
     }
@@ -67,17 +65,19 @@ struct DecisionsBriefingTests {
 
     // MARK: - The brief
 
-    /// Older graphs have no options: the tradeoff's poles stand in, so the choice is still
-    /// drawn — and the same axis isn't drawn a second time as the tradeoff.
-    @Test func olderGraphsDrawTheChoiceFromTheTradeoff() throws {
-        let graph = try fixtureGraph()
-        let d = try #require(graph.decision("no-extra-blocking-read"))
+    /// A decision with a tradeoff but no options: the tradeoff's dimensions stand in, so the
+    /// choice is still drawn — and the same axis isn't drawn a second time as the tradeoff.
+    @Test func withoutOptionsTheChoiceIsDrawnFromTheTradeoff() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        var d = decision("d")
+        d.tradeoffs = [DecisionTradeoff(dimensionA: "detection completeness", dimensionB: "streaming behavior", chosenPosition: 0.85)]
+        graph.decisions = [d]
         let brief = graph.brief(for: d)
         #expect(brief.shape == .binary)
-        #expect(brief.options.map(\.label) == ["always fill 1024 bytes", "inspect what's buffered"])
-        #expect(brief.chosen?.label == "inspect what's buffered")
+        #expect(brief.options.map(\.label) == ["detection completeness", "streaming behavior"])
+        #expect(brief.chosen?.label == "streaming behavior")
         #expect(brief.tradeoff == nil)
-        let why = try #require(brief.why)
+        let why = try! #require(brief.why)
         #expect(why.provenance == .claim)
         #expect(!why.text.contains("src/"))
         #expect(graph.splitSentencesCount(why.text) == 1)
@@ -90,15 +90,52 @@ struct DecisionsBriefingTests {
         ])]
         graph.decisions[0].question = "How much data should binary detection inspect?"
         graph.decisions[0].why = Statement(text: "Binary files can have a newline before their first NUL.", provenance: .claim)
-        graph.tradeoffs = [TradeoffNode(id: "t", title: "T", poleA: "minimal buffering", poleB: "better detection",
-                                        chosen: "poleB", explanation: Statement(text: "x", provenance: .interpretation),
-                                        decisionIds: ["d"], poleAWeight: 0.8)]
+        let traded = DecisionTradeoff(dimensionA: "minimal buffering", dimensionB: "detection completeness", chosenPosition: 0.8)
+        graph.decisions[0].tradeoffs = [traded]
         let brief = graph.brief(for: graph.decisions[0])
         #expect(brief.question == "How much data should binary detection inspect?")
         #expect(brief.shape == .binary)
         #expect(brief.chosen?.label == "First 1 KB")
         #expect(brief.why?.text == "Binary files can have a newline before their first NUL.")
-        #expect(brief.tradeoff?.id == "t")
+        #expect(brief.tradeoff == traded)
+    }
+
+    /// When the options already name the two qualities, the tradeoff line would only repeat
+    /// them, so the alternatives carry it alone.
+    @Test func aTradeoffTheOptionsAlreadySayIsNotDrawnTwice() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        var d = decision("d", options: [
+            DecisionOption(label: "Always fill 1 KB", detail: "deterministic classification"),
+            DecisionOption(label: "Use what's buffered", detail: "non-blocking streaming", chosen: true)
+        ])
+        d.tradeoffs = [DecisionTradeoff(dimensionA: "Deterministic classification", dimensionB: "non-blocking streaming.", chosenPosition: 0.9)]
+        graph.decisions = [d]
+        #expect(graph.brief(for: d).tradeoff == nil)
+    }
+
+    /// The primary tradeoff is drawn on the decision; secondary ones wait in the drill-down.
+    @Test func thePrimaryTradeoffLeadsAndSecondaryOnesWait() {
+        let secondary = DecisionTradeoff(dimensionA: "one sample source", dimensionB: "old behavior kept", prominence: .secondary)
+        let primary = DecisionTradeoff(dimensionA: "detection completeness", dimensionB: "streaming behavior", prominence: .primary)
+        var d = decision("d", options: [DecisionOption(label: "A"), DecisionOption(label: "B", chosen: true)])
+        d.tradeoffs = [secondary, primary]
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.decisions = [d]
+        #expect(d.primaryTradeoff == primary)
+        #expect(d.secondaryTradeoffs == [secondary])
+        #expect(graph.brief(for: d).tradeoff == primary)
+    }
+
+    /// A before/after diagram needs the old structure and the new, chosen one; anything else
+    /// degrades to a plain two-option line.
+    @Test func beforeAfterNeedsTheNewStructureChosen() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.decisions = [
+            decision("ok", options: [DecisionOption(label: "Reader → Printer"), DecisionOption(label: "Reader → Inspector → Printer", chosen: true)], shape: .beforeAfter),
+            decision("backwards", options: [DecisionOption(label: "New", chosen: true), DecisionOption(label: "Old")], shape: .beforeAfter),
+        ]
+        #expect(graph.brief(for: graph.decisions[0]).shape == .beforeAfter)
+        #expect(graph.brief(for: graph.decisions[1]).shape == .binary)
     }
 
     /// Not every choice is two-sided: three options can't be drawn as A ◀──▶ B, and an
@@ -112,7 +149,6 @@ struct DecisionsBriefingTests {
             decision("scale", options: three, shape: .threshold),
             decision("inferred", options: three),
         ]
-        graph.tradeoffs = []
         #expect(graph.brief(for: graph.decisions[0]).shape == .options)
         #expect(graph.brief(for: graph.decisions[1]).shape == .threshold)
         #expect(graph.brief(for: graph.decisions[2]).shape == .options)
@@ -122,7 +158,6 @@ struct DecisionsBriefingTests {
     @Test func withNothingToDrawTheAnswerIsOneSentence() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("d", options: [DecisionOption(label: "A"), DecisionOption(label: "B")])]
-        graph.tradeoffs = []
         let brief = graph.brief(for: graph.decisions[0])
         #expect(brief.shape == nil)
         #expect(brief.question == "Title d")
@@ -135,8 +170,8 @@ struct DecisionsBriefingTests {
     /// Each Overview question is reviewed on exactly one decision — the one "Review →" opens.
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
-        let onBlocking = graph.overviewQuestions(reviewedOn: "no-extra-blocking-read").map(\.id)
-        #expect(onBlocking == ["stdin-chunking-nondeterminism"])
+        let onBlocking = graph.overviewQuestions(reviewedOn: "non-blocking-buffered-snapshot").map(\.id)
+        #expect(onBlocking == ["short-first-read-misses-binary"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(Set(placed) == Set(graph.thingsToThinkAbout.compactMap { graph.reviewDecisionId(for: $0) == nil ? nil : $0.id }))
@@ -144,29 +179,66 @@ struct DecisionsBriefingTests {
 
     @Test func aDecisionReachesItsArchitectureAndFlows() throws {
         let graph = try fixtureGraph()
-        let d = try #require(graph.decision("no-extra-blocking-read"))
+        let d = try #require(graph.decision("non-blocking-buffered-snapshot"))
         let affects = graph.affects(d)
         #expect(affects.components.map(\.id) == ["input-reader", "input-source"])
         #expect(affects.edges.contains { $0.fromId == "input-reader" && $0.toId == "input-source" })
-        #expect(affects.flows.map(\.id).contains("flow-stdin-binary-detection"))
+        #expect(affects.flows.map(\.id).contains("flow-stdin-custom-reader-detection"))
     }
 
     // MARK: - Contextual chat
 
     @Test func anOptionCarriesItsDecisionTradeoffAndQuestions() throws {
         let graph = try fixtureGraph()
-        let resolved = try #require(graph.resolve(.decisionOption(decisionId: "no-extra-blocking-read", index: 1)))
+        let resolved = try #require(graph.resolve(.decisionOption(decisionId: "non-blocking-buffered-snapshot", index: 1)))
         #expect(resolved.kind == .option)
-        #expect(resolved.title == "inspect what's buffered")
-        #expect(resolved.lineage.last == graph.brief(for: graph.decision("no-extra-blocking-read")!).question)
+        #expect(resolved.title == "Use what's buffered")
+        #expect(resolved.lineage.last == graph.brief(for: graph.decision("non-blocking-buffered-snapshot")!).question)
         #expect(resolved.detail.contains("the option this PR chose"))
-        #expect(resolved.detail.contains("always fill 1024 bytes"))
-        #expect(resolved.detail.contains("Overview question reviewed on this decision: Is binary detection that depends on pipe chunking acceptable?"))
-        #expect(resolved.detail.contains("Tradeoff: always fill 1024 bytes versus inspect what's buffered"))
-        #expect(resolved.detailTarget == .decisionDetail("no-extra-blocking-read"))
+        #expect(resolved.detail.contains("Read until 1 KB or EOF"))
+        #expect(resolved.detail.contains("Overview question reviewed on this decision: Is detection reliable when the first read returns under 1 KB?"))
+        #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming latency"))
+        #expect(resolved.detailTarget == .decisionDetail("non-blocking-buffered-snapshot"))
         #expect(!ChatContextBuilder.availableExpansions(for: resolved).contains(.relatedDecisions))
 
-        #expect(graph.resolve(.decisionOption(decisionId: "no-extra-blocking-read", index: 5)) == nil)
+        #expect(graph.resolve(.decisionOption(decisionId: "non-blocking-buffered-snapshot", index: 5)) == nil)
+    }
+
+    /// Right-clicking a tradeoff asks about it inside its decision: the chat gets the choice,
+    /// the alternatives, the rationale, the Overview question, and the evidence behind the
+    /// tradeoff itself, and "Open details" is the decision.
+    @Test func aTradeoffIsDiscussedAsPartOfItsDecision() throws {
+        let graph = try fixtureGraph()
+        let d = try #require(graph.decision("non-blocking-buffered-snapshot"))
+        let t = try #require(d.primaryTradeoff)
+        let resolved = try #require(graph.resolve(.tradeoff(decisionId: d.id, index: 0)))
+        #expect(resolved.kind == .tradeoff)
+        #expect(resolved.title == "detection completeness vs. streaming latency")
+        #expect(resolved.lineage.last == graph.brief(for: d).question)
+        #expect(resolved.detail.contains("Option: Use what's buffered"))
+        #expect(resolved.detail.contains("Overview question reviewed on this decision"))
+        #expect(resolved.refs == t.refs)
+        #expect(resolved.decisionIds == [d.id])
+        #expect(resolved.detailTarget == .decisionDetail(d.id))
+        #expect(ChatContextBuilder.linkToken(for: resolved.subject) == "[[decision:\(d.id)]]")
+        #expect(graph.resolve(.tradeoff(decisionId: d.id, index: 3)) == nil)
+    }
+
+    /// The captured run, read the way a reviewer opening Decisions would: two design
+    /// decisions, each drawn with the tradeoff that makes it worth reviewing; two
+    /// implementation decisions whose options already say what was traded.
+    @Test func eachDesignDecisionCarriesItsTradeoff() throws {
+        let graph = try fixtureGraph()
+        for d in graph.primaryDecisions {
+            let brief = graph.brief(for: d)
+            #expect(brief.shape != nil, "\(d.id) has no drawn choice")
+            #expect(brief.tradeoff != nil, "\(d.id) has no tradeoff drawn")
+            #expect(brief.why != nil)
+            #expect(d.tradeoffs.allSatisfy { !$0.refs.isEmpty }, "\(d.id)'s tradeoff lost its evidence")
+        }
+        let blocking = try #require(graph.decision("non-blocking-buffered-snapshot"))
+        #expect(blocking.primaryTradeoff?.chosenDimension == "streaming latency")
+        #expect(graph.implementationDecisions.allSatisfy { $0.tradeoffs.isEmpty })
     }
 
     // MARK: - Decoding

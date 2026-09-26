@@ -33,7 +33,6 @@ enum MockAnalysisFixtures {
         case .intent: json = intentJSON
         case .eli5: json = eli5JSON
         case .decisions: json = decisionsJSON
-        case .tradeoffs: json = tradeoffsJSON
         case .flows: json = flowsJSON
         case .judgment: json = judgmentJSON
         default: json = "{}"
@@ -71,7 +70,7 @@ enum MockAnalysisFixtures {
                 "CONTENT_INSPECTION_LIMIT"
               ],
               "flowId": null,
-              "label": "Snapshot buffered first kilobyte",
+              "label": "Snapshot first 1024 buffered bytes",
               "outcome": null,
               "refs": [
                 {
@@ -82,7 +81,7 @@ enum MockAnalysisFixtures {
                 {
                   "endLine": 275,
                   "path": "src/input.rs",
-                  "startLine": 272
+                  "startLine": 268
                 }
               ],
               "tag": "afterOnly"
@@ -96,9 +95,9 @@ enum MockAnalysisFixtures {
               "outcome": null,
               "refs": [
                 {
-                  "endLine": 288,
+                  "endLine": 289,
                   "path": "src/input.rs",
-                  "startLine": 277
+                  "startLine": 276
                 }
               ],
               "tag": "both"
@@ -108,7 +107,7 @@ enum MockAnalysisFixtures {
                 "inspect_content_type"
               ],
               "flowId": null,
-              "label": "Inspect larger sample",
+              "label": "Inspect buffered prefix",
               "outcome": null,
               "refs": [
                 {
@@ -122,13 +121,13 @@ enum MockAnalysisFixtures {
             {
               "componentIds": [],
               "flowId": null,
-              "label": "Mark file binary",
+              "label": "Show binary header",
               "outcome": "success",
               "refs": [
                 {
-                  "endLine": 452,
-                  "path": "src/input.rs",
-                  "startLine": 436
+                  "endLine": 2285,
+                  "path": "tests/integration_tests.rs",
+                  "startLine": 2267
                 }
               ],
               "tag": "afterOnly"
@@ -156,23 +155,23 @@ enum MockAnalysisFixtures {
                 "read_until"
               ],
               "flowId": null,
-              "label": "Read first line only",
+              "label": "Read first line",
               "outcome": null,
               "refs": [
                 {
-                  "endLine": 281,
+                  "endLine": 290,
                   "path": "src/input.rs",
-                  "startLine": 278
+                  "startLine": 267
                 }
               ],
-              "tag": "beforeOnly"
+              "tag": "both"
             },
             {
               "componentIds": [
                 "inspect_content_type"
               ],
               "flowId": null,
-              "label": "Inspect first line",
+              "label": "Inspect first line only",
               "outcome": null,
               "refs": [
                 {
@@ -186,7 +185,7 @@ enum MockAnalysisFixtures {
             {
               "componentIds": [],
               "flowId": null,
-              "label": "Print binary as text",
+              "label": "Print binary bytes as text",
               "outcome": "failure",
               "refs": [],
               "tag": "beforeOnly"
@@ -196,21 +195,21 @@ enum MockAnalysisFixtures {
             "confidence": "high",
             "provenance": "interpretation",
             "source": null,
-            "text": "Encrypted or random files that used to dump raw bytes to the terminal now show a <BINARY> header, as long as the NUL falls in the buffered first 1024 bytes."
+            "text": "Encrypted or random files with an early newline now get a <BINARY> header rather than dumping raw bytes to the terminal."
           },
           "humanQuestion": {
             "confidence": "medium",
             "provenance": "interpretation",
             "source": null,
-            "text": "Is it acceptable that readers buffering under 1024 bytes still inspect only the first line?"
+            "text": "Does detection stay correct when the reader buffers fewer than 1024 bytes at first?"
           },
           "id": "binary-detection-beyond-first-line",
-          "title": "Files with a line break before their first null byte are now detected as binary",
+          "title": "Files with a NUL byte after the first line break are now detected as binary",
           "why": {
             "confidence": null,
             "provenance": "claim",
             "source": "PR description, Root cause",
-            "text": "Author says bat only checked the first line, so encrypted data with a newline before its first NUL got treated as UTF-8 text."
+            "text": "Author: bat passed only the first line to a 1024-byte NUL check, so encrypted data with early newlines was classified as UTF-8."
           }
         }
       ]
@@ -223,27 +222,19 @@ enum MockAnalysisFixtures {
         "confidence": "high",
         "provenance": "interpretation",
         "source": null,
-        "text": "Detection still happens in the same place: InputReader initialization. What changed is the sample it looks at. The reader now peeks at up to 1024 buffered bytes before splitting out the first line, so a newline early in the data no longer cuts detection short. The data flow to the printer appears to be unchanged, and so do the reads: no extra blocking read is added and no bytes are consumed."
+        "text": "The content-type check now looks at up to 1024 bytes that are already buffered, taken without consuming them before the first line is split out. Before, it only looked at the first line. So binary data with an early newline, such as encrypted files, appears to be caught before it reaches the terminal. The stream, line boundaries and UTF-16 handling are unchanged."
       },
       "boundaries": [
         {
           "componentIds": [
             "input-reader",
-            "content-inspector",
-            "utf16-decoder",
+            "content-classifier",
+            "line-reader",
             "printer"
           ],
           "id": "bat-process",
-          "kind": "process",
+          "kind": "application",
           "label": "bat process"
-        },
-        {
-          "componentIds": [
-            "terminal"
-          ],
-          "id": "terminal-ext",
-          "kind": "external",
-          "label": "Terminal"
         }
       ],
       "components": [
@@ -253,14 +244,14 @@ enum MockAnalysisFixtures {
           "filesChanged": 0,
           "id": "input-source",
           "implementedBy": [
-            "BufRead reader passed to InputReader::try_new"
+            "BufRead reader"
           ],
           "isTrustBoundaryEdge": false,
           "level": "system",
           "refs": [
             {
               "blobSha": null,
-              "endLine": 281,
+              "endLine": 267,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 267
@@ -269,10 +260,10 @@ enum MockAnalysisFixtures {
           "summary": {
             "confidence": null,
             "provenance": "fact",
-            "source": null,
-            "text": "try_new takes a generic BufRead reader and calls fill_buf() on it without consuming, then calls read_until for the first line."
+            "source": "src/input.rs",
+            "text": "Byte stream wrapped in a BufRead that InputReader::try_new takes as its argument."
           },
-          "title": "Input Source (file / stdin reader)"
+          "title": "Input Source (file / stdin)"
         },
         {
           "changeKind": "changed",
@@ -288,13 +279,6 @@ enum MockAnalysisFixtures {
           "refs": [
             {
               "blobSha": null,
-              "endLine": 12,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 12
-            },
-            {
-              "blobSha": null,
               "endLine": 296,
               "path": "src/input.rs",
               "side": "head",
@@ -304,16 +288,16 @@ enum MockAnalysisFixtures {
           "summary": {
             "confidence": null,
             "provenance": "fact",
-            "source": null,
-            "text": "It now builds an inspection prefix of up to CONTENT_INSPECTION_LIMIT (1024) bytes from the buffered data. If the first line is longer than that prefix, it uses the first line instead. The first line is still read separately."
+            "source": "src/input.rs",
+            "text": "Before read_until pulls out the first line, it now copies up to 1024 bytes that are already buffered, using fill_buf, which does not consume them. If a custom reader buffers less, it falls back to the first line."
           },
-          "title": "Input Reader Initialization"
+          "title": "Input Reader initialization"
         },
         {
           "changeKind": "touched",
           "dependsOnIds": [],
           "filesChanged": 0,
-          "id": "content-inspector",
+          "id": "content-classifier",
           "implementedBy": [
             "inspect_content_type",
             "content_inspector crate"
@@ -323,7 +307,7 @@ enum MockAnalysisFixtures {
           "refs": [
             {
               "blobSha": null,
-              "endLine": 351,
+              "endLine": 352,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 344
@@ -332,18 +316,46 @@ enum MockAnalysisFixtures {
           "summary": {
             "confidence": null,
             "provenance": "fact",
-            "source": null,
-            "text": "It classifies a byte sample as BINARY, UTF-8, or UTF-16, and it also checks for a ZIP signature. The sample it receives is now the multi-line prefix, not just the first line."
+            "source": "src/input.rs",
+            "text": "Uses content_inspector to classify bytes as UTF-8, UTF-16 or BINARY, and adds a check for the ZIP signature. It now gets the wider prefix instead of only the first line."
           },
-          "title": "Content Type Detection"
+          "title": "Content Type Classifier"
         },
         {
           "changeKind": "unchanged",
           "dependsOnIds": [],
           "filesChanged": 0,
-          "id": "utf16-decoder",
+          "id": "line-reader",
           "implementedBy": [
+            "InputReader::read_line",
             "read_utf16_line"
+          ],
+          "isTrustBoundaryEdge": false,
+          "level": "system",
+          "refs": [
+            {
+              "blobSha": null,
+              "endLine": 316,
+              "path": "src/input.rs",
+              "side": "head",
+              "startLine": 292
+            }
+          ],
+          "summary": {
+            "confidence": null,
+            "provenance": "fact",
+            "source": "src/input.rs",
+            "text": "Replays the first line and then streams the remaining lines, handling UTF-16 by content type."
+          },
+          "title": "Line Reader / UTF-16 decoding"
+        },
+        {
+          "changeKind": "unchanged",
+          "dependsOnIds": [],
+          "filesChanged": 0,
+          "id": "printer",
+          "implementedBy": [
+            "printer"
           ],
           "isTrustBoundaryEdge": false,
           "level": "system",
@@ -357,63 +369,12 @@ enum MockAnalysisFixtures {
             }
           ],
           "summary": {
-            "confidence": null,
-            "provenance": "fact",
+            "confidence": "medium",
+            "provenance": "interpretation",
             "source": null,
-            "text": "Runs only when the detected content type is UTF_16LE or UTF_16BE. The PR author says BOM detection still takes precedence."
-          },
-          "title": "UTF-16 Line Reader"
-        },
-        {
-          "changeKind": "unchanged",
-          "dependsOnIds": [],
-          "filesChanged": 0,
-          "id": "printer",
-          "implementedBy": [
-            "src/printer.rs"
-          ],
-          "isTrustBoundaryEdge": false,
-          "level": "system",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 516,
-              "path": "src/printer.rs",
-              "side": "head",
-              "startLine": 497
-            },
-            {
-              "blobSha": null,
-              "endLine": 665,
-              "path": "src/printer.rs",
-              "side": "head",
-              "startLine": 665
-            }
-          ],
-          "summary": {
-            "confidence": null,
-            "provenance": "fact",
-            "source": null,
-            "text": "Uses content_type to print the <BINARY> header and to handle binary input."
+            "text": "Shows a <BINARY> header rather than writing the raw bytes, as the integration test expects."
           },
           "title": "Printer / Terminal Output"
-        },
-        {
-          "changeKind": "unchanged",
-          "dependsOnIds": [],
-          "filesChanged": 0,
-          "id": "terminal",
-          "implementedBy": [],
-          "isTrustBoundaryEdge": false,
-          "level": "system",
-          "refs": [],
-          "summary": {
-            "confidence": null,
-            "provenance": "claim",
-            "source": "PR description",
-            "text": "The PR author says binary bytes were previously sent to the terminal when the first line had no NUL byte."
-          },
-          "title": "User Terminal"
         }
       ],
       "edges": [
@@ -422,10 +383,10 @@ enum MockAnalysisFixtures {
           "decisionIds": [],
           "flow": "sync",
           "fromId": "input-reader",
-          "id": "reader-peeks-buffer",
+          "id": "peek-buffer",
           "isTrustBoundary": false,
-          "label": "peeks buffered prefix (fill_buf, non-consuming)",
-          "note": "NEW: up to 1024 bytes are captured before the first line is split out",
+          "label": "peeks buffered prefix (fill_buf)",
+          "note": "NEW: non-consuming snapshot of up to 1024 bytes",
           "onCriticalPath": true,
           "toId": "input-source"
         },
@@ -434,10 +395,10 @@ enum MockAnalysisFixtures {
           "decisionIds": [],
           "flow": "sync",
           "fromId": "input-source",
-          "id": "reader-reads-line",
+          "id": "read-first-line",
           "isTrustBoundary": false,
           "label": "supplies first line (read_until)",
-          "note": "Skipped when the buffer is empty",
+          "note": "Skipped on empty input",
           "onCriticalPath": true,
           "toId": "input-reader"
         },
@@ -446,48 +407,36 @@ enum MockAnalysisFixtures {
           "decisionIds": [],
           "flow": "sync",
           "fromId": "input-reader",
-          "id": "reader-inspects",
+          "id": "classify",
           "isTrustBoundary": false,
-          "label": "classifies multi-line prefix",
-          "note": "Sample was the first line; it is now up to 1024 buffered bytes",
+          "label": "classifies prefix",
+          "note": "Input is now up to 1024 bytes instead of only the first line",
           "onCriticalPath": true,
-          "toId": "content-inspector"
+          "toId": "content-classifier"
         },
         {
           "change": "existing",
           "decisionIds": [],
           "flow": "sync",
           "fromId": "input-reader",
-          "id": "reader-utf16",
+          "id": "stream-lines",
           "isTrustBoundary": false,
-          "label": "delegates UTF-16 line reads",
+          "label": "streams lines",
           "note": null,
-          "onCriticalPath": false,
-          "toId": "utf16-decoder"
+          "onCriticalPath": true,
+          "toId": "line-reader"
         },
         {
           "change": "existing",
           "decisionIds": [],
           "flow": "sync",
-          "fromId": "input-reader",
-          "id": "reader-to-printer",
+          "fromId": "line-reader",
+          "id": "render",
           "isTrustBoundary": false,
-          "label": "provides content_type",
+          "label": "feeds content + type",
           "note": null,
           "onCriticalPath": true,
           "toId": "printer"
-        },
-        {
-          "change": "existing",
-          "decisionIds": [],
-          "flow": "sync",
-          "fromId": "printer",
-          "id": "printer-to-terminal",
-          "isTrustBoundary": true,
-          "label": "writes output / <BINARY> header",
-          "note": null,
-          "onCriticalPath": true,
-          "toId": "terminal"
         }
       ]
     }
@@ -498,8 +447,8 @@ enum MockAnalysisFixtures {
       "intent": {
         "confidence": null,
         "provenance": "claim",
-        "source": "PR title: 'Detect binary content beyond the first line'. Summary: 'inspect up to the first 1024 already-buffered bytes before splitting out the first line' and 'preserve the reader's bytes, line boundaries, UTF-16 handling, and streaming behavior'. Root cause: 'content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.' Also: 'Fixes #3554.'",
-        "text": "Make bat detect binary content that appears after the first line. Before content_inspector splits out the first line, bat should pass it up to the first 1024 bytes already in the buffer. That way, binary data with an early newline, such as encrypted or random data, is no longer treated as UTF-8 text and sent to the terminal. The change should keep the reader's bytes, line boundaries, UTF-16/BOM handling, ZIP detection and streaming behavior as they were. Fixes #3554."
+        "source": "Title: \"Detect binary content beyond the first line\"; Description: \"inspect up to the first 1024 already-buffered bytes before splitting out the first line\", \"preserve the reader's bytes, line boundaries, UTF-16 handling, and streaming behavior\", Root cause: \"content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.\" \"Fixes #3554.\"",
+        "text": "The PR makes bat detect binary content beyond the first line. Before splitting out the first line, it inspects up to the first 1024 bytes that are already buffered. The goal is that files such as encrypted or random data, which may have a newline before their first NUL byte, are classified as binary rather than UTF-8 text. It aims to keep the reader's bytes, line boundaries, UTF-16/BOM handling and streaming behavior unchanged, without adding an extra blocking read. It fixes #3554."
       }
     }
     """#
@@ -509,14 +458,14 @@ enum MockAnalysisFixtures {
       "howItWasSolved": {
         "confidence": "high",
         "provenance": "interpretation",
-        "source": "src/input.rs:12, src/input.rs:267-290",
-        "text": "Before, bat decided whether a file was text or binary by looking only at its first line. Now it looks at up to the first 1,024 bytes (roughly the first 1 KB), so binary data that shows up after an early line break is still caught. The file's content and how it is displayed are otherwise unchanged."
+        "source": "src/input.rs:12-290",
+        "text": "Before, bat decided whether a file was text by looking only at its first line. Now it looks at up to the first 1,024 bytes the file has already supplied, so a line break early in an encrypted file no longer hides the signs that the file is binary. The file's content is still shown unchanged when it really is text."
       },
       "problemToBeSolved": {
         "confidence": null,
         "provenance": "claim",
         "source": "#3554",
-        "text": "Opening an encrypted file (for example, one made with the GPG encryption tool) in bat often did not flag it as binary, meaning raw non-text data. Instead, bat printed garbled symbols to the terminal, when it should have shown nothing or labeled the file as binary. The reporter said this happened with most, but not all, of their encrypted files."
+        "text": "When users opened some encrypted files in bat, it didn't recognize them as binary (non-text) files. Instead it printed garbled symbols to the terminal, and this happened with most of the encrypted files the reporter tried."
       }
     }
     """#
@@ -530,60 +479,67 @@ enum MockAnalysisFixtures {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "Read and inspect several lines, or keep reading lines until 1024 bytes have been seen. This would work with any BufRead buffer size, but it would consume input and need extra buffering or replay logic in InputReader."
+              "text": "Scan further than 1 KB, or call content_inspector repeatedly as lines stream in. That would catch NULs that appear later, but it would mean buffering or reclassifying mid-stream after the header has already been printed."
             },
             {
               "confidence": "low",
               "provenance": "interpretation",
               "source": null,
-              "text": "Use a different binary heuristic, such as the share of non-printable bytes, instead of relying only on content_inspector's NUL/BOM check. That could catch encrypted data with no NUL in the first 1 KiB, but it would be a bigger change in behavior."
+              "text": "Keep the first-line sample and add a separate heuristic such as file extension or a GPG/PGP magic check. That would be narrower and would not change the result for text files with stray NULs."
             }
           ],
           "componentIds": [
             "input-reader",
-            "content-inspector"
+            "content-classifier"
           ],
           "confidence": "high",
           "consequences": [
             {
-              "confidence": "medium",
-              "provenance": "interpretation",
+              "confidence": null,
+              "provenance": "fact",
               "source": null,
-              "text": "Files that have a NUL byte after the first line but within the first 1024 bytes now appear to be classified as BINARY. Text-like files that were printed before, such as logs with stray NULs, could now show the <BINARY> header instead of their content."
+              "text": "The classification (and so whether bytes are printed to the terminal) now depends on bytes beyond the first newline. The integration test header_binary_with_null_after_first_line checks that a file with 'packet-header\\n' followed by a NUL renders as <BINARY>."
             },
             {
-              "confidence": "medium",
+              "confidence": "high",
               "provenance": "interpretation",
               "source": null,
-              "text": "The wider sample now also feeds the UTF-16 BOM check and the ZIP-signature check in inspect_content_type. The ZIP check is a starts_with test, so it seems unaffected. The author says BOM detection still takes precedence, so UTF-16 handling does not change."
-            },
-            {
-              "confidence": "medium",
-              "provenance": "interpretation",
-              "source": null,
-              "text": "The 1024 constant duplicates content_inspector's internal scan limit. If the crate changes its limit, bat's sample size won't follow automatically."
+              "text": "The first_line buffer and the inspection sample are now separate. Line-splitting and replay behavior appear unaffected, as the replay assertion in binary_detection_scans_beyond_first_line_and_preserves_input suggests."
             }
           ],
           "decision": {
             "confidence": null,
             "provenance": "fact",
             "source": null,
-            "text": "InputReader::try_new now copies up to CONTENT_INSPECTION_LIMIT (1024) bytes from reader.fill_buf() before read_until splits out the first line. It passes that prefix to inspect_content_type in place of first_line. Because fill_buf does not consume anything, first_line and later read_line calls still get the same bytes as before."
+            "text": "A new constant CONTENT_INSPECTION_LIMIT = 1024 is added. try_new now passes an inspection_prefix of up to 1024 bytes to inspect_content_type instead of passing first_line. The first_line buffer is still split at the first newline and replayed unchanged by read_line."
           },
-          "id": "inspect-buffered-prefix-not-first-line",
+          "id": "inspect-first-kb-not-first-line",
           "level": "system",
+          "options": [
+            {
+              "chosen": false,
+              "detail": "previous behavior",
+              "label": "First line only"
+            },
+            {
+              "chosen": true,
+              "detail": "matches inspector's window",
+              "label": "Up to first 1 KB"
+            }
+          ],
+          "question": "How much data should binary detection inspect?",
           "rationale": [
             {
               "confidence": null,
               "provenance": "claim",
-              "source": "PR description, 'Root cause' section",
-              "text": "The author says content_inspector checks up to 1024 bytes for a NUL byte, but bat only passed it the first line. Random or encrypted data can contain a newline before its first NUL, so the short sample was classified as UTF-8 and binary bytes were sent to the terminal (issue #3554)."
+              "source": "PR description",
+              "text": "Author: 'content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.'"
             },
             {
               "confidence": null,
               "provenance": "claim",
-              "source": "PR description; src/input.rs:434-454",
-              "text": "The author says the snapshot 'is non-consuming, so no bytes are lost or reordered'. The unit test binary_detection_scans_beyond_first_line_and_preserves_input replays all lines and checks they match the original content."
+              "source": "PR description, 'Compatibility' section",
+              "text": "Author states that BOM detection still takes precedence, so UTF-16 handling is unchanged, and that ZIP signature detection is unchanged. In the code, has_zip_signature still uses starts_with on the sample, and UTF-16 line reading still runs only when the inspector reports UTF_16LE/BE."
             }
           ],
           "refs": [
@@ -596,14 +552,14 @@ enum MockAnalysisFixtures {
             },
             {
               "blobSha": null,
-              "endLine": 296,
+              "endLine": 304,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 267
             },
             {
               "blobSha": null,
-              "endLine": 361,
+              "endLine": 355,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 344
@@ -623,7 +579,44 @@ enum MockAnalysisFixtures {
               "startLine": 2267
             }
           ],
-          "title": "Classify content from the first 1024 buffered bytes instead of only the first line"
+          "shape": "threshold",
+          "title": "Classify content from up to the first 1024 bytes instead of only the first line",
+          "tradeoffs": [
+            {
+              "chosenPosition": 0.2,
+              "dimensionA": "binary detection sensitivity",
+              "dimensionB": "text-with-stray-NUL tolerance",
+              "explanation": {
+                "confidence": "medium",
+                "provenance": "interpretation",
+                "source": null,
+                "text": "Mostly-text inputs that have a NUL byte on line 2 or later, within the first 1 KB, now appear to be classified as BINARY. With the header style they show a <BINARY> marker, and without it the printer shows a 'will not be printed to the terminal' warning instead of the content. Such files were previously shown as text."
+              },
+              "prominence": "primary",
+              "refs": [
+                {
+                  "blobSha": null,
+                  "endLine": 516,
+                  "path": "src/printer.rs",
+                  "side": "head",
+                  "startLine": 496
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 290,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 290
+                }
+              ]
+            }
+          ],
+          "why": {
+            "confidence": null,
+            "provenance": "claim",
+            "source": "PR description, 'Root cause' section",
+            "text": "content_inspector scans up to 1024 bytes, so a newline early in random or encrypted data made bat mislabel it as UTF-8."
+          }
         },
         {
           "alternatives": [
@@ -631,7 +624,7 @@ enum MockAnalysisFixtures {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "Keep calling read until 1024 bytes or EOF. Detection would be deterministic for pipes, but a partially filled interactive or network stream could block until more data arrives."
+              "text": "Loop on read() until 1024 bytes or EOF, e.g. with Read::take plus a peek buffer. Classification would then be deterministic regardless of chunking, but first output could be delayed on slow pipes."
             }
           ],
           "componentIds": [
@@ -644,35 +637,48 @@ enum MockAnalysisFixtures {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "Detection is best-effort and depends on how much the first read returns. With stdin pipes or custom readers that deliver small chunks, a NUL past the first chunk (and past the first line) is still missed."
+              "text": "For files opened with the default BufReader, the first fill usually exposes well over 1 KB, so the full window is likely available. For pipes and custom readers, the result appears to depend on how much the first read() delivers."
             },
             {
-              "confidence": "medium",
-              "provenance": "interpretation",
-              "source": null,
-              "text": "For ordinary files wrapped in BufReader::new (default buffer is larger than 1 KiB), the full 1024-byte window will usually be available."
+              "confidence": null,
+              "provenance": "claim",
+              "source": "PR description, 'Compatibility' section",
+              "text": "The author notes that open PR #3763 changes the same initialization path, to bound reads for newline-free binary files, and that this PR may need a rebase if #3763 merges first."
             }
           ],
           "decision": {
             "confidence": null,
             "provenance": "fact",
             "source": null,
-            "text": "The prefix comes from a single fill_buf() call. The first call triggers one underlying read (the same read that read_until would have done anyway). The code does not loop to fill 1024 bytes, so the sample is whatever that first read returned, capped at 1024."
+            "text": "try_new calls reader.fill_buf() once and copies up to 1024 of the exposed bytes into inspection_prefix without consuming them. It then runs read_until to split out the first line as before."
           },
-          "id": "no-extra-blocking-read",
+          "id": "non-blocking-buffered-snapshot",
           "level": "system",
+          "options": [
+            {
+              "chosen": false,
+              "detail": "deterministic classification",
+              "label": "Read until 1 KB or EOF"
+            },
+            {
+              "chosen": true,
+              "detail": "no extra blocking read",
+              "label": "Use what's buffered"
+            }
+          ],
+          "question": "Should detection wait for more stream data before classifying?",
           "rationale": [
             {
               "confidence": null,
               "provenance": "claim",
               "source": "PR description; src/input.rs:268-271",
-              "text": "The author says it 'does not add a post-line blocking read' and keeps 'streaming behavior'. The code comment says it does not 'perform an additional read beyond the one read_until needs anyway'."
+              "text": "Author: 'The snapshot is non-consuming, so no bytes are lost or reordered, and it does not add a post-line blocking read.' The code comment says the same: 'does not consume input or perform an additional read beyond the one read_until needs anyway.'"
             },
             {
-              "confidence": "medium",
+              "confidence": "high",
               "provenance": "interpretation",
               "source": null,
-              "text": "This appears to protect interactive or slow stdin (try_new is called directly on stdin). There, waiting for 1 KiB before showing the first line would stall output."
+              "text": "The input_detection_does_not_read_twice test uses a reader that returns WouldBlock on its second read(). This suggests the author wanted a guarantee that initialization never issues a second read, keeping streaming/stdin behavior unchanged."
             }
           ],
           "refs": [
@@ -682,23 +688,60 @@ enum MockAnalysisFixtures {
               "path": "src/input.rs",
               "side": "head",
               "startLine": 267
+            },
+            {
+              "blobSha": null,
+              "endLine": 479,
+              "path": "src/input.rs",
+              "side": "head",
+              "startLine": 456
             },
             {
               "blobSha": null,
               "endLine": 249,
               "path": "src/input.rs",
               "side": "head",
-              "startLine": 208
-            },
-            {
-              "blobSha": null,
-              "endLine": 479,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 456
+              "startLine": 236
             }
           ],
-          "title": "Inspect only what is already buffered; never read more just to reach 1024 bytes"
+          "shape": "binary",
+          "title": "Sample only the already-buffered prefix via fill_buf rather than reading until 1 KB",
+          "tradeoffs": [
+            {
+              "chosenPosition": 0.75,
+              "dimensionA": "detection completeness",
+              "dimensionB": "streaming latency",
+              "explanation": {
+                "confidence": "medium",
+                "provenance": "interpretation",
+                "source": null,
+                "text": "If the first read() returns fewer than 1024 bytes, detection only sees that chunk. This can happen with stdin pipes, slow producers, or custom readers. A NUL that arrives in a later chunk would go unnoticed and the input would still be treated as text. In return, interactive or streaming input (e.g. tail -f | bat) is not held up waiting for more data."
+              },
+              "prominence": "primary",
+              "refs": [
+                {
+                  "blobSha": null,
+                  "endLine": 275,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 268
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 479,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 456
+                }
+              ]
+            }
+          ],
+          "why": {
+            "confidence": null,
+            "provenance": "claim",
+            "source": "PR description, 'Root cause' section",
+            "text": "The author says the non-consuming snapshot loses no bytes and adds no blocking read after the first line."
+          }
         },
         {
           "alternatives": [
@@ -706,12 +749,12 @@ enum MockAnalysisFixtures {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "Always use the fill_buf snapshot. That is simpler, but it would regress against the old behavior when a small-buffer reader has a long first line, because the sample would be shorter than before."
+              "text": "Concatenate the snapshot and the first line. That is not correct in general, because the two overlap: first_line begins with the same bytes as the snapshot."
             }
           ],
           "componentIds": [
             "input-reader",
-            "content-inspector"
+            "content-classifier"
           ],
           "confidence": "high",
           "consequences": [
@@ -719,78 +762,99 @@ enum MockAnalysisFixtures {
               "confidence": "high",
               "provenance": "interpretation",
               "source": null,
-              "text": "The sample is never shorter than it was before this PR, so the change seems unable to reduce detection coverage. Both sources start at the same byte, so the replacement is a superset."
+              "text": "The sample now appears to be at least as large as the old first-line sample (capped at 1 KB), so classification should not regress for small-buffer readers."
             }
           ],
           "decision": {
             "confidence": null,
             "provenance": "fact",
             "source": null,
-            "text": "After read_until, if the first line (capped at 1024 bytes) is longer than the buffered snapshot, the inspection prefix is replaced with the first line's first 1024 bytes."
+            "text": "After read_until, if min(first_line.len(), 1024) is greater than inspection_prefix.len(), the prefix is replaced with the first 1024 bytes of first_line."
           },
-          "id": "fallback-to-longer-first-line",
+          "id": "fallback-to-first-line-when-longer",
           "level": "implementation",
+          "options": [
+            {
+              "chosen": false,
+              "detail": "simpler",
+              "label": "Buffered snapshot only"
+            },
+            {
+              "chosen": true,
+              "detail": "never worse than before",
+              "label": "Longer of snapshot or line"
+            }
+          ],
+          "question": "What if the buffer exposes less than the first line?",
           "rationale": [
             {
               "confidence": null,
               "provenance": "claim",
               "source": "src/input.rs:282-283",
-              "text": "The code comment says a custom BufRead may expose fewer than 1024 bytes at a time, and this keeps 'the old behavior for long first lines in that case'."
+              "text": "Code comment: 'A custom BufRead implementation may expose less than 1024 bytes at a time. Keep the old behavior for long first lines in that case.'"
             }
           ],
           "refs": [
             {
               "blobSha": null,
-              "endLine": 290,
+              "endLine": 288,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 282
             }
           ],
-          "title": "Use the first line if it is longer than the buffered prefix"
+          "shape": "binary",
+          "title": "Use the first line as the sample when it is longer than the buffered snapshot",
+          "tradeoffs": [],
+          "why": {
+            "confidence": null,
+            "provenance": "claim",
+            "source": "src/input.rs:282-283 code comment",
+            "text": "A custom BufRead may expose under 1024 bytes at a time, so long first lines keep the old sample."
+          }
         },
         {
-          "alternatives": [
-            {
-              "confidence": "medium",
-              "provenance": "interpretation",
-              "source": null,
-              "text": "Call read_until unconditionally, as before. This is simpler, but it adds a read after EOF was already seen."
-            }
-          ],
+          "alternatives": [],
           "componentIds": [
             "input-reader",
-            "input-source"
+            "printer"
           ],
           "confidence": "high",
           "consequences": [
             {
-              "confidence": "high",
-              "provenance": "interpretation",
+              "confidence": null,
+              "provenance": "fact",
               "source": null,
-              "text": "For empty input, try_new makes exactly one underlying read. Readers where a second read blocks or fails are now safe during initialization."
+              "text": "Empty input still yields content_type None, so the printer's quiet_empty handling (content_type.is_none()) is preserved. The empty case in input_detection_does_not_read_twice covers this."
             }
           ],
           "decision": {
             "confidence": null,
             "provenance": "fact",
             "source": null,
-            "text": "read_until for the first line only runs when the fill_buf snapshot is non-empty. With empty input, first_line stays empty and inspect_content_type returns None."
+            "text": "read_until is only called if inspection_prefix is non-empty. An empty fill_buf leaves first_line empty and content_type None."
           },
           "id": "skip-read-on-empty-input",
           "level": "implementation",
+          "options": [
+            {
+              "chosen": false,
+              "detail": "simpler",
+              "label": "Always read first line"
+            },
+            {
+              "chosen": true,
+              "detail": "single read on EOF",
+              "label": "Skip when buffer empty"
+            }
+          ],
+          "question": "Should empty input trigger a second EOF read?",
           "rationale": [
             {
               "confidence": null,
               "provenance": "claim",
-              "source": "PR description; src/input.rs:456-479",
-              "text": "The author says 'Empty input is handled without requesting a second EOF event.' The test input_detection_does_not_read_twice uses a reader that returns WouldBlock on any second read, and checks both non-empty and empty inputs."
-            },
-            {
-              "confidence": "medium",
-              "provenance": "interpretation",
-              "source": null,
-              "text": "An empty fill_buf means EOF was already seen. A second read on stdin or a tty would ask for EOF again (for example, a second Ctrl-D). This appears to be the hazard being avoided."
+              "source": "PR description",
+              "text": "Author: 'Empty input is handled without requesting a second EOF event.' Once fill_buf has returned empty, BufReader's buffer is exhausted, so a following read_until would call read() on the inner source again. For a TTY or pipe, a second read after EOF could block or return data that arrives later."
             }
           ],
           "refs": [
@@ -800,152 +864,6 @@ enum MockAnalysisFixtures {
               "path": "src/input.rs",
               "side": "head",
               "startLine": 277
-            },
-            {
-              "blobSha": null,
-              "endLine": 479,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 456
-            }
-          ],
-          "title": "Skip read_until when the initial buffer is empty"
-        }
-      ]
-    }
-    """#
-
-    private static let tradeoffsJSON = #"""
-    {
-      "tradeoffs": [
-        {
-          "chosen": "up to 1024 buffered bytes",
-          "decisionIds": [
-            "inspect-buffered-prefix-not-first-line"
-          ],
-          "explanation": {
-            "confidence": "high",
-            "provenance": "interpretation",
-            "source": null,
-            "text": "Before this change, bat only inspected the first line, so a newline before the first NUL made binary data look like text. Now try_new snapshots up to 1024 bytes from fill_buf() before read_until splits out the first line (lines 272-275), and passes that snapshot to inspect_content_type (line 290). This catches binary content like encrypted files, as the regression tests show. The likely cost is that a file with a plain-text first line and a NUL somewhere in the first 1024 bytes will now be classified as binary when it used to be treated as text. The code shows the classification input got wider; how often real text files contain an early NUL isn't something the repo can tell us."
-          },
-          "id": "inspection-sample-scope",
-          "poleA": "first line only",
-          "poleAWeight": 0.85,
-          "poleB": "up to 1024 buffered bytes",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 290,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 267
-            },
-            {
-              "blobSha": null,
-              "endLine": 355,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 344
-            },
-            {
-              "blobSha": null,
-              "endLine": 454,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 434
-            }
-          ],
-          "title": "What bytes get inspected"
-        },
-        {
-          "chosen": "inspect what's buffered",
-          "decisionIds": [
-            "no-extra-blocking-read"
-          ],
-          "explanation": {
-            "confidence": "high",
-            "provenance": "interpretation",
-            "source": null,
-            "text": "The code calls fill_buf() once and keeps whatever that returns, up to 1024 bytes (lines 272-275). It never loops to fill a full 1024-byte sample. The code comment says this avoids 'an additional read beyond the one read_until needs anyway' (lines 268-271). The test input_detection_does_not_read_twice uses a reader that returns WouldBlock on its second read, which locks this behavior in (lines 456-479). This appears to favor streaming and interactive inputs (pipes, slow stdin) that must not stall. The cost is that when the first read returns only a few bytes, the sample may be much shorter than 1024. A NUL just past that point would then go undetected, so binary detection depends on how the source happens to chunk its data."
-          },
-          "id": "no-extra-blocking-read",
-          "poleA": "always fill 1024 bytes",
-          "poleAWeight": 0.9,
-          "poleB": "inspect what's buffered",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 275,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 268
-            },
-            {
-              "blobSha": null,
-              "endLine": 479,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 456
-            }
-          ],
-          "title": "Detection completeness vs. no extra blocking"
-        },
-        {
-          "chosen": "preserve old behavior",
-          "decisionIds": [
-            "fallback-to-longer-first-line"
-          ],
-          "explanation": {
-            "confidence": "medium",
-            "provenance": "interpretation",
-            "source": null,
-            "text": "If the first line read by read_until is longer than the buffered snapshot, the snapshot is thrown away and replaced by the first line's first 1024 bytes (lines 284-288). The code comment says this keeps 'the old behavior for long first lines' for BufRead implementations that expose fewer than 1024 bytes at a time (lines 282-283). This appears to guarantee the sample is never shorter than what bat inspected before, at the cost of a second branch and two possible sample sources. The fallback replaces the snapshot rather than merging the two. That seems fine because the snapshot is a prefix of the same stream, and so a prefix of the longer first line."
-          },
-          "id": "fallback-to-longer-first-line",
-          "poleA": "single sample source",
-          "poleAWeight": 0.75,
-          "poleB": "preserve old behavior",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 290,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 282
-            }
-          ],
-          "title": "Fallback to first line when buffer is short"
-        },
-        {
-          "chosen": "avoid second EOF read",
-          "decisionIds": [
-            "skip-read-on-empty-input"
-          ],
-          "explanation": {
-            "confidence": "medium",
-            "provenance": "interpretation",
-            "source": null,
-            "text": "read_until is called only when fill_buf() returned a non-empty buffer (lines 277-280). When the buffer is empty, first_line stays empty and inspect_content_type returns None (lines 345-347). The PR description says this means empty input is 'handled without requesting a second EOF event'. The empty-content case in the one-read test covers it (line 475). The benefit is probably for interactive or streaming sources, where a second read after EOF could block or need another Ctrl-D. The cost is a small special case in initialization instead of calling read_until every time."
-          },
-          "id": "skip-read-on-empty-input",
-          "poleA": "uniform read path",
-          "poleAWeight": 0.8,
-          "poleB": "avoid second EOF read",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 280,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 277
-            },
-            {
-              "blobSha": null,
-              "endLine": 347,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 344
             },
             {
               "blobSha": null,
@@ -953,9 +871,24 @@ enum MockAnalysisFixtures {
               "path": "src/input.rs",
               "side": "head",
               "startLine": 475
+            },
+            {
+              "blobSha": null,
+              "endLine": 490,
+              "path": "src/printer.rs",
+              "side": "head",
+              "startLine": 487
             }
           ],
-          "title": "Skip read_until on empty initial buffer"
+          "shape": "binary",
+          "title": "Skip read_until when the initial fill_buf reports EOF",
+          "tradeoffs": [],
+          "why": {
+            "confidence": null,
+            "provenance": "claim",
+            "source": "PR description",
+            "text": "Author says empty input is handled without requesting a second EOF event."
+          }
         }
       ]
     }
@@ -966,7 +899,7 @@ enum MockAnalysisFixtures {
       "entryPoints": [
         {
           "changeKind": "touched",
-          "flowId": "flow-file-binary-detection",
+          "flowId": "flow-cli-file-binary-detection",
           "id": "cli-bat-file",
           "kind": "CLI command",
           "refs": [
@@ -976,6 +909,13 @@ enum MockAnalysisFixtures {
               "path": "src/bin/bat/main.rs",
               "side": "head",
               "startLine": 285
+            },
+            {
+              "blobSha": null,
+              "endLine": 120,
+              "path": "src/controller.rs",
+              "side": "head",
+              "startLine": 112
             },
             {
               "blobSha": null,
@@ -989,16 +929,16 @@ enum MockAnalysisFixtures {
         },
         {
           "changeKind": "touched",
-          "flowId": "flow-stdin-binary-detection",
+          "flowId": "flow-stdin-custom-reader-detection",
           "id": "cli-bat-stdin",
           "kind": "CLI command",
           "refs": [
             {
               "blobSha": null,
-              "endLine": 120,
+              "endLine": 116,
               "path": "src/controller.rs",
               "side": "head",
-              "startLine": 112
+              "startLine": 115
             },
             {
               "blobSha": null,
@@ -1008,43 +948,27 @@ enum MockAnalysisFixtures {
               "startLine": 199
             }
           ],
-          "title": "bat (CLI, reading stdin)"
+          "title": "<producer> | bat (CLI, stdin input)"
         },
         {
           "changeKind": "touched",
-          "flowId": null,
-          "id": "lessopen-preprocessor",
-          "kind": "CLI command",
-          "refs": [
-            {
-              "blobSha": null,
-              "endLine": 129,
-              "path": "src/lessopen.rs",
-              "side": "head",
-              "startLine": 124
-            },
-            {
-              "blobSha": null,
-              "endLine": 206,
-              "path": "src/lessopen.rs",
-              "side": "head",
-              "startLine": 203
-            }
-          ],
-          "title": "bat with LESSOPEN preprocessing enabled"
-        },
-        {
-          "changeKind": "touched",
-          "flowId": null,
-          "id": "pretty-printer-input-from-reader",
+          "flowId": "flow-stdin-custom-reader-detection",
+          "id": "lib-pretty-printer-print",
           "kind": "public API",
           "refs": [
             {
               "blobSha": null,
-              "endLine": 110,
+              "endLine": 343,
               "path": "src/pretty_printer.rs",
               "side": "head",
-              "startLine": 101
+              "startLine": 293
+            },
+            {
+              "blobSha": null,
+              "endLine": 165,
+              "path": "src/input.rs",
+              "side": "head",
+              "startLine": 158
             },
             {
               "blobSha": null,
@@ -1054,11 +978,34 @@ enum MockAnalysisFixtures {
               "startLine": 244
             }
           ],
-          "title": "PrettyPrinter::input_from_reader / input_from_bytes (library API)"
+          "title": "PrettyPrinter::print / print_with_writer (library API, incl. Input::from_reader custom readers)"
+        },
+        {
+          "changeKind": "touched",
+          "flowId": null,
+          "id": "lessopen-preprocessor-open",
+          "kind": "plugin point",
+          "refs": [
+            {
+              "blobSha": null,
+              "endLine": 160,
+              "path": "src/controller.rs",
+              "side": "head",
+              "startLine": 149
+            },
+            {
+              "blobSha": null,
+              "endLine": 205,
+              "path": "src/lessopen.rs",
+              "side": "head",
+              "startLine": 203
+            }
+          ],
+          "title": "LESSOPEN preprocessor output opened as input (feature \"lessopen\")"
         },
         {
           "changeKind": "changed",
-          "flowId": "flow-file-binary-detection",
+          "flowId": "flow-cli-file-binary-detection",
           "id": "input-reader-try-new",
           "kind": "public API",
           "refs": [
@@ -1076,35 +1023,69 @@ enum MockAnalysisFixtures {
       "flows": [
         {
           "entryPointId": "cli-bat-file",
-          "id": "flow-file-binary-detection",
+          "id": "flow-cli-file-binary-detection",
           "steps": [
             {
               "branches": [
-                "path is a directory -> error \"is a directory\"",
-                "stdout surely conflicts with input -> IO circle error",
-                "lessopen feature enabled and use_lessopen -> preprocessor.open instead"
+                "input.is_stdin() -> pass io::stdin().lock() as the reader",
+                "otherwise -> pass io::empty() as dummy stdin"
               ],
               "caution": null,
               "changeKind": "unchanged",
               "componentId": "input-source",
               "errorPaths": [
-                "File::open error mapped to \"'<path>': <err>\"",
-                "try_new io::Error propagated via ?"
+                "print_input error -> handle_error writes to stderr/pager and no_errors=false"
               ],
-              "externalCalls": [
-                "File::open",
-                "clircle::Identifier::try_from"
-              ],
-              "id": "open-ordinary-file",
+              "externalCalls": [],
+              "id": "run-controller",
               "index": 0,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
                   "blobSha": null,
-                  "endLine": 160,
+                  "endLine": 292,
+                  "path": "src/bin/bat/main.rs",
+                  "side": "head",
+                  "startLine": 285
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 120,
                   "path": "src/controller.rs",
                   "side": "head",
-                  "startLine": 141
+                  "startLine": 112
+                }
+              ],
+              "stateDelta": null,
+              "title": "CLI hands inputs to Controller::run, which calls print_input per input"
+            },
+            {
+              "branches": [
+                "lessopen feature + use_lessopen -> preprocessor.open (may build an InputReader over preprocessed output at lessopen.rs:205)",
+                "path is a directory -> Err",
+                "stdout surely conflicts with the input -> Err(\"IO circle detected\")"
+              ],
+              "caution": null,
+              "changeKind": "unchanged",
+              "componentId": "input-source",
+              "errorPaths": [
+                "File::open failure -> \"'<path>': <io error>\"",
+                "try_new io::Error propagated via ?"
+              ],
+              "externalCalls": [
+                "File::open",
+                "file.metadata()"
+              ],
+              "id": "open-input",
+              "index": 1,
+              "isAsyncBoundaryAfter": false,
+              "refs": [
+                {
+                  "blobSha": null,
+                  "endLine": 161,
+                  "path": "src/controller.rs",
+                  "side": "head",
+                  "startLine": 149
                 },
                 {
                   "blobSha": null,
@@ -1114,57 +1095,59 @@ enum MockAnalysisFixtures {
                   "startLine": 216
                 }
               ],
-              "stateDelta": "File handle wrapped in std BufReader (default capacity) and passed to InputReader::try_new",
-              "title": "Open file and wrap in BufReader"
+              "stateDelta": "File handle -> BufReader<File> passed to InputReader::try_new",
+              "title": "Input::open opens the file, rejects directories and IO cycles, wraps it in a BufReader"
             },
             {
-              "branches": [],
-              "caution": "The prefix only covers whatever a single fill_buf returns. For a pipe or terminal stdin that delivers a short first chunk, a NUL byte arriving in a later chunk within the first 1024 bytes is still missed.",
+              "branches": [
+                "fill_buf returns empty (EOF) -> inspection_prefix empty"
+              ],
+              "caution": "The prefix only covers what a single fill_buf exposes. If the first underlying read returns fewer bytes than 1024 (short read), bytes past that point are not inspected. The code comment at lines 282-283 covers the custom-BufRead case.",
               "changeKind": "new",
               "componentId": "input-reader",
               "errorPaths": [
-                "fill_buf io::Error returned from try_new"
+                "fill_buf io::Error -> returned from try_new"
               ],
               "externalCalls": [
-                "BufRead::fill_buf"
+                "BufRead::fill_buf (triggers the first underlying read)"
               ],
-              "id": "snapshot-buffered-prefix",
-              "index": 1,
+              "id": "snapshot-prefix",
+              "index": 2,
               "isAsyncBoundaryAfter": false,
               "refs": [
-                {
-                  "blobSha": null,
-                  "endLine": 275,
-                  "path": "src/input.rs",
-                  "side": "head",
-                  "startLine": 268
-                },
                 {
                   "blobSha": null,
                   "endLine": 12,
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 12
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 275,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 267
                 }
               ],
-              "stateDelta": "inspection_prefix = copy of up to CONTENT_INSPECTION_LIMIT (1024) bytes from the reader's internal buffer; reader position not advanced",
-              "title": "Snapshot buffered prefix via fill_buf"
+              "stateDelta": "inspection_prefix = copy of buffered[..min(len, 1024)]; the reader position does not change",
+              "title": "fill_buf() snapshot of up to CONTENT_INSPECTION_LIMIT (1024) buffered bytes"
             },
             {
               "branches": [
-                "inspection_prefix empty (EOF) -> read_until not called, first_line stays empty"
+                "inspection_prefix empty -> skip read_until, first_line stays empty (avoids a second EOF read)"
               ],
               "caution": null,
               "changeKind": "changed",
               "componentId": "input-reader",
               "errorPaths": [
-                "read_until io::Error returned from try_new"
+                "read_until io::Error -> returned from try_new"
               ],
               "externalCalls": [
                 "BufRead::read_until"
               ],
               "id": "read-first-line",
-              "index": 2,
+              "index": 3,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
@@ -1175,21 +1158,21 @@ enum MockAnalysisFixtures {
                   "startLine": 277
                 }
               ],
-              "stateDelta": "first_line = bytes up to and including first b'\\n' (or EOF); consumed from reader",
-              "title": "Read first line (skipped on empty input)"
+              "stateDelta": "first_line = bytes up to and including the first '\\n', consumed from the reader",
+              "title": "read_until('\\n') splits out first_line, skipped when the prefix is empty"
             },
             {
               "branches": [
-                "first line longer than buffered snapshot -> use first-line bytes instead",
-                "otherwise -> keep fill_buf snapshot"
+                "first_line_prefix_len > inspection_prefix.len() -> replace the prefix",
+                "otherwise -> keep the buffered snapshot"
               ],
               "caution": null,
               "changeKind": "new",
               "componentId": "input-reader",
               "errorPaths": [],
               "externalCalls": [],
-              "id": "fallback-to-first-line",
-              "index": 3,
+              "id": "fallback-first-line-prefix",
+              "index": 4,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
@@ -1200,23 +1183,24 @@ enum MockAnalysisFixtures {
                   "startLine": 282
                 }
               ],
-              "stateDelta": "If first_line.len().min(1024) > inspection_prefix.len(), inspection_prefix is replaced by first_line[..min(len,1024)]",
-              "title": "Fall back to first-line prefix if it is longer than the snapshot"
+              "stateDelta": "inspection_prefix may be replaced by first_line[..min(len,1024)]",
+              "title": "If first_line is longer than the snapshot, use the first line's first 1024 bytes instead"
             },
             {
               "branches": [
                 "empty prefix -> None",
-                "UTF_8 + PK\\x03\\x04 / PK\\x05\\x06 / PK\\x07\\x08 prefix -> BINARY"
+                "UTF_8 and starts with PK\\x03\\x04 / PK\\x05\\x06 / PK\\x07\\x08 -> BINARY",
+                "otherwise -> content_inspector result"
               ],
               "caution": null,
               "changeKind": "changed",
-              "componentId": "content-inspector",
+              "componentId": "content-classifier",
               "errorPaths": [],
               "externalCalls": [
                 "content_inspector::inspect"
               ],
-              "id": "inspect-content-type",
-              "index": 4,
+              "id": "classify-content",
+              "index": 5,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
@@ -1234,8 +1218,8 @@ enum MockAnalysisFixtures {
                   "startLine": 344
                 }
               ],
-              "stateDelta": "content_type: None (empty), Some(BINARY/UTF_8/UTF_16LE/UTF_16BE); UTF_8 upgraded to BINARY when a ZIP signature prefix is present",
-              "title": "Classify content type"
+              "stateDelta": "content_type: None (empty) | BINARY | UTF_8 | UTF_16LE | UTF_16BE ...",
+              "title": "inspect_content_type runs content_inspector on the prefix and applies the ZIP signature override"
             },
             {
               "branches": [
@@ -1244,101 +1228,58 @@ enum MockAnalysisFixtures {
               ],
               "caution": null,
               "changeKind": "unchanged",
-              "componentId": "utf16-decoder",
+              "componentId": "line-reader",
               "errorPaths": [
-                "io::Error from read_utf16_line propagated"
+                "read_utf16_line io::Error -> returned from try_new"
               ],
               "externalCalls": [
                 "BufRead::read_until"
               ],
               "id": "utf16-first-line",
-              "index": 5,
+              "index": 6,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
                   "blobSha": null,
-                  "endLine": 303,
+                  "endLine": 304,
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 292
                 },
                 {
                   "blobSha": null,
-                  "endLine": 379,
+                  "endLine": 387,
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 363
                 }
               ],
-              "stateDelta": "For UTF-16 LE/BE, first_line is extended until a 2-byte newline; InputReader built with unbuffered=false",
-              "title": "Extend first line for UTF-16 inputs"
+              "stateDelta": "InputReader{first_line, content_type, unbuffered:false}",
+              "title": "For UTF-16, extend first_line up to the UTF-16 newline and build the InputReader"
             },
             {
               "branches": [
-                "binary and not show_nonprintable and binary != AsText -> skip syntax matching",
-                "loop_through -> SimplePrinter"
+                "loop_through -> SimplePrinter (ignores content_type in the header)",
+                "header style off + BINARY -> \"[bat warning]: Binary content ... will not be printed\"",
+                "BINARY/None and not AsText -> print_line returns early"
               ],
               "caution": null,
-              "changeKind": "unchanged",
+              "changeKind": "touched",
               "componentId": "printer",
               "errorPaths": [
-                "get_syntax errors other than UndetectedSyntax propagated"
+                "write errors propagate as Result"
               ],
               "externalCalls": [],
-              "id": "printer-setup",
-              "index": 6,
-              "isAsyncBoundaryAfter": false,
-              "refs": [
-                {
-                  "blobSha": null,
-                  "endLine": 202,
-                  "path": "src/controller.rs",
-                  "side": "head",
-                  "startLine": 161
-                },
-                {
-                  "blobSha": null,
-                  "endLine": 281,
-                  "path": "src/printer.rs",
-                  "side": "head",
-                  "startLine": 270
-                },
-                {
-                  "blobSha": null,
-                  "endLine": 339,
-                  "path": "src/printer.rs",
-                  "side": "head",
-                  "startLine": 334
-                }
-              ],
-              "stateDelta": "is_printing_binary computed from content_type; InteractivePrinter stores content_type",
-              "title": "Printer decides whether to syntax-match"
-            },
-            {
-              "branches": [
-                "header style disabled + BINARY -> '[bat warning]: Binary content ... will not be printed' message",
-                "header enabled -> mode tag <BINARY>/<UTF-16LE>/<UTF-16BE>/<EMPTY>",
-                "show_nonprintable -> replace_nonprintable rendering"
-              ],
-              "caution": null,
-              "changeKind": "unchanged",
-              "componentId": "terminal",
-              "errorPaths": [
-                "write errors propagated as Result"
-              ],
-              "externalCalls": [
-                "writeln! to OutputHandle"
-              ],
-              "id": "print-header-and-lines",
+              "id": "printer-uses-content-type",
               "index": 7,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
                   "blobSha": null,
-                  "endLine": 247,
-                  "path": "src/controller.rs",
+                  "endLine": 280,
+                  "path": "src/printer.rs",
                   "side": "head",
-                  "startLine": 222
+                  "startLine": 271
                 },
                 {
                   "blobSha": null,
@@ -1349,14 +1290,21 @@ enum MockAnalysisFixtures {
                 },
                 {
                   "blobSha": null,
-                  "endLine": 669,
+                  "endLine": 671,
                   "path": "src/printer.rs",
                   "side": "head",
                   "startLine": 664
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 247,
+                  "path": "src/controller.rs",
+                  "side": "head",
+                  "startLine": 222
                 }
               ],
-              "stateDelta": "Header shows \"   <BINARY>\" suffix; print_line returns early for BINARY content unless binary=AsText",
-              "title": "Print header / warning and suppress binary lines"
+              "stateDelta": "Header gets \"   <BINARY>\" and binary lines are not written unless --binary=as-text or -A",
+              "title": "InteractivePrinter uses content_type to skip syntax matching, pick the header mode or warning, and drop binary lines"
             }
           ],
           "storySteps": [
@@ -1364,117 +1312,97 @@ enum MockAnalysisFixtures {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Open the file and check for IO cycles"
+              "text": "Open the file and wrap it in a buffered reader"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Peek at the first buffered chunk of up to 1024 bytes"
+              "text": "Take a snapshot of up to 1024 buffered bytes without consuming them"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Split out the first line for syntax detection"
+              "text": "Split out the first line as before"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Classify content as binary, UTF-8, UTF-16 or empty"
+              "text": "Classify content as binary, UTF-8 or UTF-16 from the larger sample"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Print header with <BINARY> tag and skip binary lines"
+              "text": "Print the header with a <BINARY> marker, or a warning, and skip binary lines"
             }
           ],
-          "title": "bat <file> -> content type detection -> header / line suppression"
+          "title": "bat <file> -> content type chosen from a 1024-byte prefix -> header/lines printed or suppressed"
         },
         {
           "entryPointId": "cli-bat-stdin",
-          "id": "flow-stdin-binary-detection",
+          "id": "flow-stdin-custom-reader-detection",
           "steps": [
             {
               "branches": [
-                "stdout surely conflicts with stdin -> IO circle error"
+                "stdin conflicts with stdout -> Err(\"IO circle detected\")"
               ],
               "caution": null,
               "changeKind": "unchanged",
               "componentId": "input-source",
               "errorPaths": [
-                "Identifier error -> \"Stdin: Error identifying file\""
+                "identification failure -> \"Stdin: Error identifying file\""
               ],
               "externalCalls": [
-                "io::stdin().lock()",
-                "clircle::Identifier::try_from(Stdio::Stdin)"
+                "clircle::Identifier::try_from(Stdin)"
               ],
-              "id": "stdin-open",
+              "id": "open-stdin-or-custom",
               "index": 0,
               "isAsyncBoundaryAfter": false,
               "refs": [
-                {
-                  "blobSha": null,
-                  "endLine": 116,
-                  "path": "src/controller.rs",
-                  "side": "head",
-                  "startLine": 115
-                },
                 {
                   "blobSha": null,
                   "endLine": 213,
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 199
-                }
-              ],
-              "stateDelta": "io::stdin().lock() passed directly (no extra BufReader) to InputReader::try_new",
-              "title": "Open stdin input"
-            },
-            {
-              "branches": [],
-              "caution": "fill_buf blocks until the first read returns and captures only that chunk. With a slow pipe, binary bytes that arrive after the first chunk but within the first 1024 bytes are not inspected.",
-              "changeKind": "new",
-              "componentId": "input-reader",
-              "errorPaths": [
-                "io::Error propagated"
-              ],
-              "externalCalls": [
-                "StdinLock::fill_buf (blocking read)"
-              ],
-              "id": "stdin-fill-buf",
-              "index": 1,
-              "isAsyncBoundaryAfter": false,
-              "refs": [
+                },
                 {
                   "blobSha": null,
-                  "endLine": 275,
+                  "endLine": 249,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 272
+                  "startLine": 244
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 343,
+                  "path": "src/pretty_printer.rs",
+                  "side": "head",
+                  "startLine": 330
                 }
               ],
-              "stateDelta": "inspection_prefix = up to 1024 bytes of the first stdin read, not consumed",
-              "title": "Snapshot stdin buffer"
+              "stateDelta": null,
+              "title": "Input::open passes the stdin lock, or a BufReader around the custom reader, to try_new"
             },
             {
               "branches": [
-                "empty stdin -> no read_until, content_type None"
+                "empty stdin -> no read_until call, content_type None (the test at src/input.rs input_detection_does_not_read_twice covers this with a WouldBlock-on-second-read reader)"
               ],
-              "caution": null,
+              "caution": "On pipes, the first fill_buf returns only what one read() delivered. Binary bytes arriving in a later chunk, past the first line, would still not be inspected. This appears to be an accepted limitation.",
               "changeKind": "changed",
-              "componentId": "content-inspector",
+              "componentId": "input-reader",
               "errorPaths": [
-                "io::Error propagated"
+                "io::Error from fill_buf/read_until propagated"
               ],
               "externalCalls": [
-                "BufRead::read_until",
-                "content_inspector::inspect"
+                "BufRead::fill_buf",
+                "BufRead::read_until"
               ],
-              "id": "stdin-read-first-line",
-              "index": 2,
+              "id": "stdin-snapshot-and-classify",
+              "index": 1,
               "isAsyncBoundaryAfter": false,
               "refs": [
                 {
@@ -1482,49 +1410,46 @@ enum MockAnalysisFixtures {
                   "endLine": 290,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 277
+                  "startLine": 267
                 }
               ],
-              "stateDelta": "first_line consumed; content_type computed from the larger of the snapshot or the first-line prefix",
-              "title": "Read first line and classify"
+              "stateDelta": "content_type comes from the first fill_buf chunk (up to 1024 bytes) or from the first line's prefix, whichever is longer",
+              "title": "fill_buf snapshot, then read_until, then classify (same logic as the file flow)"
             },
             {
               "branches": [
-                "unbuffered -> read_line_unbuffered using fill_buf/consume",
-                "UTF-16 -> read_utf16_line"
+                "UTF-16 -> read_utf16_line",
+                "unbuffered -> read_line_unbuffered",
+                "otherwise -> read_until('\\n')"
               ],
               "caution": null,
               "changeKind": "unchanged",
-              "componentId": "input-reader",
+              "componentId": "line-reader",
               "errorPaths": [
-                "io::Error propagated to printer loop"
+                "io::Error propagates to print_file_ranges"
               ],
-              "externalCalls": [
-                "BufRead::fill_buf",
-                "BufRead::consume",
-                "BufRead::read_until"
-              ],
-              "id": "stdin-unbuffered-flag",
-              "index": 3,
+              "externalCalls": [],
+              "id": "replay-lines",
+              "index": 2,
               "isAsyncBoundaryAfter": false,
               "refs": [
-                {
-                  "blobSha": null,
-                  "endLine": 161,
-                  "path": "src/controller.rs",
-                  "side": "head",
-                  "startLine": 161
-                },
                 {
                   "blobSha": null,
                   "endLine": 341,
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 306
+                },
+                {
+                  "blobSha": null,
+                  "endLine": 298,
+                  "path": "src/controller.rs",
+                  "side": "head",
+                  "startLine": 272
                 }
               ],
-              "stateDelta": "reader.unbuffered set from config after try_new returns; later read_line calls return first_line first, then read via read_until or read_line_unbuffered",
-              "title": "Apply unbuffered setting after detection"
+              "stateDelta": "No bytes are lost or reordered because the snapshot was not consumed",
+              "title": "read_line returns the cached first_line, then continues reading from the untouched reader"
             }
           ],
           "storySteps": [
@@ -1532,28 +1457,22 @@ enum MockAnalysisFixtures {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Lock stdin and check for IO cycles"
+              "text": "Take input from stdin or a library-supplied reader"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Peek at whatever data the first stdin read delivered"
+              "text": "Look at whatever the first buffered read returned, up to 1024 bytes"
             },
             {
               "confidence": null,
               "provenance": "fact",
               "source": null,
-              "text": "Split out the first line"
-            },
-            {
-              "confidence": null,
-              "provenance": "fact",
-              "source": null,
-              "text": "Classify content and switch to unbuffered mode if configured"
+              "text": "Classify the content and replay lines unchanged"
             }
           ],
-          "title": "bat (stdin) -> content type detection on piped data"
+          "title": "stdin / custom reader -> InputReader::try_new -> content type"
         }
       ]
     }
@@ -1561,10 +1480,31 @@ enum MockAnalysisFixtures {
 
     private static let judgmentJSON = #"""
     {
+      "architectureImpact": {
+        "confidence": "high",
+        "provenance": "interpretation",
+        "text": "The content-type check now looks at up to 1024 bytes that are already buffered, taken without consuming them before the first line is split out. Before, it only looked at the first line. So binary data with an early newline, such as encrypted files, appears to be caught before it reaches the terminal. The stream, line boundaries and UTF-16 handling are unchanged."
+      },
       "changeMap": [
         {
           "filesChanged": 1,
-          "name": "Input Reader Initialization"
+          "name": "Input Reader initialization"
+        },
+        {
+          "filesChanged": 0,
+          "name": "Content Type Classifier"
+        },
+        {
+          "filesChanged": 0,
+          "name": "Line Reader / UTF-16 decoding"
+        },
+        {
+          "filesChanged": 0,
+          "name": "Input Source (file / stdin)"
+        },
+        {
+          "filesChanged": 0,
+          "name": "Printer / Terminal Output"
         },
         {
           "filesChanged": 1,
@@ -1578,80 +1518,80 @@ enum MockAnalysisFixtures {
       "considerations": [
         {
           "confidence": "medium",
-          "detail": "The same bytes can be flagged as binary from a file but printed as text from a slow pipe.",
-          "explanation": "try_new calls fill_buf() once and keeps whatever that single read returned, capped at 1024 bytes (src/input.rs:272-275). There is no loop to fill the sample. Files are wrapped in std BufReader (src/input.rs:241) and stdin is io::stdin().lock() (src/controller.rs:116), so both usually get a full buffer on the first read. A pipe, though, returns only what the writer has flushed so far. Take a producer that writes a short first chunk with a newline, then the NUL-bearing bytes: the sample is short, and if read_until can take the whole first line from that chunk, the fallback at lines 284-288 never widens it. The NUL is then missed. As a result, `bat file` and `producer | bat` can disagree on the same content. This appears to be a deliberate trade to avoid blocking; the author says it 'does not add a post-line blocking read'. The reviewer should decide whether the nondeterminism is acceptable or should at least be documented. One alternative is to keep reading until 1024 bytes or EOF only for non-interactive sources. That brings back the blocking risk the author was avoiding. LESSOPEN output is not affected, because the preprocessor output is collected in full before it is wrapped (src/lessopen.rs:140-151, 203-205).",
-          "id": "stdin-chunking-nondeterminism",
+          "detail": "Pipes and custom readers can deliver small first chunks, so a NUL byte in a later chunk still goes unseen.",
+          "explanation": "try_new calls fill_buf() once (src/input.rs:272-275) and inspects only what that one call exposes, capped at 1024 bytes. Files are wrapped in BufReader::new (src/input.rs:241), which has an 8 KiB buffer, so for ordinary files the first fill very likely covers the full 1 KB window. The stdin lock (src/input.rs:212) and custom readers wrapped in BufReader (src/input.rs:248) only return what the first underlying read() delivers. For example, `gpg -d ... | bat` or a slow producer may deliver a short first chunk. Any NUL byte past that chunk and past the first line is still missed, so the input is treated as UTF-8 and its bytes reach the terminal, just as before the fix. The author's code comment (lines 282-283) only covers custom BufReads that expose less than a long first line. This appears to be a deliberate trade for streaming latency, since input_detection_does_not_read_twice enforces a single read. The reviewer should decide whether the #3554 fix is meant to cover piped input. If it is, one option is to keep reading until 1024 bytes or EOF, but only when first_line is already complete and the buffer is short. That would cost the no-second-read guarantee, which the test relies on.",
+          "id": "short-first-read-misses-binary",
           "kind": "concern",
           "provenance": "interpretation",
-          "question": "Is binary detection that depends on pipe chunking acceptable?",
+          "question": "Is detection reliable when the first read returns under 1 KB?",
           "refs": [
             {
-              "endLine": 288,
+              "endLine": 290,
               "path": "src/input.rs",
               "side": "head",
-              "startLine": 268
+              "startLine": 267
             },
             {
-              "endLine": 116,
-              "path": "src/controller.rs",
+              "endLine": 213,
+              "path": "src/input.rs",
               "side": "head",
-              "startLine": 116
+              "startLine": 199
             },
             {
-              "endLine": 206,
-              "path": "src/lessopen.rs",
+              "endLine": 249,
+              "path": "src/input.rs",
               "side": "head",
-              "startLine": 203
+              "startLine": 244
+            },
+            {
+              "endLine": 479,
+              "path": "src/input.rs",
+              "side": "head",
+              "startLine": 456
             }
           ],
           "relatedIds": [
-            "no-extra-blocking-read",
-            "flow-stdin-binary-detection",
-            "input-reader"
+            "non-blocking-buffered-snapshot",
+            "input-reader",
+            "flow-stdin-custom-reader-detection"
           ]
         },
         {
           "confidence": "medium",
-          "detail": "Output that used to print may now be silently replaced by a <BINARY> header.",
-          "explanation": "Before this PR, a file whose first line was clean UTF-8 was classified UTF_8 even if a NUL appeared a few lines later. Now any NUL in the buffered first 1024 bytes makes content_inspector return BINARY (src/input.rs:290, 344-354). The printer then skips those lines unless --binary=as-text is set (src/printer.rs:496-521, 664-669). Examples that could flip are logs with NUL padding from a crash or truncated write, and text files with stray embedded NULs. The escape hatches already exist: BinaryBehavior::AsText (src/bin/bat/app.rs:439) and -A. The reviewer should judge whether this user-visible change needs more than the Bugfixes CHANGELOG line, for example a note that points users to --binary=as-text.",
-          "id": "text-with-early-nul-now-suppressed",
+          "detail": "Files that used to display as text may now show only a binary warning or header in interactive mode.",
+          "explanation": "The sample passed to inspect_content_type now covers up to 1024 bytes across lines (src/input.rs:290), not just the first line. If content_inspector returns BINARY, the interactive printer does one of two things. Without a header, it prints '[bat warning]: Binary content ... will not be printed to the terminal' (src/printer.rs:496-512). With a header, it shows '<BINARY>' (src/printer.rs:515-516). Either way the content is dropped unless the user passes -A or --binary=as-text. So a log or config file with a stray NUL byte on line 2-N, within its first KB, would stop rendering, where before it rendered as text. That matches what content_inspector is designed to do on 1 KB samples, and matches other tools that sniff the first KB. Still, it is a user-visible behavior change beyond encrypted files, and the CHANGELOG entry only mentions encrypted files. Piped output is described as unaffected by the warning text itself ('will be present if the output of bat is piped').",
+          "id": "text-with-stray-nul-now-suppressed",
           "kind": "concern",
           "provenance": "interpretation",
-          "question": "Are text files with a NUL in the first 1 KiB now hidden by default?",
+          "question": "Is hiding mostly-text files with a later NUL byte acceptable?",
           "refs": [
             {
-              "endLine": 355,
+              "endLine": 290,
               "path": "src/input.rs",
               "side": "head",
-              "startLine": 344
+              "startLine": 290
             },
             {
               "endLine": 521,
               "path": "src/printer.rs",
               "side": "head",
               "startLine": 496
-            },
-            {
-              "endLine": 441,
-              "path": "src/bin/bat/app.rs",
-              "side": "head",
-              "startLine": 437
             }
           ],
           "relatedIds": [
-            "inspect-buffered-prefix-not-first-line",
+            "inspect-first-kb-not-first-line",
             "printer",
-            "content-inspector"
+            "binary-detection-beyond-first-line"
           ]
         },
         {
           "confidence": "high",
-          "detail": "The branch for pipes with short first reads is not covered by any test in this PR.",
-          "explanation": "The branch at src/input.rs:284-288 replaces the snapshot with the first line when the line is longer than what fill_buf exposed. The new unit tests both hand try_new a reader whose first fill_buf returns the whole content: `&content[..]` in the first test, and a single OneRead chunk in the second (src/input.rs:440, 476). So first_line.len() is never larger than inspection_prefix.len(), and the fallback never runs. The integration test uses a regular file (tests/integration_tests.rs:2267-2285). A test with a Read that returns data in small chunks, for example BufReader::with_capacity(4, ...) or a chunked mock, would cover both the fallback and a cross-line case under short reads. Note that input_detection_does_not_read_twice would also appear to pass against the pre-PR code. It guards against future regressions (a naive 'fill to 1024' loop) rather than showing the fix works.",
+          "detail": "The branch that protects small-buffer readers from regressions has no test using a short-buffer reader.",
+          "explanation": "Lines 284-288 replace inspection_prefix with the first 1024 bytes of first_line when the line is longer than the buffered snapshot. This is what keeps classification from regressing for BufRead implementations whose buffer is smaller than the first line. The new unit tests don't reach this branch. binary_detection_scans_beyond_first_line_and_preserves_input reads from &[u8], which exposes the whole slice through fill_buf. input_detection_does_not_read_twice returns the whole content in one read. A grep for with_capacity/chain in src/input.rs finds nothing. A test built on BufReader::with_capacity(16, ...), with a long first line that has a NUL after byte 16, would pin this down. So would a matching test for a short chunk followed by a NUL on line 2, documenting the accepted limitation.",
           "id": "fallback-branch-untested",
           "kind": "concern",
           "provenance": "interpretation",
-          "question": "Should the short-buffer fallback path have its own test?",
+          "question": "Is the long-first-line fallback path covered by any test?",
           "refs": [
             {
               "endLine": 288,
@@ -1664,146 +1604,101 @@ enum MockAnalysisFixtures {
               "path": "src/input.rs",
               "side": "head",
               "startLine": 434
-            },
-            {
-              "endLine": 2285,
-              "path": "tests/integration_tests.rs",
-              "side": "head",
-              "startLine": 2267
             }
           ],
           "relatedIds": [
-            "fallback-to-longer-first-line",
+            "fallback-to-first-line-when-longer",
             "input-reader"
           ]
         },
         {
-          "confidence": "medium",
-          "detail": "About 2% of random 1 KiB samples contain no NUL, so some encrypted files will still print.",
-          "explanation": "Detection still relies entirely on content_inspector finding a NUL (or a BOM or ZIP signature) in the sample (src/input.rs:344-354). For uniformly random bytes, the chance that 1024 bytes contain no 0x00 is (255/256)^1024 ≈ 1.8%. Before, with only the first line sampled (about 256 random bytes on average before a newline), the chance of missing the NUL was far higher, around 37% for a 256-byte sample. That matches the reporter's 'most, but not all' observation. The PR seems to lower the miss rate a lot without removing it, yet the changelog says 'Closes #3554'. The reviewer may want to decide whether the issue should stay open or be tracked separately, for example with a non-printable-ratio heuristic. The repo cannot show how content_inspector 0.2.4 scans internally, because the crate source was outside the readable workspace.",
-          "id": "residual-miss-rate-encrypted",
+          "confidence": "low",
+          "detail": "If it also checks prefixes or validates UTF-8, a 1 KB sample cut mid-character could change results.",
+          "explanation": "content_inspector 0.2.4 (Cargo.toml:52) comes from an external crate, and its source is outside this checkout, so I couldn't read it. The PR description says it 'checks up to 1024 bytes for a NUL byte', and says BOM detection still takes precedence. If the crate only checks for BOMs, magic prefixes and NUL bytes, then cutting at 1024 bytes (possibly in the middle of a UTF-8 multibyte sequence) is harmless. If it does any UTF-8 validity or ratio checks, the cut point could matter. The reviewer may want to confirm the crate's inspect() behavior.",
+          "id": "inspector-sample-semantics",
           "kind": "question",
           "provenance": "interpretation",
-          "question": "Is a NUL-only heuristic enough to close the encrypted-file issue?",
+          "question": "Does the inspector judge anything beyond NUL bytes and BOMs?",
           "refs": [
             {
               "endLine": 355,
               "path": "src/input.rs",
               "side": "head",
               "startLine": 344
-            },
-            {
-              "endLine": 52,
-              "path": "Cargo.toml",
-              "side": "head",
-              "startLine": 52
             }
           ],
           "relatedIds": [
-            "inspect-buffered-prefix-not-first-line",
-            "content-inspector"
-          ]
-        },
-        {
-          "confidence": "low",
-          "detail": "The constant silently duplicates content_inspector's internal limit and will drift if the crate changes.",
-          "explanation": "CONTENT_INSPECTION_LIMIT is hard-coded to 1024 (src/input.rs:12), based on the author's statement that content_inspector checks up to 1024 bytes. If a future content_inspector scans more, bat would still pass only 1024 bytes. If it scans less, the extra copy does nothing. The cost is low, but a comment linking the value to the pinned crate version (0.2.4, Cargo.toml:52) would make the coupling explicit.",
-          "id": "duplicated-1024-limit",
-          "kind": "concern",
-          "provenance": "interpretation",
-          "question": "Should the 1024 limit be tied to the crate's actual scan size?",
-          "refs": [
-            {
-              "endLine": 12,
-              "path": "src/input.rs",
-              "side": "head",
-              "startLine": 12
-            },
-            {
-              "endLine": 52,
-              "path": "Cargo.toml",
-              "side": "head",
-              "startLine": 52
-            }
-          ],
-          "relatedIds": [
-            "inspect-buffered-prefix-not-first-line"
+            "inspect-first-kb-not-first-line",
+            "content-classifier"
           ]
         }
       ],
+      "intent": {
+        "provenance": "claim",
+        "source": "Title: \"Detect binary content beyond the first line\"; Description: \"inspect up to the first 1024 already-buffered bytes before splitting out the first line\", \"preserve the reader's bytes, line boundaries, UTF-16 handling, and streaming behavior\", Root cause: \"content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.\" \"Fixes #3554.\"",
+        "text": "The PR makes bat detect binary content beyond the first line. Before splitting out the first line, it inspects up to the first 1024 bytes that are already buffered. The goal is that files such as encrypted or random data, which may have a newline before their first NUL byte, are classified as binary rather than UTF-8 text. It aims to keep the reader's bytes, line boundaries, UTF-16/BOM handling and streaming behavior unchanged, without adding an extra blocking read. It fixes #3554."
+      },
       "needsJudgment": [
         {
           "confidence": "medium",
           "provenance": "interpretation",
           "source": null,
-          "text": "Whether it is acceptable that binary classification can depend on how a streaming source chunks its first read. A single fill_buf() (src/input.rs:272-275) means pipes with short initial writes may still get only a first-line sample, while the same content from a file is flagged BINARY."
+          "text": "Binary detection for stdin and custom readers still depends on how much the first read() returns. A reviewer needs to decide whether that partial fix for piped input is enough to close #3554, or only covers the file case."
         },
         {
           "confidence": "medium",
           "provenance": "interpretation",
           "source": null,
-          "text": "Whether the user-visible change is acceptable: UTF-8 files with any NUL in the first 1 KiB are now suppressed as <BINARY> by default. Examples are logs with NUL padding or files with stray NULs. The only mitigation is the existing --binary=as-text flag (src/printer.rs:664-669)."
-        },
-        {
-          "confidence": "medium",
-          "provenance": "interpretation",
-          "source": null,
-          "text": "Whether 'Closes #3554' is accurate, given that a NUL-only heuristic still appears to miss roughly 2% of uniformly random 1 KiB prefixes."
+          "text": "Text files with a NUL byte after line 1, within the first KB, are now suppressed in interactive output. The CHANGELOG only mentions encrypted files, so this broader user-visible change may deserve its own mention."
         },
         {
           "confidence": "high",
           "provenance": "interpretation",
           "source": null,
-          "text": "Whether the new tests are sufficient. The fallback branch (src/input.rs:284-288) appears to have no test exercising it, and input_detection_does_not_read_twice appears to pass against the pre-PR implementation too."
+          "text": "The code comment says 'does not ... perform an additional read beyond the one read_until needs anyway.' That holds because fill_buf only triggers the read that read_until would have done first, and the empty-input case skips read_until (src/input.rs:278-280). The single-read test fixes this as an invariant, which blocks any future change toward reading until 1 KB or EOF."
         }
       ],
       "questions": [
         {
-          "id": "content-inspector-scan-limit",
+          "id": "piped-input-in-scope",
           "refs": [
             {
-              "endLine": 52,
-              "path": "Cargo.toml",
-              "side": "head",
-              "startLine": 52
-            },
-            {
-              "endLine": 12,
+              "endLine": 213,
               "path": "src/input.rs",
               "side": "head",
-              "startLine": 12
-            }
-          ],
-          "relatedIds": [
-            "inspect-buffered-prefix-not-first-line",
-            "content-inspector"
-          ],
-          "text": "Does content_inspector 0.2.4 actually cap its NUL scan at exactly 1024 bytes, and does it check BOMs before NULs? The crate source was not readable from this checkout."
-        },
-        {
-          "id": "stdin-cross-line-coverage",
-          "refs": [
-            {
-              "endLine": 2285,
-              "path": "tests/integration_tests.rs",
-              "side": "head",
-              "startLine": 2267
+              "startLine": 199
             },
             {
-              "endLine": 116,
-              "path": "src/controller.rs",
+              "endLine": 275,
+              "path": "src/input.rs",
               "side": "head",
-              "startLine": 116
+              "startLine": 272
             }
           ],
           "relatedIds": [
-            "flow-stdin-binary-detection",
-            "no-extra-blocking-read"
+            "non-blocking-buffered-snapshot",
+            "flow-stdin-custom-reader-detection"
           ],
-          "text": "Is there any intended test coverage for the stdin or pipe path with a NUL after the first line? The only integration regression test (tests/integration_tests.rs:2267-2285) reads a regular file."
+          "text": "Was #3554's fix meant to cover `gpg -d | bat` or other piped input, where the first chunk may be under 1 KB? Or only files opened directly?"
         },
         {
-          "id": "pr-3763-interaction",
+          "id": "content-inspector-behavior",
+          "refs": [
+            {
+              "endLine": 355,
+              "path": "src/input.rs",
+              "side": "head",
+              "startLine": 344
+            }
+          ],
+          "relatedIds": [
+            "inspect-first-kb-not-first-line",
+            "content-classifier"
+          ],
+          "text": "Does content_inspector::inspect (v0.2.4) do anything other than check BOMs, magic prefixes and NUL bytes? For example, does it validate UTF-8, which a 1024-byte cut could affect?"
+        },
+        {
+          "id": "pr-3763-status",
           "refs": [
             {
               "endLine": 304,
@@ -1815,27 +1710,27 @@ enum MockAnalysisFixtures {
           "relatedIds": [
             "input-reader"
           ],
-          "text": "The author says PR #3763 changes the same initialization path to bound reads for newline-free binaries. I could not verify from this checkout whether it has merged or how the two changes would combine."
+          "text": "Has PR #3763 (bounded reads for newline-free binary files) merged, and was this change rebased onto it? I couldn't determine this from the checkout."
         }
       ],
       "uncertainties": [
         {
-          "confidence": "high",
-          "provenance": "interpretation",
-          "source": null,
-          "text": "I could not inspect content_inspector 0.2.4's source (it is outside the restricted workspace). The claims that it scans at most 1024 bytes and that BOM detection takes precedence over NUL detection rest on the PR author's description, not on code I read."
-        },
-        {
           "confidence": "medium",
           "provenance": "interpretation",
           "source": null,
-          "text": "How often real pipe producers deliver a short first chunk that ends after a newline but before a NUL inside the first 1 KiB. This depends on the OS and the producer and cannot be determined from the repo."
+          "text": "I couldn't read the content_inspector 0.2.4 source (it's outside the checkout). So it's unverified whether inspect() looks only at BOMs, magic prefixes and NUL bytes, or also validates UTF-8."
         },
         {
           "confidence": "low",
           "provenance": "interpretation",
           "source": null,
-          "text": "Whether any downstream library users call PrettyPrinter::input_from_reader with readers whose BufReader wrapper gets tiny initial reads. That would make the fallback path the common case for them."
+          "text": "The PR description says PR #3763 touches the same initialization path. This checkout already has an `unbuffered` field and read_line_unbuffered (src/input.rs:258, 319-341), set after try_new at src/controller.rs:161. It is unclear whether those came from #3763 or from other work, and whether the rebase the author expected has already happened."
+        },
+        {
+          "confidence": "medium",
+          "provenance": "interpretation",
+          "source": null,
+          "text": "In unbuffered mode (--unbuffered), try_new still blocks in read_until for a full first line before the unbuffered flag is applied (controller.rs:161). This behavior predates the PR and is unchanged by it, but it limits how much the 'no extra blocking read' guarantee actually helps streaming."
         }
       ]
     }

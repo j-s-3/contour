@@ -33,7 +33,7 @@ enum AnalysisServiceError: LocalizedError {
 /// an explicit override per tier for users running multiple providers.
 enum AnalysisTier: Hashable {
     case fast     // file→component mapping, entry-point detection
-    case strong   // decisions, tradeoffs, needs-judgment synthesis
+    case strong   // decisions (with their tradeoffs), flows, needs-judgment synthesis
 
     var modelPattern: String? { AnalysisTier.modelOverrides[self] }
 

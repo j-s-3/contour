@@ -50,7 +50,7 @@ final class IntegrationSmokeTests: XCTestCase {
         print("Intent:", result.graph.pr.intent.text)
         print("Components:", result.graph.components.map(\.title))
         print("Decisions:", result.graph.decisions.map(\.title))
-        print("Tradeoffs:", result.graph.tradeoffs.map(\.title))
+        print("Tradeoffs:", result.graph.decisions.flatMap { d in d.tradeoffs.map { "\(d.id): \($0.dimensionA) vs \($0.dimensionB)" } })
         print("Flows:", result.graph.flows.map(\.title))
         print("Entry points:", result.graph.entryPoints.map(\.title))
         print("Needs judgment:", result.graph.pr.needsJudgment.map(\.text))

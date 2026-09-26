@@ -45,15 +45,12 @@ enum ContourSampleData {
             consequences: [Statement(text: "Publish latency now includes a queue hop.", provenance: .interpretation, confidence: .medium)],
             confidence: .high,
             refs: [CodeRef(path: "src/main/java/publishing/PagePublisher.java", startLine: 40, endLine: 96)],
-            tradeoffIds: ["latency-vs-freshness"], componentIds: ["page-publishing", "index-queue"],
+            tradeoffs: [DecisionTradeoff(
+                dimensionA: "fast publish", dimensionB: "fresh results", chosenPosition: 0.75,
+                explanation: Statement(text: "Accepts a slower publish path in exchange for search results that are never stale.", provenance: .interpretation, confidence: .medium)
+            )],
+            componentIds: ["page-publishing", "index-queue"],
             level: .system
-        )
-
-        let tradeoff = TradeoffNode(
-            id: "latency-vs-freshness", title: "Publish latency vs. search freshness",
-            poleA: "fast publish", poleB: "fresh results", chosen: "poleB",
-            explanation: Statement(text: "Accepts a slower publish path in exchange for search results that are never stale.", provenance: .interpretation, confidence: .medium),
-            decisionIds: ["index-on-publish"], poleAWeight: 0.75
         )
 
         let flow = FlowNode(
@@ -143,7 +140,6 @@ enum ContourSampleData {
             pr: pr,
             components: [publishing, searchService, indexQueue, publisherImpl],
             decisions: [decision],
-            tradeoffs: [tradeoff],
             flows: [flow],
             entryPoints: [entryPoint],
             questions: [],

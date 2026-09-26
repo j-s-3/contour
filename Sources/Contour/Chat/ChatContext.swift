@@ -70,8 +70,9 @@ enum ChatContextBuilder {
             return ["Why did they choose this?", "What if they'd picked the other option?",
                     "What does this cost?", "Show me where this is decided"]
         case .tradeoff:
-            return ["Why was this tradeoff accepted?", "How likely is the downside in practice?", "What happens if we choose the other side?",
-                    "How significant is the impact?", "Where is this implemented?"]
+            return ["Why did the PR choose this side?", "What would break if we moved toward the other side?",
+                    "How likely is the downside in practice?", "How much does this matter for a normal file versus a pipe?",
+                    "Show me the evidence"]
         case .flow:
             return ["Walk me through this", "Where can this fail?", "What happens concurrently?",
                     "Which parts are new?", "Show me the important code"]
@@ -172,8 +173,7 @@ enum ChatContextBuilder {
         switch subject {
         case .component(let id): return "[[component:\(id)]]"
         case .relationship(let id): return "[[relationship:\(id)]]"
-        case .decision(let id), .decisionOption(let id, _): return "[[decision:\(id)]]"
-        case .tradeoff(let id): return "[[tradeoff:\(id)]]"
+        case .decision(let id), .decisionOption(let id, _), .tradeoff(let id, _): return "[[decision:\(id)]]"
         case .flow(let id), .flowStep(let id, _), .storyStep(let id, _): return "[[flow:\(id)]]"
         default: return nil
         }
@@ -204,7 +204,7 @@ enum ChatContextBuilder {
 
         let decisions = resolved.decisionIds.compactMap(graph.decision).filter { d in
             switch resolved.subject {
-            case .decision(let id), .decisionOption(let id, _): return d.id != id
+            case .decision(let id), .decisionOption(let id, _), .tradeoff(let id, _): return d.id != id
             default: return true
             }
         }
@@ -218,14 +218,11 @@ enum ChatContextBuilder {
             out += "\n"
         }
 
-        let tradeoffIds = unique(resolved.tradeoffIds + resolved.decisionIds.flatMap { graph.tradeoffs(for: $0).map(\.id) })
-        let tradeoffs = tradeoffIds.compactMap(graph.tradeoff).filter { t in
-            if case .tradeoff(let id) = resolved.subject { return t.id != id }
-            return true
-        }
-        if !tradeoffs.isEmpty {
-            out += "## Related tradeoffs\n"
-            for t in tradeoffs.prefix(6) { out += "- \(t.title) [[tradeoff:\(t.id)]]: \(t.poleA) vs \(t.poleB), landed on \(t.chosen)\n" }
+        // Tradeoffs travel with their decisions: a related decision's tradeoff is named with it.
+        let traded = decisions.prefix(8).compactMap { d in d.primaryTradeoff.map { (d, $0) } }
+        if !traded.isEmpty, !expansions.contains(.relatedDecisions) {
+            out += "## What the related decisions traded\n"
+            for (d, t) in traded { out += "- \(d.title) [[decision:\(d.id)]]: \(PRGraph.describe(t))\n" }
             out += "\n"
         }
 

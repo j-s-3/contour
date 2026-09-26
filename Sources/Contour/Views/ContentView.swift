@@ -90,6 +90,9 @@ struct ContentView: View {
             graph: graph,
             prURL: store.lastPRURL,
             ask: { subject in withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: subject) } },
+            askQuestion: { question, subject in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(question, about: subject) }
+            },
             navigate: { store.navigate(to: $0) },
             focus: { store.focusedSubject = $0 }
         ))
@@ -192,7 +195,7 @@ struct ContentView: View {
              (.flows, .flows), (.diff, .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
-             (.consideration(_), .decisions), (.tradeoffDetail(_), .decisions), (.flowDetail(_), .flows):
+             (.consideration(_), .decisions), (.flowDetail(_), .flows):
             return true
         default:
             return false
@@ -218,8 +221,6 @@ struct ContentView: View {
             guard let item = graph.thingsToThinkAbout.first(where: { $0.id == id }),
                   let decisionId = graph.reviewDecisionId(for: item) else { return nil }
             return .init(decisionId: decisionId, considerationId: id)
-        case .tradeoffDetail(let id):
-            return graph.tradeoff(id)?.decisionIds.first(where: { graph.decision($0) != nil }).map { .init(decisionId: $0) }
         default:
             return nil
         }
@@ -237,7 +238,7 @@ struct ContentView: View {
                 onOpenEvidence: { store.navigate(to: .evidence($0)) },
                 onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
             )
-        case .decisions, .decisionDetail(_), .consideration(_), .tradeoffDetail(_):
+        case .decisions, .decisionDetail(_), .consideration(_):
             DecisionsView(
                 graph: graph,
                 focus: decisionsFocus(graph),

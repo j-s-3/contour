@@ -9,7 +9,7 @@ private struct PaletteCommand: Identifiable {
 }
 
 /// §6/§12 — "keyboard-first workflows, command palette / Quick Open." Jumps directly into
-/// any lens or any named node in the graph (decision, component, tradeoff, flow, entry
+/// any lens or any named node in the graph (decision, component, flow, entry
 /// point) without walking the sidebar.
 struct CommandPaletteView: View {
     let store: GraphStore

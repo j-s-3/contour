@@ -119,9 +119,10 @@ struct ConversationService {
        before asserting how the code behaves; do not guess file contents or line numbers. Cite \
        code as `path/to/File.ext:START-END` (repo-relative, in backticks) right after the claim \
        it supports. Reviewers click these.
-    4. When you refer to something in the review model — a decision, component, relationship, \
-       tradeoff or flow — you may link it as [[kind:id]] using the ids in the context file, e.g. \
-       [[decision:sync-reindex]]. Kinds: component, relationship, decision, tradeoff, flow.
+    4. When you refer to something in the review model — a decision (tradeoffs belong to their \
+       decision), component, relationship or flow — you may link it as [[kind:id]] using the ids \
+       in the context file, e.g. [[decision:sync-reindex]]. Kinds: component, relationship, \
+       decision, flow.
     5. Resolve follow-ups against the review model: "the other process", "that flow", "this \
        decision" usually refer to neighbors listed in the context file.
     6. Say what you observed versus what you infer. Hedge inferences ("appears to", "likely"). \

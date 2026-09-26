@@ -25,8 +25,6 @@ enum NavigationTarget: Hashable {
     case consideration(String)
     case componentDetail(String)
     case edgeDetail(String)
-    /// Tradeoffs live inside their decision, so this opens the owning decision.
-    case tradeoffDetail(String)
     case flowDetail(String)
     case evidence(CodeRef)
 }
@@ -148,6 +146,14 @@ final class GraphStore {
         conversations.open(subject)
     }
 
+    /// Opens the subject's thread and asks a specific question in it straight away — for
+    /// menu items like "Why did the PR choose this side?".
+    @MainActor
+    func ask(_ question: String, about subject: ReviewSubject) {
+        let conversation = conversations.open(subject)
+        send(question, in: conversation)
+    }
+
     @MainActor
     func send(_ text: String, in conversation: Conversation) {
         guard let graph else { return }
@@ -162,7 +168,6 @@ final class GraphStore {
         case .edgeDetail(let id): return .relationship(id)
         case .decisionDetail(let id): return .decision(id)
         case .consideration(let id): return .consideration(id)
-        case .tradeoffDetail(let id): return .tradeoff(id)
         case .flowDetail(let id): return .flow(id)
         case .evidence(let ref): return .codeRef(ref)
         default:
