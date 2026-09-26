@@ -60,6 +60,15 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
+        // `contour://…` and GitHub PR links handed to the app by the system. Only live once
+        // Contour runs from a bundle whose Info.plist declares the scheme; a bare SwiftPM
+        // executable is never sent them.
+        .onOpenURL { url in
+            guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
+            store.load(prURL: prURL)
+        }
+        // Route incoming links to this window rather than opening a second one.
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
 
     @ViewBuilder
@@ -84,6 +93,9 @@ struct ContentView: View {
         }
         // Screen changes crossfade (and the mark glides from welcome into opening).
         .animation(.easeInOut(duration: 0.45), value: screen)
+        // A PR link dropped on the start screen or an open review opens that PR; one PR
+        // per window, so a review in progress is replaced.
+        .opensDroppedPullRequests { url in store.load(prURL: url) }
     }
 
     /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
