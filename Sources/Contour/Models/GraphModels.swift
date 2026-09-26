@@ -644,12 +644,17 @@ struct FlowNode: Codable, Hashable, Sendable, Identifiable {
     /// Story-level steps: 3-6 short present-tense labels ("Publish page", "Save revision",
     /// "Rebuild search entry", ...) that render first — the default view of a flow.
     var storySteps: [Statement] = []
+    /// The flow as runtime behavior — trigger, stages, branches, boundaries, and what this PR
+    /// changed. Nil on graphs from before the Flows redesign; `PRGraph.behavior(for:)`
+    /// condenses one from `storySteps` for those.
+    var behavior: FlowBehavior?
 
-    init(id: String, title: String, steps: [FlowStep] = [], entryPointId: String? = nil, storySteps: [Statement] = []) {
+    init(id: String, title: String, steps: [FlowStep] = [], entryPointId: String? = nil, storySteps: [Statement] = [],
+         behavior: FlowBehavior? = nil) {
         self.id = id; self.title = title; self.steps = steps; self.entryPointId = entryPointId
-        self.storySteps = storySteps
+        self.storySteps = storySteps; self.behavior = behavior
     }
-    enum CodingKeys: String, CodingKey { case id, title, steps, entryPointId, storySteps }
+    enum CodingKeys: String, CodingKey { case id, title, steps, entryPointId, storySteps, behavior }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -657,6 +662,9 @@ struct FlowNode: Codable, Hashable, Sendable, Identifiable {
         steps = try c.decodeIfPresent([FlowStep].self, forKey: .steps) ?? []
         entryPointId = try c.decodeIfPresent(String.self, forKey: .entryPointId)
         storySteps = try c.decodeIfPresent([Statement].self, forKey: .storySteps) ?? []
+        // A malformed behavior model falls back to the condensed one, never drops the flow.
+        behavior = (try? c.decodeIfPresent(FlowBehavior.self, forKey: .behavior)) ?? nil
+        if behavior?.nodes.isEmpty == true { behavior = nil }
     }
 }
 
@@ -734,16 +742,21 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     /// Decision/component/flow ids this item concerns.
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
+    /// The exact points in flow diagrams where this matters, so the question can be shown
+    /// where it happens in the runtime behavior. Empty on older graphs; `PRGraph.anchors(for:)`
+    /// infers a point from `relatedIds` for those.
+    var flowAnchors: [FlowAnchor] = []
 
     init(id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
          provenance: Provenance = .interpretation, confidence: Confidence? = nil,
-         explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = []) {
+         explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
+         flowAnchors: [FlowAnchor] = []) {
         self.id = id; self.question = question; self.detail = detail; self.kind = kind
         self.provenance = provenance; self.confidence = confidence; self.explanation = explanation
-        self.relatedIds = relatedIds; self.refs = refs
+        self.relatedIds = relatedIds; self.refs = refs; self.flowAnchors = flowAnchors
     }
     enum CodingKeys: String, CodingKey {
-        case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs
+        case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs, flowAnchors
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -756,6 +769,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         explanation = try c.decodeIfPresent(String.self, forKey: .explanation)
         relatedIds = try c.decodeIfPresent([String].self, forKey: .relatedIds) ?? []
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
+        flowAnchors = (try? c.decodeIfPresent([FailableDecode<FlowAnchor>].self, forKey: .flowAnchors))?.compactMap(\.value) ?? []
     }
 }
 
