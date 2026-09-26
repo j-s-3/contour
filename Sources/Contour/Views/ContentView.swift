@@ -19,8 +19,7 @@ struct ContentView: View {
     @Namespace private var markNamespace
 
     var body: some View {
-        Group {
-            if needsOnboarding {
+        Group {            if needsOnboarding {
                 WelcomeWizard { firstURL in
                     needsOnboarding = false
                     if let firstURL { store.load(prURL: firstURL) }
@@ -265,7 +264,7 @@ struct ContentView: View {
     private func isActive(_ target: NavigationTarget) -> Bool {
         switch (store.current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
-             (.flows, .flows), (.diff, .diff):
+             (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
              (.consideration(_), .decisions), (.flowDetail(_), .flows),
@@ -292,6 +291,12 @@ struct ContentView: View {
         case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
         default: return nil
         }
+    }
+
+    /// The code reference a navigation target asks the raw diff to land on.
+    private var diffFocus: CodeRef? {
+        if case .diffLocation(let ref) = store.current { return ref }
+        return nil
     }
 
     /// The decision a navigation target asks Decisions to open, and the Overview question
@@ -373,9 +378,9 @@ struct ContentView: View {
             }
         case .files:
             ContentUnavailableView("No file view", systemImage: "doc.text")
-        case .diff:
-            if let diff = store.diffText {
-                DiffView(diff: diff)
+        case .diff, .diffLocation(_):
+            if store.diffText != nil {
+                DiffView(files: store.diffFiles, graph: graph, focus: diffFocus)
             } else {
                 ContentUnavailableView("No diff available", systemImage: "doc.text")
             }

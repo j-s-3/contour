@@ -378,6 +378,13 @@ lines, expand-context, and whole-file. Base-side references (`RefSide.base`) rea
 pre-PR blob via `git show <baseSha>:<path>` rather than the working tree. Jump-to-
 definition/LSP-grade navigation is explicitly deferred (§17).
 
+The raw diff is parsed into files and hunks (`Models/UnifiedDiff.swift`) rather than shown as
+one string: a file list with +/− counts to jump from, collapsible file sections, old and new
+line numbers side by side, and each hunk badged with the decisions and flow stages whose
+`CodeRef`s fall inside it, so the diff links back up the ladder. "Show in diff" (in the code
+viewer and on any code reference's context menu) lands on the reference's file and hunk
+with the cited lines highlighted.
+
 ## 8. GitHub integration
 
 Contour reads GitHub through one of two interchangeable `PRSource` implementations
