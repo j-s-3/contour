@@ -52,6 +52,8 @@ actor AnalysisPipeline {
         var graph: PRGraph
         var checkout: RepoCheckout
         var diff: String
+        /// Whether the graph came from a previous analysis of this exact commit.
+        var fromCache = false
     }
 
     /// - Parameter forceRefresh: bypass any cached analysis for this exact
@@ -88,7 +90,7 @@ actor AnalysisPipeline {
             headSha: ctx.headSha, baseSha: ctx.baseSha, pipelineVersion: Self.pipelineVersion
         ) {
             onProgress(.done, .init(stage: "Done", detail: "using cached analysis — \(cached.graph.decisions.count) decisions, \(cached.graph.components.count) components"))
-            return Result(graph: cached.graph, checkout: checkout, diff: cached.diff)
+            return Result(graph: cached.graph, checkout: checkout, diff: cached.diff, fromCache: true)
         }
 
         // Best-effort issue lookup: never fails the pipeline. Returns nil when there's no

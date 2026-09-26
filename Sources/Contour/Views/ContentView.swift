@@ -15,6 +15,8 @@ struct ContentView: View {
     /// reconsiders). Owning the binding — and reasserting it once fullscreen actually
     /// completes — is what keeps the sidebar from vanishing.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+    /// Carries the Contour mark from the welcome screen into the analysis screen.
+    @Namespace private var markNamespace
 
     var body: some View {
         Group {
@@ -65,18 +67,31 @@ struct ContentView: View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView { url in store.load(prURL: url) }
+                OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
             case .running(let stage):
-                AnalyzingView(stage: stage, log: store.progressLog)
+                AnalyzingView(stage: stage, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
                 FailedView(message: message) { store.phase = .idle }
             case .ready:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView { url in store.load(prURL: url) }
+                    OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
                 }
             }
+        }
+        // Screen changes crossfade (and the mark glides between welcome and analysis);
+        // stage changes within the analysis don't swap the screen, so they don't animate here.
+        .animation(.easeInOut(duration: 0.45), value: screen)
+    }
+
+    /// Which screen `mainBody` shows, ignoring the stage within an analysis.
+    private var screen: Int {
+        switch store.phase {
+        case .idle: return 0
+        case .running: return 1
+        case .failed: return 2
+        case .ready: return 3
         }
     }
 
@@ -120,6 +135,11 @@ struct ContentView: View {
         // an identifier, not a quantity, and must never be group-separated.
         .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
         .toolbar {
+            // Continues the mark from the analysis screen: resolved, then gone.
+            ToolbarItem(placement: .status) {
+                AnalysisStatusIndicator(id: "\(graph.pr.repo)#\(graph.pr.number)@\(graph.pr.headSha)",
+                                        fromCache: store.analysisFromCache)
+            }
             ToolbarItemGroup(placement: .navigation) {
                 Button { store.goBack() } label: { Image(systemName: "chevron.left") }
                     .disabled(!store.canGoBack)
