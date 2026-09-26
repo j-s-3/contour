@@ -44,6 +44,17 @@ struct ContentView: View {
                 store.load(prURL: url)
             }
         }
+        .onChange(of: store.phase) { _, phase in
+            // Companion to CONTOUR_OPEN_PR_URL: land on a specific lens once the PR is ready.
+            guard phase == .ready,
+                  let lens = ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"] else { return }
+            switch lens {
+            case "architecture": store.navigate(to: .architecture)
+            case "flows": store.navigate(to: .flows)
+            case "decisions": store.navigate(to: .decisions)
+            default: break
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
@@ -204,7 +215,7 @@ struct ContentView: View {
     }
 
     /// The node or edge a navigation target asks Architecture to select, if any.
-    private var architectureFocus: ArchitectureView.Selection? {
+    private var architectureFocus: ArchAnchor? {
         switch store.current {
         case .componentDetail(let id): return .node(id)
         case .edgeDetail(let id): return .edge(id)
@@ -242,12 +253,7 @@ struct ContentView: View {
         case .summary:
             SummaryView(graph: graph) { store.navigate(to: $0) }
         case .architecture, .componentDetail(_), .edgeDetail(_):
-            ArchitectureView(
-                graph: graph,
-                focus: architectureFocus,
-                onOpenEvidence: { store.navigate(to: .evidence($0)) },
-                onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
-            )
+            ArchitectureView(graph: graph, focus: architectureFocus)
         case .decisions, .decisionDetail(_), .consideration(_):
             DecisionsView(
                 graph: graph,

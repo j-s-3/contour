@@ -217,33 +217,51 @@ extension PRGraph {
             guard let node = component(id) else { return nil }
             let incoming = resolvedEdges.filter { $0.toId == id }
             let outgoing = resolvedEdges.filter { $0.fromId == id }
-            let decisions = decisions(affecting: id)
+            let decisions = decisions(within: id)
+            let flows = flows(through: id)
+            let ancestors = ancestry(of: id).dropLast().map(\.title)
+            let inside = parts(inside: id)
+            let impl = implementation(of: id)
+            let questions = architectureQuestions(touching: [id], edges: (incoming + outgoing).map(\.id))
             var summary = [node.title]
             if let s = node.summary { summary.append(s.text) }
-            if !incoming.isEmpty {
-                summary.append("Triggered by " + incoming.prefix(3).map { component($0.fromId)?.title ?? $0.fromId }.joined(separator: ", "))
+            if let before = node.delta?.before, let after = node.delta?.after {
+                summary.append("This PR: \(before) → \(after)")
+            } else if !incoming.isEmpty {
+                summary.append("Receives " + incoming.prefix(3).map { "\($0.label) from \(component($0.fromId)?.title ?? $0.fromId)" }.joined(separator: ", "))
             }
-            if let d = decisions.first { summary.append("Related decision: \(d.title)") }
+            if let d = decisions.first { summary.append("Related decision: \(brief(for: d).question)") }
             var detail = """
-            Architecture element "\(node.title)" (\(node.level.label.lowercased()) level, \(node.changeKind.label.lowercased()) by this PR).
+            Architecture part "\(node.title)" (\(node.level.label.lowercased()) level, \(node.changeKind.label.lowercased()) by this PR).
             """
+            if !ancestors.isEmpty { detail += "\nPart of: \(ancestors.joined(separator: " › "))" }
             if let s = node.summary { detail += "\nResponsibility: \(Self.describe(s))" }
-            if !node.implementedBy.isEmpty { detail += "\nImplemented by: \(node.implementedBy.joined(separator: ", "))" }
+            if let delta = node.delta {
+                if let before = delta.before, let after = delta.after { detail += "\nWhat this PR changed about it: \(before) → \(after)" }
+                if let summary = delta.summary { detail += "\nThis PR: \(Self.describe(summary))" }
+            }
+            if !inside.isEmpty { detail += "\nParts inside it: \(inside.map(\.title).joined(separator: ", "))" }
+            let implNames = impl.nodes.map(\.title) + impl.names
+            if !implNames.isEmpty { detail += "\nImplemented by: \(implNames.joined(separator: ", "))" }
             for e in incoming { detail += "\n- Incoming: \(describeEdge(e))" }
             for e in outgoing { detail += "\n- Outgoing: \(describeEdge(e))" }
             if let boundary = boundaries.first(where: { $0.componentIds.contains(id) }) {
                 detail += "\nInside boundary: \(boundary.label) (\(boundary.kind.label))"
             }
+            if let assessment = architecture {
+                detail += "\nThe PR's overall architectural impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)"
+            }
+            for q in questions { detail += "\n- Overview question about this part: \(q.question) \(q.detail)" }
             return ResolvedSubject(
                 subject: subject, kind: .component, title: node.title,
-                lineage: [prLine, "Architecture"],
+                lineage: [prLine, "Architecture"] + ancestors,
                 summary: summary.compactMap(Self.oneLine),
                 detail: detail,
-                componentIds: unique([id] + incoming.map(\.fromId) + outgoing.map(\.toId)),
+                componentIds: unique([id] + inside.map(\.id) + incoming.map(\.fromId) + outgoing.map(\.toId)),
                 decisionIds: unique(node.decisionIds + decisions.map(\.id)),
-                flowIds: unique(node.flowIds + flows(traversing: id).map(\.id)),
+                flowIds: unique(node.flowIds + flows.map(\.id)),
                 edgeIds: (incoming + outgoing).map(\.id),
-                refs: node.refs,
+                refs: unique(node.refs + impl.nodes.flatMap(\.refs)),
                 detailTarget: .componentDetail(id)
             )
 
@@ -252,19 +270,21 @@ extension PRGraph {
             let from = component(edge.fromId)?.title ?? edge.fromId
             let to = component(edge.toId)?.title ?? edge.toId
             let decisions = decisions(forEdge: edge)
-            var summary = ["\(from) → \(to)", "\(edge.label.isEmpty ? "relates to" : edge.label) · \(edge.flow == .async ? "asynchronous" : "synchronous") · \(Self.edgeChangeLabel(edge.change))"]
+            let crossing = edge.previousLabel.map { "\($0) → \(edge.label)" } ?? (edge.label.isEmpty ? "relates to" : edge.label)
+            var summary = ["\(from) → \(to)", "\(crossing) · \(edge.flow == .async ? "asynchronous" : "synchronous") · \(Self.edgeChangeLabel(edge.change))"]
             if let d = decisions.first { summary.append("Related decision: \(d.title)") }
             if let note = edge.note { summary.append(note) }
-            let bothFlows = flows.filter { f in
-                let ids = Set(f.steps.compactMap(\.componentId))
-                return ids.contains(edge.fromId) && ids.contains(edge.toId)
-            }
+            let fromFlows = Set(flows(through: edge.fromId).map(\.id))
+            let bothFlows = flows(through: edge.toId).filter { fromFlows.contains($0.id) }
+            let questions = architectureQuestions(touching: [edge.fromId, edge.toId], edges: [id])
             let endpoints = [edge.fromId, edge.toId].compactMap { resolve(.component($0))?.detail }
+            var detail = "Relationship: \(describeEdge(edge))"
+            for q in questions { detail += "\n- Overview question about this relationship: \(q.question) \(q.detail)" }
             return ResolvedSubject(
                 subject: subject, kind: .relationship, title: "\(from) → \(to)",
                 lineage: [prLine, "Architecture"],
                 summary: summary.compactMap(Self.oneLine),
-                detail: "Relationship: \(describeEdge(edge))\n\nBoth endpoints:\n\n" + endpoints.joined(separator: "\n\n"),
+                detail: detail + "\n\nBoth endpoints:\n\n" + endpoints.joined(separator: "\n\n"),
                 componentIds: [edge.fromId, edge.toId],
                 decisionIds: decisions.map(\.id),
                 flowIds: bothFlows.map(\.id),
@@ -495,6 +515,18 @@ extension PRGraph {
 
     // MARK: - Neighborhood queries used by the context menu
 
+    /// Overview questions that concern these parts (or anything inside them) or these
+    /// relationships, directly or through a decision about them.
+    func architectureQuestions(touching componentIds: [String], edges edgeIds: [String]) -> [Consideration] {
+        let parts = componentIds.reduce(into: Set<String>()) { $0.formUnion(subtreeIds(of: $1)) }
+        return thingsToThinkAbout.filter { item in
+            let related = Set(item.relatedIds)
+            if !related.isDisjoint(with: edgeIds) { return true }
+            if !related.isDisjoint(with: parts) { return true }
+            return item.relatedIds.compactMap(decision).contains { !parts.isDisjoint(with: $0.componentIds) }
+        }
+    }
+
     func decisionIds(affectingAny componentIds: [String]) -> [String] {
         unique(componentIds.flatMap { decisions(affecting: $0).map(\.id) })
     }
@@ -505,6 +537,7 @@ extension PRGraph {
         let from = component(e.fromId)?.title ?? e.fromId
         let to = component(e.toId)?.title ?? e.toId
         var s = "\(from) —\(e.label.isEmpty ? "relates to" : e.label)→ \(to) [\(e.flow == .async ? "async" : "sync"), \(Self.edgeChangeLabel(e.change))"
+        if let previous = e.previousLabel { s += ", previously carried: \(previous)" }
         if e.onCriticalPath { s += ", on a critical path" }
         if e.isTrustBoundary { s += ", crosses a trust boundary" }
         s += "]"

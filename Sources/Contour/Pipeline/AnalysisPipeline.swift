@@ -46,7 +46,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 9
+    static let pipelineVersion = 10
 
     struct Result: Sendable {
         var graph: PRGraph
@@ -174,6 +174,7 @@ actor AnalysisPipeline {
             boundaries: arch.boundaries
         )
         partial.pr.architectureImpact = arch.architectureImpact
+        partial.architecture = arch.architecture
         partial.pr.ticket = ticket
         partial.pr.problemToBeSolved = eli5.problemToBeSolved
         partial.pr.howItWasSolved = eli5.howItWasSolved

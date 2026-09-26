@@ -44,6 +44,7 @@ extension ChangeKind {
         case .changed: return "Changed"
         case .touched: return "Touched"
         case .unchanged: return "Context"
+        case .removed: return "Removed"
         }
     }
     var color: Color {
@@ -52,6 +53,7 @@ extension ChangeKind {
         case .changed: return .blue
         case .touched: return .gray
         case .unchanged: return .secondary
+        case .removed: return .red
         }
     }
 }

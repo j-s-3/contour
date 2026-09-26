@@ -275,7 +275,9 @@ struct FlowStageInspector: View {
 
     @ViewBuilder
     private var implementationRung: some View {
-        if let c = graph.component(node.componentId) {
+        // The part Architecture can actually draw — an implementation node resolves to the
+        // part it implements.
+        if let c = node.componentId.flatMap(graph.drawablePart(for:)) {
             field("Part of") {
                 Button { actions.navigate(.componentDetail(c.id)) } label: {
                     Label(c.title, systemImage: "square.stack.3d.up").font(.callout)
@@ -303,6 +305,14 @@ struct FlowStageInspector: View {
                 Text(step.title).font(.callout.weight(.medium))
                 if step.changeKind == .new || step.changeKind == .changed {
                     Text(step.changeKind.label.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(step.changeKind.color)
+                }
+                Spacer(minLength: 8)
+                if let part = graph.drawablePart(for: step.componentId ?? "") {
+                    Button { actions.navigate(.componentDetail(part.id)) } label: {
+                        Label(part.title, systemImage: "square.stack.3d.up").font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Show in Architecture")
                 }
             }
             if let delta = step.stateDelta {

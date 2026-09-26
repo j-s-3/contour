@@ -76,10 +76,27 @@ struct FlowBehaviorTests {
     }
 
     // MARK: - Older graphs
+    //
+    // The fixtures are regenerated from real runs, so these find things by what they are —
+    // the file flow, the stdin flow, the step this PR added — rather than by captured ids.
+
+    private func fileFlow(_ graph: PRGraph) throws -> FlowNode {
+        try #require(graph.flows.first { $0.id.contains("file") })
+    }
+    private func stdinFlow(_ graph: PRGraph) throws -> FlowNode {
+        try #require(graph.flows.first { $0.id.contains("stdin") })
+    }
+    /// The review question that names the stdin flow: binary bytes arriving after a short
+    /// first read on a pipe.
+    private func pipeQuestion(_ graph: PRGraph) throws -> Consideration {
+        let stdin = try stdinFlow(graph)
+        return try #require(graph.thingsToThinkAbout.first { $0.relatedIds.contains(stdin.id) })
+    }
 
     @Test func olderFlowsAreNamedByTheirTriggerNotTheirCallChain() throws {
         let graph = try fixtureGraph()
-        let file = try #require(graph.flow("flow-cli-file-binary-detection"))
+        let file = try fileFlow(graph)
+        #expect(file.title.contains("->"))
         #expect(graph.scenarioTitle(for: file) == "bat <file>")
         var modern = file
         modern.behavior = FlowBehavior(nodes: [FlowBehaviorNode(id: "t", label: "Open a file", kind: .trigger)])
@@ -89,49 +106,52 @@ struct FlowBehaviorTests {
 
     @Test func olderFlowsCondenseToATriggerAndTheirStorySteps() throws {
         let graph = try fixtureGraph()
-        let file = try #require(graph.flow("flow-cli-file-binary-detection"))
+        let file = try fileFlow(graph)
         let behavior = graph.behavior(for: file)
         #expect(behavior.nodes.first?.kind == .trigger)
         #expect(behavior.nodes.count == file.storySteps.count + 1)
         #expect(behavior.nodes.last?.kind == .outcome)
         #expect(behavior.edges.count == behavior.nodes.count - 1)
-        // Every implementation step lands under exactly one stage.
-        #expect(behavior.nodes.flatMap(\.stepIds).count == file.steps.count)
-        // Opening the file is context; peeking at the buffer is what this PR added.
+        // Every implementation step lands under exactly one stage, in trace order.
+        #expect(behavior.nodes.flatMap(\.stepIds) == file.steps.map(\.id))
+        // Opening the file is context; the step this PR added marks its stage as changed.
         #expect(behavior.nodes[1].change == .existing)
-        #expect(behavior.nodes[2].change != .existing)
-        #expect(behavior.nodes[2].stepIds.contains("snapshot-prefix"))
+        let added = try #require(file.steps.first { $0.changeKind == .new })
+        let addedStage = try #require(behavior.nodes.first { $0.stepIds.contains(added.id) })
+        #expect(addedStage.change != .existing)
+        #expect(addedStage.id != behavior.nodes[1].id)
         // Classification lands on the classify stage, not the fallback before it.
-        let classify = try #require(behavior.nodes.first { $0.label.hasPrefix("Classify") })
-        #expect(classify.stepIds.contains("classify-content"))
+        let classify = try #require(file.steps.first { $0.title.localizedCaseInsensitiveContains("classify") })
+        let classifyStage = try #require(behavior.nodes.first { $0.stepIds.contains(classify.id) })
+        #expect(classifyStage.label.localizedCaseInsensitiveContains("classif"))
     }
 
     @Test func decisionsAppearAtThePointTheyShapeTheFlow() throws {
         let graph = try fixtureGraph()
-        let file = try #require(graph.flow("flow-cli-file-binary-detection"))
+        let file = try fileFlow(graph)
         let behavior = graph.behavior(for: file)
         let decisions = graph.annotations(for: file).filter { $0.kind == .decision }
-        #expect(Set(decisions.map(\.targetId)) == ["inspect-first-kb-not-first-line", "non-blocking-buffered-snapshot"])
+        // The design decisions, and only those — implementation details stay out of the diagram.
+        #expect(Set(decisions.map(\.targetId)) == Set(graph.primaryDecisions.map(\.id)))
+        #expect(!graph.implementationDecisions.isEmpty)
         // Pinned to a changed stage, never to unchanged context.
         for annotation in decisions {
             #expect(behavior.node(annotation.nodeId)?.change != .existing)
         }
-        // Implementation details stay out of the diagram.
-        #expect(!decisions.contains { $0.targetId == "skip-read-on-empty-input" })
     }
 
     @Test func aReviewQuestionAppearsOnlyInTheFlowItConcerns() throws {
         let graph = try fixtureGraph()
-        let file = try #require(graph.flow("flow-cli-file-binary-detection"))
-        let stdin = try #require(graph.flow("flow-stdin-custom-reader-detection"))
-        let chunking = "short-first-read-misses-binary"
-        #expect(graph.annotations(for: stdin).contains { $0.kind == .question && $0.targetId == chunking })
-        #expect(!graph.annotations(for: file).contains { $0.kind == .question && $0.targetId == chunking })
+        let question = try pipeQuestion(graph)
+        #expect(graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
+        #expect(!graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
     }
 
     @Test func anAnchoredQuestionSitsExactlyWhereTheJudgmentStagePutIt() throws {
         var graph = try fixtureGraph()
-        let index = try #require(graph.flows.firstIndex { $0.id == "flow-stdin-custom-reader-detection" })
+        let stdin = try stdinFlow(graph)
+        let question = try pipeQuestion(graph)
+        let index = try #require(graph.flows.firstIndex { $0.id == stdin.id })
         graph.flows[index].behavior = FlowBehavior(
             nodes: [
                 FlowBehaviorNode(id: "pipe", label: "Pipe input", kind: .trigger),
@@ -140,16 +160,16 @@ struct FlowBehaviorTests {
             ],
             edges: [FlowBehaviorEdge(fromId: "pipe", toId: "inspect"), FlowBehaviorEdge(fromId: "inspect", toId: "classify")]
         )
-        let q = try #require(graph.pr.considerations?.firstIndex { $0.id == "short-first-read-misses-binary" })
-        graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: "flow-stdin-custom-reader-detection", nodeId: "classify")]
-        let annotation = graph.annotations(for: graph.flows[index]).first { $0.targetId == "short-first-read-misses-binary" }
+        let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: stdin.id, nodeId: "classify")]
+        let annotation = graph.annotations(for: graph.flows[index]).first { $0.targetId == question.id }
         #expect(annotation?.nodeId == "classify")
     }
 
     @Test func aDecisionKnowsWhichFlowsItAppearsIn() throws {
         let graph = try fixtureGraph()
-        let appearances = graph.flowAppearances(ofDecision: "non-blocking-buffered-snapshot")
-        #expect(appearances.map(\.flow.id).contains("flow-stdin-custom-reader-detection"))
+        let decisionId = try #require(graph.reviewDecisionId(for: try pipeQuestion(graph)))
+        #expect(graph.flowAppearances(ofDecision: decisionId).map(\.flow.id).contains(try stdinFlow(graph).id))
     }
 
     // MARK: - Layout
@@ -207,17 +227,21 @@ struct FlowBehaviorTests {
     }
 
     @Test func aCrowdedStageShowsAFewNotesAndCountsTheRest() throws {
-        let graph = try fixtureGraph()
-        let stdin = try #require(graph.flow("flow-stdin-custom-reader-detection"))
-        let notes = graph.annotations(for: stdin)
-        let crowded = try #require(Dictionary(grouping: notes, by: \.nodeId).max { $0.value.count < $1.value.count })
-        #expect(crowded.value.count > BehaviorDiagramLayoutEngine.maxNotesPerStage)
-        let layout = BehaviorDiagramLayoutEngine.layout(graph.behavior(for: stdin), mode: .delta, annotations: notes)
-        #expect(layout.annotations.filter { $0.annotation.nodeId == crowded.key }.count == BehaviorDiagramLayoutEngine.maxNotesPerStage)
-        #expect(layout.overflow.first { $0.nodeId == crowded.key }?.count == crowded.value.count - BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        let graph = ContourSampleData.publishTriggeredReindex
+        let flow = try #require(graph.flow("publish-index-flow"))
+        let behavior = graph.behavior(for: flow).visible(in: .delta)
+        let notes = (0..<5).map { i in
+            FlowAnnotation(kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
+                           text: "A note long enough to wrap onto a second line in the diagram \(i)")
+        }
+        let cap = BehaviorDiagramLayoutEngine.maxNotesPerStage
+        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes)
+        #expect(layout.annotations.count == cap)
+        #expect(layout.overflow.first { $0.nodeId == "queue" }?.count == notes.count - cap)
         // Nothing hangs into the next stage.
-        let next = try #require(layout.nodes.filter { $0.frame.minY > layout.node(crowded.key)!.frame.maxY }.min { $0.frame.minY < $1.frame.minY })
+        let next = try #require(layout.node("rebuild"))
         #expect(layout.overflow.allSatisfy { $0.frame.maxY < next.frame.minY })
+        #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
     }
 
     @Test func boundariesContainTheirStages() throws {

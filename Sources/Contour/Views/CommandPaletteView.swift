@@ -73,8 +73,9 @@ struct CommandPaletteView: View {
                 store.navigate(to: .decisionDetail(d.id))
             })
         }
-        for c in graph.components {
-            commands.append(.init(title: c.title, subtitle: "Component", symbol: "square.stack.3d.up") {
+        for c in graph.architectureParts {
+            let parent = c.parentId.flatMap(graph.component).map { "Part of \($0.title)" }
+            commands.append(.init(title: c.title, subtitle: parent ?? "Architecture", symbol: "square.stack.3d.up") {
                 store.navigate(to: .componentDetail(c.id))
             })
         }

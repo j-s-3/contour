@@ -1,343 +1,492 @@
 import SwiftUI
+import AppKit
 
-/// Which snapshot the diagram is showing. Delta is the default — it draws enough existing
-/// architecture for context but pushes the reviewer's eye to what this PR changed.
+/// Which snapshot the drawing shows. Delta is the default: the existing architecture for
+/// context, with only what this PR changed drawing the eye.
 enum ArchMode: String, CaseIterable, Identifiable {
-    case before, after, delta
+    case before, delta, after
     var id: String { rawValue }
     var label: String {
         switch self {
         case .before: return "Before"
-        case .after: return "After"
         case .delta: return "Delta"
+        case .after: return "After"
         }
     }
 }
 
-extension EdgeChange {
+/// How a box or arrow is drawn. Only Delta distinguishes these; Before and After are
+/// coherent snapshots drawn quietly throughout.
+enum ArchEmphasis: Equatable {
+    case context, changed, added, removed
+
     var color: Color {
         switch self {
-        case .new: return .green
+        case .context: return .secondary
         case .changed: return .blue
-        case .existing: return .secondary
+        case .added: return .green
         case .removed: return .red
         }
     }
+
+    var word: String {
+        switch self {
+        case .context: return "Context"
+        case .changed: return "Changed"
+        case .added: return "New"
+        case .removed: return "Removed"
+        }
+    }
 }
 
-/// The native architecture diagram (§4.3). Directional, labeled edges are the primary
-/// content: line style encodes synchronous (solid) vs asynchronous (dashed), weight/color
-/// encodes the change kind so a newly-introduced interaction reads as the delta, and a
-/// dashed orange treatment marks trust-boundary crossings. Boundaries render as containers
-/// behind their members. Canvas draws connectors/arrowheads/labels; transparent overlays
-/// give real per-node and per-edge hit-testing (this is not a static image or web render).
-struct ArchitectureDiagramView: View {
-    let components: [ComponentNode]
-    let edges: [ArchitectureEdge]
-    let boundaries: [SystemBoundary]
-    let mode: ArchMode
-    var selectedNodeId: String?
-    var selectedEdgeId: String?
-    var onSelectNode: (ComponentNode) -> Void
-    var onSelectEdge: (ArchitectureEdge) -> Void
+/// Everything one box shows. Implementation counts and provenance live in the inspector.
+struct ArchBox: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var purpose: String?
+    var emphasis: ArchEmphasis
+    /// The part's own before → after phrases. In Before/After only one side is set.
+    var changeBefore: String?
+    var changeAfter: String?
+    /// The design decision that explains this part, as its question.
+    var decision: String?
+    var decisionId: String?
+    var moreDecisions: Int = 0
+    var questions: Int = 0
+    /// A part outside the one being zoomed into: drawn small and quiet.
+    var isNeighbor = false
+    var hasInside = false
 
-    @State private var hoveredId: String?
+    var showsChange: Bool { changeBefore != nil || changeAfter != nil || emphasis != .context }
+}
+
+/// Everything one arrow shows.
+struct ArchArrow: Identifiable, Equatable {
+    var id: String
+    var fromId: String
+    var toId: String
+    var label: String
+    var previousLabel: String?
+    var emphasis: ArchEmphasis
+    var isAsync: Bool
+    var questions: Int = 0
+    var decisions: Int = 0
+}
+
+struct ArchContainer: Identifiable, Equatable {
+    var id: String
+    var label: String
+    var kind: BoundaryKind
+    var memberIds: [String]
+    /// The part the reviewer zoomed into, drawn as the container of its own parts.
+    var isFocus = false
+}
+
+/// The architecture drawing (§4.3): a handful of labeled boxes and arrows, laid out by
+/// `GraphLayoutEngine` and fitted to the space available. It is sized to be read, not
+/// explored — it scrolls only when a drawing is too big to fit at a comfortable size.
+struct ArchitectureDiagramView: View {
+    let boxes: [ArchBox]
+    let arrows: [ArchArrow]
+    let containers: [ArchContainer]
+    var selection: ArchAnchor?
+    var onSelect: (ArchAnchor?) -> Void
+    var onZoomIn: (String) -> Void
+    var onOpenDecision: (String) -> Void
+
+    @State private var hovered: ArchAnchor?
+
+    /// Below this, the drawing scrolls instead of shrinking further.
+    private let minimumScale: CGFloat = 0.62
 
     var body: some View {
-        let layout = GraphLayoutEngine.layout(components: components, edges: edges, boundaries: boundaries)
-        let trustNodeIds = trustBoundaryNodeIds(from: layout.edges)
-
-        ScrollView([.horizontal, .vertical]) {
-            ZStack(alignment: .topLeading) {
-                ForEach(layout.boundaries) { boundaryBox($0) }
-
-                Canvas { context, _ in
-                    for placed in layout.edges { drawEdge(placed, in: &context) }
-                }
+        GeometryReader { geo in
+            let available = CGSize(width: max(geo.size.width - 48, 1), height: max(geo.size.height - 48, 1))
+            let (layout, fit) = bestLayout(for: available)
+            let scale = max(fit, minimumScale)
+            let scaled = CGSize(width: layout.size.width * scale, height: layout.size.height * scale)
+            let drawing = canvas(layout)
                 .frame(width: layout.size.width, height: layout.size.height)
-                .allowsHitTesting(false)
+                .scaleEffect(scale, anchor: .topLeading)
+                .frame(width: scaled.width, height: scaled.height, alignment: .topLeading)
 
-                ForEach(layout.nodes) { placed in
-                    nodeBox(placed.component, onTrustBoundary: trustNodeIds.contains(placed.component.id))
-                        .frame(width: placed.frame.width, height: placed.frame.height)
-                        .position(x: placed.frame.midX, y: placed.frame.midY)
-                        .onTapGesture { onSelectNode(placed.component) }
-                        .onHover { hoveredId = $0 ? placed.component.id : nil }
-                        .reviewContextMenu(.component(placed.component.id))
+            Group {
+                if fit >= minimumScale {
+                    drawing.frame(width: geo.size.width, height: geo.size.height)
+                } else {
+                    ScrollView([.horizontal, .vertical]) {
+                        drawing.padding(24)
+                    }
                 }
+            }
+            .background(Color.clear.contentShape(Rectangle()).onTapGesture { onSelect(nil) })
+        }
+    }
 
-                // Edge labels double as hit targets — tapping one selects the relationship.
-                // Drawn last (on top of node boxes): each label is width-capped to the
-                // column gap it lives in, so it shouldn't physically reach a node box, but
-                // if anything ever does overlap, the label must win, never get clipped
-                // behind an opaque box the way an unlabeled connector would.
-                ForEach(layout.edges) { placed in
-                    edgeLabel(placed)
-                        .position(placed.labelPoint)
-                        .onTapGesture { onSelectEdge(placed.edge) }
-                        .reviewContextMenu(.relationship(placed.edge.id))
+    /// Left-to-right reads best and wins unless the pane is shaped so that top-to-bottom
+    /// shows the drawing clearly larger.
+    private func bestLayout(for available: CGSize) -> (ArchDiagramLayout, CGFloat) {
+        let nodes = boxes.map { GraphLayoutEngine.NodeSpec(id: $0.id, size: ArchMetrics.size(of: $0)) }
+        let edges = arrows.map { GraphLayoutEngine.EdgeSpec(id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: ArchMetrics.size(of: $0)) }
+        let groups = containers.map { GraphLayoutEngine.GroupSpec(id: $0.id, memberIds: $0.memberIds) }
+        func fit(_ l: ArchDiagramLayout) -> CGFloat {
+            min(1, available.width / max(l.size.width, 1), available.height / max(l.size.height, 1))
+        }
+        let across = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: groups, vertical: false)
+        guard fit(across) < 1 else { return (across, 1) }
+        let down = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: groups, vertical: true)
+        return fit(down) > fit(across) * 1.15 ? (down, fit(down)) : (across, fit(across))
+    }
+
+    // MARK: - Drawing
+
+    private func canvas(_ layout: ArchDiagramLayout) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear.contentShape(Rectangle()).onTapGesture { onSelect(nil) }
+
+            ForEach(layout.boundaries) { placed in
+                // A container split into runs comes back as "id#0", "id#1".
+                let base = placed.id.split(separator: "#").first.map(String.init) ?? placed.id
+                if let container = containers.first(where: { $0.id == base }) {
+                    containerView(container)
+                        .frame(width: placed.frame.width, height: placed.frame.height)
+                        .offset(x: placed.frame.minX, y: placed.frame.minY)
+                }
+            }
+
+            Canvas { context, _ in
+                for placed in layout.edges {
+                    if let arrow = arrows.first(where: { $0.id == placed.id }) { draw(arrow, placed, in: &context) }
                 }
             }
             .frame(width: layout.size.width, height: layout.size.height)
-            .padding(20)
-            // Pin content to the top-leading corner explicitly — a diagram smaller than
-            // the available pane must never appear vertically centered with dead space
-            // above it; it should read top-down like the rest of the app.
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .overlay(alignment: .bottomLeading) { legend }
-    }
+            .allowsHitTesting(false)
 
-    // MARK: - Edges
-
-    private func drawEdge(_ placed: ArchDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
-        let e = placed.edge
-        let dim = shouldFade(edgeChange: e.change)
-        let baseColor = e.isTrustBoundary ? Color.orange : e.change.color
-        let color = baseColor.opacity(dim ? 0.28 : (e.change == .existing ? 0.55 : 0.95))
-
-        var path = Path()
-        path.move(to: placed.from)
-        if let via = placed.via {
-            // Routed edge: rise into the reserved skip lane close to the source, travel
-            // flat at that height clear of every row in between (the whole point — a
-            // midpoint-only arc can still dip back down over an intervening column if that
-            // column happens to share the target's row), then only descend once we're in
-            // the final gap immediately before the target column.
-            let span = placed.to.x - placed.from.x
-            let legLength = max(1, min(40, span * 0.25))
-            let riseX = placed.from.x + legLength
-            let descendX = max(riseX, placed.to.x - legLength)
-            let apexY = via.y
-            path.addCurve(to: CGPoint(x: riseX, y: apexY),
-                          control1: CGPoint(x: placed.from.x + legLength * 0.4, y: placed.from.y),
-                          control2: CGPoint(x: riseX, y: apexY))
-            if descendX > riseX {
-                path.addLine(to: CGPoint(x: descendX, y: apexY))
+            ForEach(layout.nodes) { placed in
+                if let box = boxes.first(where: { $0.id == placed.id }) {
+                    boxView(box)
+                        .frame(width: placed.frame.width, height: placed.frame.height)
+                        .offset(x: placed.frame.minX, y: placed.frame.minY)
+                }
             }
-            path.addCurve(to: placed.to,
-                          control1: CGPoint(x: descendX, y: apexY),
-                          control2: CGPoint(x: placed.to.x - legLength * 0.4, y: placed.to.y))
-        } else {
-            let midX = (placed.from.x + placed.to.x) / 2
-            path.addCurve(to: placed.to,
-                          control1: CGPoint(x: midX, y: placed.from.y),
-                          control2: CGPoint(x: midX, y: placed.to.y))
+
+            ForEach(layout.edges) { placed in
+                if let arrow = arrows.first(where: { $0.id == placed.id }) {
+                    // Sized by its own text (the layout reserved room for it), centered on the line.
+                    labelView(arrow)
+                        .fixedSize()
+                        .position(placed.labelCenter)
+                }
+            }
         }
-
-        var dash: [CGFloat] = []
-        if e.flow == .async { dash = [6, 4] }
-        if e.change == .removed { dash = [3, 3] }
-        if e.isTrustBoundary && dash.isEmpty { dash = [5, 4] }
-
-        context.stroke(path, with: .color(color),
-                       style: StrokeStyle(lineWidth: edgeWidth(e), lineCap: .round, dash: dash))
-
-        // Heavy "new critical path" edges get a second, translucent underlay so they read
-        // as the thickest thing on the canvas without a solid slab.
-        if e.change == .new && e.onCriticalPath {
-            context.stroke(path, with: .color(color.opacity(0.25)),
-                           style: StrokeStyle(lineWidth: edgeWidth(e) + 5, lineCap: .round))
-        }
-
-        // Arrowhead at the target.
-        let angle = atan2(placed.to.y - placed.from.y, placed.to.x - placed.from.x)
-        let tip = placed.to
-        let size: CGFloat = e.change == .new ? 11 : 9
-        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
-        var arrow = Path()
-        arrow.move(to: tip)
-        arrow.addLine(to: CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)))
-        arrow.addLine(to: CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
-        arrow.closeSubpath()
-        context.fill(arrow, with: .color(color))
+        .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
     }
 
-    private func edgeWidth(_ e: ArchitectureEdge) -> CGFloat {
-        switch e.change {
-        case .new: return e.onCriticalPath ? 3.4 : 2.4
-        case .changed: return 2.0
-        case .existing: return 1.2
-        case .removed: return 1.4
+    // MARK: Boxes
+
+    private func boxView(_ box: ArchBox) -> some View {
+        let selected = selection == .node(box.id)
+        let isHovered = hovered == .node(box.id)
+        let accent = box.emphasis.color
+        let quiet = box.emphasis == .context
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(box.title)
+                    .font(.system(size: box.isNeighbor ? ArchMetrics.neighborTitleSize : ArchMetrics.titleSize, weight: .semibold))
+                    .foregroundStyle(quiet ? AnyShapeStyle(.primary.opacity(box.isNeighbor ? 0.6 : 0.85)) : AnyShapeStyle(.primary))
+                    .strikethrough(box.emphasis == .removed)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+                if box.hasInside {
+                    Button { onZoomIn(box.id) } label: {
+                        Image(systemName: "plus.magnifyingglass").font(.system(size: 11))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Look inside \(box.title)")
+                }
+            }
+            if let purpose = box.purpose, !box.isNeighbor {
+                Text(purpose)
+                    .font(.system(size: ArchMetrics.bodySize))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(ArchMetrics.purposeLines)
+                    .padding(.top, ArchMetrics.titleToPurpose)
+            }
+            if box.showsChange, !box.isNeighbor {
+                VStack(alignment: .leading, spacing: 2) {
+                    if box.emphasis != .context {
+                        Text(box.emphasis.word.uppercased())
+                            .font(.system(size: ArchMetrics.tagSize, weight: .bold))
+                            .tracking(0.6)
+                            .foregroundStyle(accent)
+                    }
+                    changePhrase(box)
+                }
+                .padding(.top, ArchMetrics.sectionGap)
+            }
+            if let decision = box.decision, !box.isNeighbor {
+                Button { box.decisionId.map(onOpenDecision) } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("◇").font(.system(size: ArchMetrics.markerSize, weight: .semibold))
+                        Text(decision + (box.moreDecisions > 0 ? "  +\(box.moreDecisions)" : ""))
+                            .font(.system(size: ArchMetrics.markerSize))
+                            .lineLimit(ArchMetrics.decisionLines)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .foregroundStyle(.purple)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open this decision")
+                .padding(.top, ArchMetrics.sectionGap)
+            }
+            if box.questions > 0, !box.isNeighbor {
+                Label(box.questions == 1 ? "Review question" : "\(box.questions) review questions",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: ArchMetrics.markerSize, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .padding(.top, ArchMetrics.markerGap)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, ArchMetrics.padding)
+        .padding(.vertical, ArchMetrics.padding - 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(.background))
+        .background(RoundedRectangle(cornerRadius: 10).fill(quiet ? Color.clear : accent.opacity(0.07)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).strokeBorder(
+                selected ? Color.accentColor : (quiet ? Color.secondary.opacity(box.isNeighbor ? 0.25 : 0.4) : accent.opacity(0.9)),
+                style: StrokeStyle(lineWidth: selected ? 2.5 : (quiet ? 1 : 2), dash: box.emphasis == .removed ? [5, 4] : [])
+            )
+        )
+        .shadow(color: .black.opacity(isHovered ? 0.16 : 0.05), radius: isHovered ? 6 : 2, y: 1)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture { onSelect(.node(box.id)) }
+        .onHover { hovered = $0 ? .node(box.id) : (hovered == .node(box.id) ? nil : hovered) }
+        .reviewContextMenu(.component(box.id))
+        .help(box.purpose ?? box.title)
     }
 
     @ViewBuilder
-    private func edgeLabel(_ placed: ArchDiagramLayout.PlacedEdge) -> some View {
-        let e = placed.edge
-        let dim = shouldFade(edgeChange: e.change)
-        let selected = selectedEdgeId == e.id
-        VStack(spacing: 1) {
-            HStack(spacing: 3) {
-                if e.flow == .async {
-                    Image(systemName: "clock.arrow.circlepath").font(.system(size: 8))
-                }
-                if e.isTrustBoundary {
-                    Image(systemName: "lock.shield").font(.system(size: 8)).foregroundStyle(.orange)
-                }
-                Text(e.label.isEmpty ? "relates to" : e.label)
-                    .font(.caption2.weight(e.change == .new ? .bold : .regular))
+    private func changePhrase(_ box: ArchBox) -> some View {
+        let color = box.emphasis == .context ? Color.secondary : box.emphasis.color
+        switch (box.changeBefore, box.changeAfter) {
+        case let (before?, after?):
+            (Text(before).foregroundStyle(.secondary).strikethrough(true, color: .secondary)
+             + Text("  →  ").foregroundStyle(.tertiary)
+             + Text(after).foregroundStyle(color))
+                .font(.system(size: ArchMetrics.bodySize, weight: .medium))
+                .lineLimit(ArchMetrics.changeLines)
+        case let (only?, nil), let (nil, only?):
+            Text(only).font(.system(size: ArchMetrics.bodySize, weight: .medium)).foregroundStyle(color)
+                .lineLimit(ArchMetrics.changeLines)
+        case (nil, nil):
+            EmptyView()
+        }
+    }
+
+    // MARK: Arrows
+
+    private func draw(_ arrow: ArchArrow, _ placed: ArchDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
+        guard placed.points.count >= 2 else { return }
+        let selected = selection == .edge(arrow.id)
+        let color: Color
+        let width: CGFloat
+        switch arrow.emphasis {
+        case .context: color = Color.secondary.opacity(0.55); width = 1.4
+        case .changed: color = .blue; width = 2.4
+        case .added: color = .green; width = 2.6
+        case .removed: color = Color.red.opacity(0.8); width = 1.8
+        }
+        let stroke = selected ? Color.accentColor : color
+        var dash: [CGFloat] = []
+        if arrow.isAsync { dash = [7, 5] }
+        if arrow.emphasis == .removed { dash = [4, 4] }
+
+        context.stroke(Self.roundedPath(placed.points), with: .color(stroke),
+                       style: StrokeStyle(lineWidth: selected ? width + 0.8 : width, lineCap: .round, lineJoin: .round, dash: dash))
+
+        let tip = placed.points[placed.points.count - 1]
+        let prev = placed.points[placed.points.count - 2]
+        let angle = atan2(tip.y - prev.y, tip.x - prev.x)
+        let size: CGFloat = arrow.emphasis == .context ? 8 : 10
+        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
+        var head = Path()
+        head.move(to: tip)
+        head.addLine(to: CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)))
+        head.addLine(to: CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
+        head.closeSubpath()
+        context.fill(head, with: .color(stroke))
+    }
+
+    /// An orthogonal polyline with softened corners.
+    static func roundedPath(_ points: [CGPoint]) -> Path {
+        var path = Path()
+        path.move(to: points[0])
+        for i in 1..<points.count {
+            if i < points.count - 1 {
+                let a = points[i - 1], b = points[i], c = points[i + 1]
+                let room = min(hypot(b.x - a.x, b.y - a.y), hypot(c.x - b.x, c.y - b.y)) / 2
+                path.addArc(tangent1End: b, tangent2End: c, radius: min(8, room))
+            } else {
+                path.addLine(to: points[i])
+            }
+        }
+        return path
+    }
+
+    private func labelView(_ arrow: ArchArrow) -> some View {
+        let selected = selection == .edge(arrow.id)
+        let color = arrow.emphasis == .context ? Color.secondary : arrow.emphasis.color
+        return VStack(spacing: 1) {
+            if let previous = arrow.previousLabel {
+                Text(previous)
+                    .font(.system(size: ArchMetrics.previousLabelSize))
+                    .strikethrough(true, color: .secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
-                if e.change == .removed {
-                    Text("removed").font(.system(size: 8).weight(.bold)).foregroundStyle(.red)
-                }
-                // The full note / critical-path callout lives in the inspector, not on the
-                // canvas — a small warning glyph is enough of a hint here to stay legible.
-                if e.onCriticalPath && e.change == .new {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8)).foregroundStyle(.orange)
-                }
             }
-        }
-        .padding(.horizontal, 5).padding(.vertical, 2)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5))
-        .overlay(
-            RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(selected ? Color.accentColor : (e.change == .new ? e.change.color.opacity(0.7) : Color.secondary.opacity(0.25)),
-                              lineWidth: selected ? 1.6 : (e.change == .new ? 1.2 : 0.8))
-        )
-        .opacity(dim ? 0.5 : 1)
-        // Capped, not `.fixedSize()`: a label wider than the column gap it lives in must
-        // truncate rather than spill into a neighboring node's box — the full text (plus
-        // any note) is always available via the tooltip and, when selected, the detail
-        // panel below the diagram.
-        .frame(maxWidth: GraphLayoutEngine.hGap - 24)
-        .help(e.note?.isEmpty == false ? "\(e.label) — \(e.note!)" : e.label)
-    }
-
-    // MARK: - Nodes
-
-    private func nodeBox(_ c: ComponentNode, onTrustBoundary: Bool) -> some View {
-        let dim = shouldFade(nodeChange: c.changeKind)
-        let emphasized = c.changeKind == .new || c.changeKind == .changed
-        let selected = selectedNodeId == c.id
-        return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text(c.title)
-                    .font(.system(.callout, weight: emphasized ? .semibold : .regular))
+                if arrow.questions > 0 {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                if arrow.decisions > 0 {
+                    Text("◇").foregroundStyle(.purple)
+                }
+                if arrow.isAsync {
+                    Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                }
+                Text(arrow.label)
+                    .foregroundStyle(arrow.emphasis == .context ? AnyShapeStyle(.secondary) : AnyShapeStyle(color))
+                    .strikethrough(arrow.emphasis == .removed)
                     .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: ArchMetrics.labelMaxWidth)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
             }
-            HStack(spacing: 6) {
-                ChangeKindBadge(kind: c.changeKind)
-                if onTrustBoundary {
-                    Image(systemName: "lock.shield").font(.caption2).foregroundStyle(.orange)
-                }
-                if !c.implementedBy.isEmpty {
-                    Text("\(c.implementedBy.count) impl").font(.caption2).foregroundStyle(.secondary)
-                }
-            }
+            .font(.system(size: ArchMetrics.labelSize, weight: arrow.emphasis == .context ? .regular : .semibold))
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, ArchMetrics.labelPadH)
+        .padding(.vertical, ArchMetrics.labelPadV)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.background))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(nodeBorderColor(c, selected: selected),
-                              lineWidth: selected ? 2.4 : (c.changeKind == .new ? 2 : (c.changeKind == .changed ? 1.6 : 1)))
+            RoundedRectangle(cornerRadius: 6).strokeBorder(
+                selected ? Color.accentColor : (arrow.emphasis == .context ? Color.clear : color.opacity(0.5)),
+                lineWidth: selected ? 1.6 : 1)
         )
-        .opacity(dim ? 0.5 : 1)
-        .shadow(color: .black.opacity(hoveredId == c.id ? 0.18 : 0.06), radius: hoveredId == c.id ? 6 : 2, y: 1)
-        .scaleEffect(hoveredId == c.id ? 1.02 : 1.0)
-        .animation(.easeOut(duration: 0.12), value: hoveredId)
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+        .onTapGesture { onSelect(.edge(arrow.id)) }
+        .reviewContextMenu(.relationship(arrow.id))
+        .help(arrow.previousLabel.map { "\($0) → \(arrow.label)" } ?? arrow.label)
     }
 
-    private func nodeBorderColor(_ c: ComponentNode, selected: Bool) -> Color {
-        if selected { return .accentColor }
-        switch c.changeKind {
-        case .new: return .green
-        case .changed: return .blue
-        default: return .secondary.opacity(0.4)
-        }
-    }
+    // MARK: Containers
 
-    // MARK: - Boundaries
-
-    private func boundaryBox(_ placed: ArchDiagramLayout.PlacedBoundary) -> some View {
-        let b = placed.boundary
-        let isTrust = b.kind == .trust
-        let isExternal = b.kind == .external || b.kind == .trust
-        let stroke = isTrust ? Color.orange : (isExternal ? Color.purple : Color.secondary)
+    private func containerView(_ container: ArchContainer) -> some View {
+        let external = [.external, .trust, .network].contains(container.kind)
+        let tint: Color = container.kind == .trust ? .orange : (container.isFocus ? .accentColor : .secondary)
         return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(stroke.opacity(0.045))
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(stroke.opacity(isExternal ? 0.6 : 0.4),
-                              style: StrokeStyle(lineWidth: 1.2, dash: isExternal ? [6, 4] : []))
-            HStack(spacing: 4) {
-                Image(systemName: boundaryGlyph(b.kind)).font(.caption2)
-                Text(b.label.uppercased()).font(.caption2.weight(.bold)).tracking(0.5)
-            }
-            .foregroundStyle(stroke)
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            RoundedRectangle(cornerRadius: 14).fill(tint.opacity(container.isFocus ? 0.05 : 0.035))
+            RoundedRectangle(cornerRadius: 14).strokeBorder(
+                tint.opacity(container.isFocus ? 0.5 : 0.35),
+                style: StrokeStyle(lineWidth: 1.2, dash: external ? [6, 4] : [])
+            )
+            Text(container.label.uppercased())
+                .font(.system(size: 10.5, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(tint.opacity(0.9))
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
         }
-        .frame(width: placed.frame.width, height: placed.frame.height)
-        .position(x: placed.frame.midX, y: placed.frame.midY)
         .allowsHitTesting(false)
     }
+}
 
-    private func boundaryGlyph(_ kind: BoundaryKind) -> String {
-        switch kind {
-        case .application: return "square.dashed"
-        case .process: return "cpu"
-        case .service: return "server.rack"
-        case .datastore: return "cylinder.split.1x2"
-        case .external: return "globe"
-        case .trust: return "lock.shield"
-        case .network: return "network"
-        case .asyncBoundary: return "clock.arrow.circlepath"
+// MARK: - Sizes
+
+/// Text sizes shared by the drawing and the layout, which measures boxes and labels before
+/// SwiftUI draws them so the layout can give every label the room it needs.
+enum ArchMetrics {
+    static let boxWidth: CGFloat = 224
+    static let neighborWidth: CGFloat = 176
+    static let padding: CGFloat = 13
+    static let titleSize: CGFloat = 15
+    static let neighborTitleSize: CGFloat = 13
+    static let bodySize: CGFloat = 12
+    static let tagSize: CGFloat = 9.5
+    static let markerSize: CGFloat = 11.5
+    static let labelSize: CGFloat = 12
+    static let previousLabelSize: CGFloat = 10.5
+    static let labelPadH: CGFloat = 7
+    static let labelPadV: CGFloat = 4
+    static let labelMaxWidth: CGFloat = 190
+    static let titleToPurpose: CGFloat = 4
+    static let sectionGap: CGFloat = 9
+    static let markerGap: CGFloat = 7
+    static let purposeLines = 3
+    static let changeLines = 2
+    static let decisionLines = 2
+
+    static func size(of box: ArchBox) -> CGSize {
+        let width = box.isNeighbor ? neighborWidth : boxWidth
+        let inner = width - padding * 2 - (box.hasInside ? 20 : 0)
+        var height = padding * 2 - 2
+        height += measure(box.title, size: box.isNeighbor ? neighborTitleSize : titleSize, weight: .semibold, width: inner, lines: 2)
+        guard !box.isNeighbor else { return CGSize(width: width, height: max(height, 44)) }
+        let body = width - padding * 2
+        if let purpose = box.purpose {
+            height += titleToPurpose + measure(purpose, size: bodySize, width: body, lines: purposeLines)
         }
-    }
-
-    // MARK: - Helpers
-
-    /// Fading only happens in Delta — Before/After are coherent snapshots shown at full
-    /// strength. In Delta, unchanged context recedes so the eye goes to the change.
-    private func shouldFade(nodeChange: ChangeKind) -> Bool {
-        mode == .delta && (nodeChange == .unchanged || nodeChange == .touched)
-    }
-    private func shouldFade(edgeChange: EdgeChange) -> Bool {
-        mode == .delta && edgeChange == .existing
-    }
-
-    private func trustBoundaryNodeIds(from edges: [ArchDiagramLayout.PlacedEdge]) -> Set<String> {
-        var ids: Set<String> = []
-        for placed in edges where placed.edge.isTrustBoundary {
-            ids.insert(placed.edge.fromId); ids.insert(placed.edge.toId)
+        if box.showsChange {
+            height += sectionGap
+            if box.emphasis != .context { height += measure("CHANGED", size: tagSize, weight: .bold, width: body, lines: 1) + 2 }
+            let phrase = [box.changeBefore, box.changeAfter].compactMap { $0 }.joined(separator: "  →  ")
+            if !phrase.isEmpty { height += measure(phrase, size: bodySize, weight: .medium, width: body, lines: changeLines) }
         }
-        return ids
+        if let decision = box.decision {
+            height += sectionGap + measure(decision + "  +9", size: markerSize, width: body - 14, lines: decisionLines)
+        }
+        if box.questions > 0 {
+            height += markerGap + measure("Review question", size: markerSize, weight: .medium, width: body, lines: 1)
+        }
+        return CGSize(width: width, height: ceil(height + 4))
     }
 
-    private var legend: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 12) {
-                legendLine(color: .green, width: 2.6, dash: [], label: "New relationship")
-                legendLine(color: .blue, width: 2, dash: [], label: "Changed")
-                legendLine(color: .secondary, width: 1.2, dash: [], label: "Existing context")
-            }
-            HStack(spacing: 12) {
-                legendLine(color: .secondary, width: 1.6, dash: [6, 4], label: "Asynchronous / queued")
-                legendLine(color: .orange, width: 1.6, dash: [5, 4], label: "Trust boundary")
-                legendLine(color: .red, width: 1.4, dash: [3, 3], label: "Removed")
-            }
+    static func size(of arrow: ArchArrow) -> CGSize {
+        var glyphs: CGFloat = 0
+        if arrow.questions > 0 { glyphs += 16 }
+        if arrow.decisions > 0 { glyphs += 13 }
+        if arrow.isAsync { glyphs += 16 }
+        let weight: NSFont.Weight = arrow.emphasis == .context ? .regular : .semibold
+        let natural = measureWidth(arrow.label, size: labelSize, weight: weight) + glyphs
+        let textWidth = min(labelMaxWidth, natural)
+        var height = measure(arrow.label, size: labelSize, weight: weight, width: textWidth - glyphs + 1, lines: 2)
+        var width = textWidth
+        if let previous = arrow.previousLabel {
+            width = max(width, min(labelMaxWidth, measureWidth(previous, size: previousLabelSize)))
+            height += 1 + measure(previous, size: previousLabelSize, width: labelMaxWidth, lines: 1)
         }
-        .padding(8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .padding(10)
+        return CGSize(width: ceil(width + labelPadH * 2 + 2), height: ceil(height + labelPadV * 2))
     }
 
-    private func legendLine(color: Color, width: CGFloat, dash: [CGFloat], label: String) -> some View {
-        HStack(spacing: 5) {
-            Canvas { ctx, size in
-                var p = Path()
-                p.move(to: CGPoint(x: 0, y: size.height / 2))
-                p.addLine(to: CGPoint(x: size.width, y: size.height / 2))
-                ctx.stroke(p, with: .color(color), style: StrokeStyle(lineWidth: width, dash: dash))
-            }
-            .frame(width: 22, height: 8)
-            Text(label).font(.caption2)
-        }
+    private static func font(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        NSFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    static func measureWidth(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font(size, weight)]).width)
+    }
+
+    static func measure(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, width: CGFloat, lines: Int) -> CGFloat {
+        let f = font(size, weight)
+        let lineHeight = ceil(f.ascender - f.descender + f.leading)
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: max(width, 1), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: f]
+        )
+        return min(ceil(rect.height), lineHeight * CGFloat(lines))
     }
 }

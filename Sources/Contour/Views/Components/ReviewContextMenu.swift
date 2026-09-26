@@ -87,6 +87,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
             if let target = resolved.detailTarget, resolved.kind != .tradeoff {
                 Button(resolved.kind == .code ? "Show in code" : "Open details") { actions.navigate(target) }
             }
+            showInArchitecture(resolved, graph)
             relatedDecisions(resolved, graph)
             relatedFlows(resolved, graph)
             if resolved.kind != .code { showInCode(resolved) }
@@ -101,6 +102,21 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(url.absoluteString, forType: .string)
                 }
+            }
+        }
+    }
+
+    /// From anything that happens in a part — a flow step, a decision, a behavior stage —
+    /// to that part on the architecture drawing.
+    @ViewBuilder
+    private func showInArchitecture(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
+        let parts = [.component, .relationship, .pullRequest].contains(resolved.kind) ? []
+            : unique(resolved.componentIds.compactMap { graph.drawablePart(for: $0) })
+        if parts.count == 1, let part = parts.first {
+            Button("Show in Architecture") { actions.navigate(.componentDetail(part.id)) }
+        } else if parts.count > 1 {
+            Menu("Show in Architecture") {
+                ForEach(parts) { part in Button(part.title) { actions.navigate(.componentDetail(part.id)) } }
             }
         }
     }
