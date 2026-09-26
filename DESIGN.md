@@ -117,27 +117,59 @@ older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
 
 ### 4.3 Architecture
 
-A native, non-web diagram built to explain the change, not to visualize a dependency
-graph. The primary content is directional, labeled edges (`ArchitectureEdge`): every arrow
-carries a relationship verb ("uploads", "triggers", "reads", "queues"), a synchronous
-(solid) vs. asynchronous (dashed) treatment, and a change classification on the
-*relationship* itself (new / changed / existing / removed) so the eye goes to the
-architectural delta — usually a newly-introduced interaction — rather than to a box that
-happened to change. `SystemBoundary`s draw as containers (application, external service,
-datastore, trust boundary) behind their members. `GraphLayoutEngine` lays nodes out along
-the direction of travel of those edges (sources left, sinks right), keeping boundary
-members contiguous; `ArchitectureDiagramView` renders it with SwiftUI `Canvas` for
-connectors/arrowheads/labels and real hit-tested views for boxes and edge labels.
+"Draw the relevant part of the system on a whiteboard, and show me where this change
+sits." Architecture is a conceptual map one level above the code — the three to seven
+parts a staff engineer would draw in thirty seconds ("Input", "Content Inspection",
+"Rendering"), not the classes the diff touched. Changed files, symbols and call graphs are
+the evidence the architecture stage reads; they are never the boxes. Components changed by
+a PR are not the same thing as architecture changed by a PR, and most PRs change little:
+saying so is a useful result.
 
-`ArchitectureView` adds two pieces of chrome: a **Before / After / Delta** mode (Delta is
-the default — it shows enough existing context but fades it so the change stands out) and
-a **System / Implementation** zoom. Selecting a node or an edge fills an inspector; an
-edge surfaces the decisions it embodies (explicit `edge.decisionIds`, or decisions whose
-components span both endpoints) with a link straight into the Decisions lens, connecting
-architecture to review judgment. When a graph has no rich edges (an old cached analysis),
-`PRGraph.resolvedEdges` degrades gracefully by synthesizing labeled edges from
-`dependsOnIds`. See `Views/Architecture/ArchitectureDiagramView.swift`,
-`ArchitectureView.swift`, and `GraphLayout.swift`.
+The lens opens with the **architectural impact** (`ArchitectureAssessment`: none / low /
+moderate / significant — words, not a score), a one-line headline ("No structural change:
+content inspection now gets a bigger sample") and one or two sentences naming the
+relationship or responsibility that moved. Below it, the drawing:
+
+- **Boxes** show a part's name, its responsibility in about ten words, and, when it
+  changed, a short before → after phrase (`ResponsibilityDelta`: "first line → buffered
+  sample"). Unchanged parts are quiet context.
+- **Arrows** say what crosses them — data, an event, a request ("bytes", "content type") —
+  with the previous label struck through when that changed (`ArchitectureEdge.previousLabel`),
+  a change class (new / changed / existing / removed), and a dashed line when asynchronous.
+- **Containers** (`SystemBoundary`) only where the boundary means something: a process, a
+  service, an external system, a datastore, a trust boundary.
+- **Decisions** (◇, design-level only) and **Overview questions** (⚠) are marked on the box
+  or arrow they explain (`decisionAnchors`/`questionAnchors`), and open the Decisions lens.
+
+**Delta** (the default) colors only the change; **Before** and **After** are plain
+snapshots. Parts nest (`ComponentNode.parentId`), which is how the reviewer zooms: system →
+the parts inside one part (drawn as a container, with its neighbors as quiet context) →
+implementation and code from the inspector. `PRGraph.architectureLevel(path:)` projects the
+graph onto one zoom level: every node and edge is represented by its visible ancestor,
+arrows inside one box disappear, and parallel arrows fold into the most important one — so
+the model can attach an arrow to the sub-part it really enters and the zoomed-out drawing
+still shows one arrow between two boxes.
+
+Selecting a box or arrow opens an inspector beside the drawing (never permanently
+reserved): purpose, what this PR did to it, connections, the review questions and decisions
+that concern it, flows through it, its implementation and code, and Ask about this….
+Implementation counts and provenance live there, not on the canvas.
+
+`GraphLayoutEngine` draws deliberately rather than as a graph: columns follow the
+direction of travel; each boundary is laid out as a block, and blocks whose columns
+overlap stack in separate bands, so a container never encloses a part that isn't in it
+(a boundary whose members sit far apart becomes one container per run); every connector is
+orthogonal, routed straight across, through one elbow in the gap, or along a channel
+reserved below its band, so no line crosses a box; gaps are sized to their labels. The
+drawing fits itself to the pane and turns top-to-bottom when that shows it clearly larger;
+it scrolls only when it can't be read at about two-thirds size. Nothing in the lens takes
+its ideal size from long text: a statement pinned to its wrapped height at the top of a
+non-scrolling detail column once made that column wider than the window and blanked the
+sidebar.
+
+Older graphs still draw: parts without parents are top-level, `resolvedEdges` synthesizes
+"depends on" arrows from `dependsOnIds`, and the header falls back to the prose
+`architectureImpact`. See `Models/ArchitectureModel.swift` and `Views/Architecture/`.
 
 ### 4.4 Decisions
 
@@ -178,8 +210,10 @@ manufacture one. Review progress counts decisions only.
 
 A three-pane picker (flow → step list → step detail) rather than a wall of text. Each
 step's detail shows its component, state delta, branches, external calls, error paths,
-an async-boundary marker, and a caution flag for concrete, code-visible risk. See
-`Views/Flows/FlowsView.swift`.
+an async-boundary marker, and a caution flag for concrete, code-visible risk. A step names
+the architecture part it happens in and opens it there, and the Architecture inspector
+lists the flows through a part: two views of the same model, one of parts and one of time.
+See `Views/Flows/FlowsView.swift`.
 
 ### 4.7 Entry points
 
@@ -199,8 +233,8 @@ conceptual review — the navigation stack (`GraphStore.path`/`forwardStack`) is
 Every boxed element — before/after stages, why/consequence, things to think about,
 architecture nodes and relationships, decisions, tradeoffs, flows and their steps, code
 references — carries the same right-click menu (`.reviewContextMenu`): **Ask about this…**
-(⌘⇧A), then Open details, related decisions/flows, Show in code, Open on GitHub, and Copy
-Link. Asking opens a conversation in the window's inspector column, so it survives
+(⌘⇧A), then Open details, Show in Architecture (for anything that happens in a part),
+related decisions/flows, Show in code, Open on GitHub, and Copy Link. Asking opens a conversation in the window's inspector column, so it survives
 navigation: code citations in an answer open the code viewer beside the thread, and the
 reviewer can pull the lines they're viewing into the conversation.
 
@@ -361,8 +395,9 @@ development, not assumed:
 Five sequential analysis stages, each reading the previous stage's output for cross-linking IDs
 (`Pipeline/AnalysisPipeline.swift`, prompts in `Pipeline/PromptBuilder.swift`):
 
-1. **Architecture** (low effort) — components, `dependsOnIds`, trust boundaries,
-   overall architecture-impact statement.
+1. **Architecture** (low effort) — the conceptual parts (with sub-parts and
+   implementation beneath them), what crosses each relationship, meaningful boundaries,
+   and an impact assessment that is told not to inflate implementation changes.
 2. **Intent** (low effort) — what the author says the PR does, quoted/paraphrased where
    possible.
 3. **Decisions** (high effort) — the handful of decisions worth a reviewer's attention,
@@ -397,7 +432,12 @@ Statement { text, provenance: fact|claim|interpretation, confidence?, source? }
 CodeRef   { path, startLine, endLine, blobSha?, side: head|base }
 
 ComponentNode  { id, title, changeKind, summary?, refs, decisionIds, flowIds,
-                 dependsOnIds, isTrustBoundaryEdge, filesChanged }
+                 dependsOnIds, isTrustBoundaryEdge, filesChanged, level, implementedBy[],
+                 parentId?, delta? { before?, after?, summary? } }
+ArchitectureEdge { id, fromId, toId, label, previousLabel?, flow, change,
+                   isTrustBoundary, onCriticalPath, decisionIds, note? }
+ArchitectureAssessment { impact: none|low|moderate|significant, headline,
+                         explanation?, focusIds[] }
 DecisionNode   { id, title, decision, rationale[], alternatives[], consequences[],
                  confidence, refs, tradeoffs[], componentIds, reviewerState, reviewerNote,
                  level, question?, options[], shape?, why? }
@@ -412,7 +452,8 @@ PRSummary { repo, number, title, author, state, branch, baseBranch, headSha, bas
             intent, filesChanged, additions, deletions, changeMap[],
             architectureImpact?, needsJudgment[], uncertainties[] }
 
-PRGraph { pr, components[], decisions[], flows[], entryPoints[], questions[] }
+PRGraph { pr, components[], decisions[], flows[], entryPoints[], questions[],
+          behaviorChanges[], architectureEdges[], boundaries[], architecture? }
 ```
 
 `PRGraph` is `Codable` end to end and is the only thing `GraphStore` holds — every lens
