@@ -1,75 +1,306 @@
 import SwiftUI
 
-/// The Architecture lens, redesigned (§4.3) to answer "how does this change fit into the
-/// system, and how does behavior move through it" rather than "which class calls which".
+/// The Architecture lens (§4.3): "draw the relevant part of the system on a whiteboard, and
+/// show me where this change sits."
 ///
-/// The diagram is a deliberately laid-out, left-to-right story of directional, labeled
-/// relationships. Two pieces of chrome drive it: a Before / After / Delta mode (Delta is
-/// the default — it shows enough context but emphasizes the architectural change) and a
-/// System / Implementation zoom (System shows conceptual responsibilities; Implementation
-/// reveals the real classes). Selecting a node or an edge fills a detail panel inline below
-/// the diagram — matching the rest of the app's "inspector-free, cross-links live inline"
-/// pattern (see `ContentView`) rather than a second side-by-side pane. That also sidesteps
-/// a real macOS bug: nesting an `HSplitView` inside `NavigationSplitView`'s detail column
-/// intermittently collapses the outer sidebar, which is exactly what a first version of
-/// this view did. An edge's embodied decisions link straight into the Decisions lens.
+/// It opens by saying how much the PR changes the structure — often "no structural change"
+/// — and then draws the handful of conceptual parts involved, with only what changed drawing
+/// the eye (Delta, the default; Before and After are plain snapshots). A part with parts
+/// inside can be zoomed into; implementation and code are reached from the inspector, which
+/// appears only when something is selected. Decisions and Overview questions are marked on
+/// the box or arrow they concern and lead to the Decisions lens.
+///
+/// Everything here is sized to the space it's given: the drawing fits itself to the pane
+/// rather than asking for its natural size. An earlier version put an unbounded frame inside
+/// a two-axis scroll view, which made the detail column wider than the window and left the
+/// sidebar blank (issue #1).
 struct ArchitectureView: View {
     let graph: PRGraph
-    /// A node or edge the navigation target asked for ("Open details" on a component, a
-    /// chat link to a relationship). Takes precedence over the default selection.
-    var focus: Selection? = nil
-    var onOpenEvidence: (CodeRef) -> Void
-    var onOpenDecision: (String) -> Void
+    /// A part or relationship the navigation target asked for ("Open details", a chat link,
+    /// "Show in Architecture" from a flow).
+    var focus: ArchAnchor? = nil
 
     @Environment(\.reviewActions) private var actions
 
-    enum Selection: Equatable {
-        case node(String)
-        case edge(String)
-        case none
-    }
-
-    @State private var selection: Selection = .none
     @State private var mode: ArchMode = .delta
-    @State private var zoom: AbstractionLevel = .system
+    @State private var path: [String] = []
+    @State private var selection: ArchAnchor?
+
+    private var level: ArchLevel { graph.architectureLevel(path: path) }
 
     var body: some View {
+        let level = self.level
         VStack(alignment: .leading, spacing: 0) {
-            controls
-            if let impact = graph.pr.architectureImpact {
-                StatementView(statement: impact)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+            header(level)
+            Divider()
+            if level.nodes.isEmpty {
+                ContentUnavailableView("Nothing to draw", systemImage: "square.stack.3d.up",
+                                       description: Text("The analysis didn't identify any architecture for this PR."))
+            } else {
+                ZStack(alignment: .topTrailing) {
+                    ArchitectureDiagramView(
+                        boxes: boxes(level),
+                        arrows: arrows(level),
+                        containers: containers(level),
+                        selection: selection,
+                        onSelect: { anchor in withAnimation(.easeOut(duration: 0.15)) { selection = anchor } },
+                        onZoomIn: zoom(into:),
+                        onOpenDecision: { actions.navigate(.decisionDetail($0)) }
+                    )
+
+                    if let selection {
+                        ArchitectureInspector(
+                            graph: graph, level: level, anchor: selection,
+                            onSelect: { anchor in self.selection = anchor },
+                            onZoomIn: zoom(into:),
+                            onClose: { withAnimation(.easeOut(duration: 0.15)) { self.selection = nil } }
+                        )
+                        .frame(width: 340)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.2)))
+                        .shadow(color: .black.opacity(0.12), radius: 12, y: 2)
+                        .padding(12)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                legend(level)
             }
-            Divider()
-
-            ArchitectureDiagramView(
-                components: visibleComponents,
-                edges: visibleEdges,
-                boundaries: graph.boundaries,
-                mode: mode,
-                selectedNodeId: selectedNodeId,
-                selectedEdgeId: selectedEdgeId,
-                onSelectNode: { selection = .node($0.id) },
-                onSelectEdge: { selection = .edge($0.id) }
-            )
-            .frame(minHeight: 260, maxHeight: .infinity)
-            .layoutPriority(1)
-
-            Divider()
-
-            detailPanel
-                .frame(minHeight: 150, idealHeight: 210, maxHeight: 260)
         }
-        .onAppear {
-            if let focus { selection = focus } else if selection == .none { selection = defaultSelection }
-            publishFocus()
-        }
-        .onChange(of: focus) { _, new in if let new { selection = new } }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { if let focus { reveal(focus) } else { publishFocus() } }
+        .onChange(of: focus) { _, new in if let new { reveal(new) } }
         .onChange(of: selection) { _, _ in publishFocus() }
+        .onChange(of: mode) { _, _ in dropHiddenSelection() }
         .onDisappear { actions.focus(nil) }
-        .onChange(of: mode) { _, _ in reconcileSelection() }
-        .onChange(of: zoom) { _, _ in reconcileSelection() }
+    }
+
+    // MARK: - Header
+
+    private func header(_ level: ArchLevel) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                impactLabel
+                Spacer()
+                Picker("View", selection: $mode) {
+                    ForEach(ArchMode.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                .help("Delta shows the existing architecture with this PR's change highlighted")
+            }
+            if let headline = graph.architecture?.headline, !headline.isEmpty {
+                Text(headline).font(.title2.weight(.semibold))
+                    .lineLimit(2)
+            }
+            if let explanation = graph.architecture?.explanation ?? graph.pr.architectureImpact {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(explanation.text)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                    ProvenanceMark(provenance: explanation.provenance, confidence: explanation.confidence, source: explanation.source)
+                }
+                .frame(maxWidth: 900, alignment: .leading)
+                .reviewContextMenu(.pullRequest)
+            }
+            if !path.isEmpty { breadcrumb }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+    }
+
+    @ViewBuilder
+    private var impactLabel: some View {
+        HStack(spacing: 8) {
+            Text("ARCHITECTURAL IMPACT")
+                .font(.caption.weight(.semibold)).tracking(0.6).foregroundStyle(.secondary)
+            if let impact = graph.architecture?.impact {
+                Text(impact.label)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(impact.color)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(impact.color.opacity(0.13), in: Capsule())
+            }
+        }
+    }
+
+    private var breadcrumb: some View {
+        HStack(spacing: 6) {
+            Button("System") { zoom(to: []) }.buttonStyle(.link)
+            ForEach(Array(path.enumerated()), id: \.offset) { i, id in
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                if i == path.count - 1 {
+                    Text(graph.component(id)?.title ?? id).fontWeight(.semibold)
+                } else {
+                    Button(graph.component(id)?.title ?? id) { zoom(to: Array(path.prefix(i + 1))) }.buttonStyle(.link)
+                }
+            }
+            Spacer(minLength: 12)
+            Button { zoom(to: Array(path.dropLast())) } label: {
+                Label("Zoom out", systemImage: "minus.magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("-", modifiers: .command)
+        }
+        .font(.callout)
+    }
+
+    // MARK: - What to draw
+
+    private func boxes(_ level: ArchLevel) -> [ArchBox] {
+        let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
+        let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
+        let neighbors = Set(level.context.map(\.id))
+        return level.nodes.compactMap { part in
+            if mode == .before, part.changeKind == .new { return nil }
+            if mode == .after, part.changeKind == .removed { return nil }
+            let changed = [.new, .changed, .removed].contains(part.changeKind)
+            var box = ArchBox(
+                id: part.id, title: part.title, purpose: part.summary?.text,
+                emphasis: mode == .delta ? part.changeKind.emphasis : .context,
+                isNeighbor: neighbors.contains(part.id),
+                hasInside: !neighbors.contains(part.id) && !graph.parts(inside: part.id).isEmpty
+            )
+            if changed {
+                switch mode {
+                case .delta: box.changeBefore = part.delta?.before; box.changeAfter = part.delta?.after
+                case .before: box.changeBefore = part.delta?.before
+                case .after: box.changeAfter = part.delta?.after
+                }
+            }
+            if let marked = decisions[.node(part.id)], let first = marked.first {
+                box.decision = graph.brief(for: first).question
+                box.decisionId = first.id
+                box.moreDecisions = marked.count - 1
+            }
+            box.questions = questions[.node(part.id)]?.count ?? 0
+            return box
+        }
+    }
+
+    private func arrows(_ level: ArchLevel) -> [ArchArrow] {
+        let drawn = Set(boxes(level).map(\.id))
+        let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
+        let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
+        return level.edges.compactMap { le in
+            let e = le.edge
+            guard drawn.contains(le.fromId), drawn.contains(le.toId) else { return nil }
+            if mode == .before, e.change == .new { return nil }
+            if mode == .after, e.change == .removed { return nil }
+            let label = mode == .before ? (e.previousLabel ?? e.label) : e.label
+            return ArchArrow(
+                id: le.id, fromId: le.fromId, toId: le.toId,
+                label: label.isEmpty ? "uses" : label,
+                previousLabel: mode == .delta && e.change == .changed ? e.previousLabel : nil,
+                emphasis: mode == .delta ? e.change.emphasis : .context,
+                isAsync: e.flow == .async,
+                questions: questions[.edge(le.id)]?.count ?? 0,
+                decisions: decisions[.edge(le.id)]?.count ?? 0
+            )
+        }
+    }
+
+    private func containers(_ level: ArchLevel) -> [ArchContainer] {
+        let drawn = Set(boxes(level).map(\.id))
+        return level.boundaries.compactMap { b in
+            let members = b.componentIds.filter(drawn.contains)
+            guard !members.isEmpty else { return nil }
+            return ArchContainer(id: b.id, label: b.label, kind: b.kind, memberIds: members, isFocus: b.id.hasPrefix("focus:"))
+        }
+    }
+
+    @ViewBuilder
+    private func legend(_ level: ArchLevel) -> some View {
+        if mode == .delta {
+            let boxes = boxes(level), arrows = arrows(level)
+            let kinds = Set(boxes.map(\.emphasis) + arrows.map(\.emphasis)).subtracting([.context])
+            let hasDecision = boxes.contains { $0.decision != nil } || arrows.contains { $0.decisions > 0 }
+            let hasQuestion = boxes.contains { $0.questions > 0 } || arrows.contains { $0.questions > 0 }
+            let hasAsync = arrows.contains(where: \.isAsync)
+            if !kinds.isEmpty || hasDecision || hasQuestion || hasAsync {
+                HStack(spacing: 14) {
+                    ForEach([ArchEmphasis.changed, .added, .removed].filter(kinds.contains), id: \.word) { k in
+                        HStack(spacing: 5) {
+                            RoundedRectangle(cornerRadius: 3).strokeBorder(k.color, lineWidth: 1.6).frame(width: 14, height: 10)
+                            Text(k.word)
+                        }
+                    }
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 3).strokeBorder(Color.secondary.opacity(0.5)).frame(width: 14, height: 10)
+                        Text("Existing context")
+                    }
+                    if hasAsync { Label("Asynchronous", systemImage: "clock.arrow.circlepath") }
+                    if hasDecision { Text("◇ Decision").foregroundStyle(.purple) }
+                    if hasQuestion { Label("Review question", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    // MARK: - Zoom and selection
+
+    private func zoom(into id: String) {
+        guard !graph.parts(inside: id).isEmpty else { return }
+        zoom(to: graph.ancestry(of: id).map(\.id))
+    }
+
+    private func zoom(to newPath: [String]) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            let previousFocus = path.last
+            path = newPath
+            // Zooming out keeps the part we came from selected, so the reviewer sees where they were.
+            if let previousFocus, level.contains(previousFocus) {
+                selection = .node(previousFocus)
+            } else {
+                selection = nil
+            }
+        }
+    }
+
+    /// Shows a part or relationship that navigation asked for, zooming in if it's inside
+    /// another part.
+    private func reveal(_ anchor: ArchAnchor) {
+        switch anchor {
+        case .node(let id):
+            guard let part = graph.drawablePart(for: id) else { return }
+            path = graph.architecturePath(showing: part.id)
+            selection = .node(part.id)
+        case .edge(let id):
+            guard let edge = graph.resolvedEdges.first(where: { $0.id == id }) else { return }
+            // The outermost level where this relationship is its own arrow.
+            let candidates = [[]] + graph.ancestry(of: edge.fromId).dropLast().indices.map { i in
+                Array(graph.ancestry(of: edge.fromId).prefix(i + 1).map(\.id))
+            }
+            for candidate in candidates {
+                let level = graph.architectureLevel(path: candidate)
+                if let drawn = level.edges.first(where: { $0.id == id || $0.mergedIds.contains(id) }) {
+                    path = candidate
+                    selection = .edge(drawn.id)
+                    return
+                }
+            }
+        }
+    }
+
+    private func dropHiddenSelection() {
+        guard let selection else { return }
+        let boxes = Set(boxes(level).map(\.id))
+        let arrows = Set(arrows(level).map(\.id))
+        switch selection {
+        case .node(let id) where !boxes.contains(id): self.selection = nil
+        case .edge(let id) where !arrows.contains(id): self.selection = nil
+        default: break
+        }
     }
 
     /// Tells the window what "this" is for ⌘⇧A.
@@ -77,315 +308,40 @@ struct ArchitectureView: View {
         switch selection {
         case .node(let id): actions.focus(.component(id))
         case .edge(let id): actions.focus(.relationship(id))
-        case .none: actions.focus(nil)
+        case nil: actions.focus(path.last.map { .component($0) })
         }
     }
+}
 
-    // MARK: - Chrome
-
-    private var controls: some View {
-        HStack(spacing: 16) {
-            labeledPicker("View") {
-                Picker("View", selection: $mode) {
-                    ForEach(ArchMode.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented).frame(width: 220).labelsHidden()
-            }
-            labeledPicker("Zoom") {
-                Picker("Zoom", selection: $zoom) {
-                    Text("System").tag(AbstractionLevel.system)
-                    Text("Implementation").tag(AbstractionLevel.implementation)
-                }
-                .pickerStyle(.segmented).frame(width: 220).labelsHidden()
-            }
-            Spacer()
-        }
-        .padding(12)
-    }
-
-    private func labeledPicker<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 6) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            content()
+extension ChangeKind {
+    var emphasis: ArchEmphasis {
+        switch self {
+        case .new: return .added
+        case .changed: return .changed
+        case .removed: return .removed
+        case .touched, .unchanged: return .context
         }
     }
+}
 
-    // MARK: - Visible subset
-
-    private var visibleComponents: [ComponentNode] {
-        graph.components.filter { c in
-            guard c.level <= zoom else { return false }
-            if mode == .before && c.changeKind == .new { return false }
-            return true
+extension EdgeChange {
+    var emphasis: ArchEmphasis {
+        switch self {
+        case .new: return .added
+        case .changed: return .changed
+        case .removed: return .removed
+        case .existing: return .context
         }
     }
+}
 
-    private var visibleEdges: [ArchitectureEdge] {
-        let ids = Set(visibleComponents.map(\.id))
-        return graph.resolvedEdges.filter { e in
-            guard ids.contains(e.fromId), ids.contains(e.toId) else { return false }
-            switch mode {
-            case .before: return e.presence != .after
-            case .after: return e.presence != .before
-            case .delta: return true
-            }
+extension ArchitecturalImpact {
+    var color: Color {
+        switch self {
+        case .none: return .secondary
+        case .low: return .blue
+        case .moderate: return .orange
+        case .significant: return .red
         }
     }
-
-    // MARK: - Selection plumbing
-
-    private var selectedNodeId: String? {
-        if case let .node(id) = selection { return id }
-        return nil
-    }
-    private var selectedEdgeId: String? {
-        if case let .edge(id) = selection { return id }
-        return nil
-    }
-
-    /// Open on the hero of the change: the source of the most prominent new critical-path
-    /// edge, else any new/changed node, else the first visible node.
-    private var defaultSelection: Selection {
-        if let heroEdge = visibleEdges.first(where: { $0.change == .new && $0.onCriticalPath })
-            ?? visibleEdges.first(where: { $0.change == .new }) {
-            return .edge(heroEdge.id)
-        }
-        if let changed = visibleComponents.first(where: { $0.changeKind == .new || $0.changeKind == .changed }) {
-            return .node(changed.id)
-        }
-        return visibleComponents.first.map { .node($0.id) } ?? .none
-    }
-
-    /// When mode/zoom hides the current selection, fall back to a sensible default.
-    private func reconcileSelection() {
-        switch selection {
-        case let .node(id) where !visibleComponents.contains(where: { $0.id == id }):
-            selection = defaultSelection
-        case let .edge(id) where !visibleEdges.contains(where: { $0.id == id }):
-            selection = defaultSelection
-        case .none:
-            selection = defaultSelection
-        default:
-            break
-        }
-    }
-
-    // MARK: - Detail panel (inline, below the diagram — not a second side pane)
-
-    @ViewBuilder
-    private var detailPanel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                switch selection {
-                case let .node(id):
-                    if let node = graph.component(id) { nodeInspector(node) }
-                case let .edge(id):
-                    if let edge = visibleEdges.first(where: { $0.id == id }) ?? graph.resolvedEdges.first(where: { $0.id == id }) {
-                        edgeInspector(edge)
-                    }
-                case .none:
-                    Text("Select a node or a relationship in the diagram to inspect it.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(.background.opacity(0.4))
-    }
-
-    // MARK: Node inspector
-
-    @ViewBuilder
-    private func nodeInspector(_ node: ComponentNode) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            inspectorHeader(kind: node.level.label, title: node.title)
-            Spacer(minLength: 0)
-            let changed = node.changeKind == .new || node.changeKind == .changed
-            HStack(spacing: 6) {
-                Image(systemName: changed ? "checkmark.circle.fill" : "minus.circle")
-                    .foregroundStyle(changed ? .green : .secondary)
-                ChangeKindBadge(kind: node.changeKind)
-                askButton(.component(node.id))
-            }
-        }
-        .contentShape(Rectangle())
-        .reviewContextMenu(.component(node.id))
-
-        if let purpose = node.summary {
-            field("RESPONSIBILITY") { StatementView(statement: purpose) }
-        }
-
-        let incoming = edges(into: node.id)
-        let outgoing = edges(from: node.id)
-        if !incoming.isEmpty || !outgoing.isEmpty {
-            HStack(alignment: .top, spacing: 28) {
-                if !incoming.isEmpty {
-                    field("TRIGGERED BY") { relationshipList(incoming, endpoint: \.fromId, prefix: "") }
-                }
-                if !outgoing.isEmpty {
-                    field("TRIGGERS") { relationshipList(outgoing, endpoint: \.toId, prefix: "") }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-
-        let decisions = graph.decisions(affecting: node.id)
-        if !decisions.isEmpty {
-            field("REVIEW DECISIONS") { decisionButtons(decisions) }
-        }
-
-        if !node.implementedBy.isEmpty {
-            field("IMPLEMENTED BY") {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(node.implementedBy, id: \.self) { name in
-                        Text(name).font(.system(.callout, design: .monospaced))
-                    }
-                    if zoom == .system, !graph.implementationComponents(for: node.id).isEmpty {
-                        Button("Zoom to implementation") { zoom = .implementation }
-                            .buttonStyle(.link).font(.caption)
-                    }
-                }
-            }
-        }
-
-        if !node.refs.isEmpty {
-            field("EVIDENCE") {
-                WrapChips(node.refs) { ref in CodeRefChip(ref: ref) { onOpenEvidence(ref) } }
-            }
-        }
-    }
-
-    // MARK: Edge inspector
-
-    @ViewBuilder
-    private func edgeInspector(_ edge: ArchitectureEdge) -> some View {
-        let from = graph.component(edge.fromId)
-        let to = graph.component(edge.toId)
-        HStack(alignment: .top, spacing: 16) {
-            inspectorHeader(kind: "Relationship", title: edge.label.isEmpty ? "relates to" : edge.label)
-            Spacer(minLength: 0)
-            HStack(spacing: 8) {
-                pill(edge.change == .new ? "New relationship"
-                     : edge.change == .changed ? "Changed"
-                     : edge.change == .removed ? "Removed" : "Existing",
-                     color: edge.change.color)
-                pill(edge.flow == .async ? "Asynchronous" : "Synchronous",
-                     color: edge.flow == .async ? .secondary : .primary)
-                if edge.isTrustBoundary { pill("Trust boundary", color: .orange, glyph: "lock.shield") }
-                askButton(.relationship(edge.id))
-            }
-        }
-        .contentShape(Rectangle())
-        .reviewContextMenu(.relationship(edge.id))
-
-        field("DIRECTION") {
-            HStack(spacing: 6) {
-                Text(from?.title ?? edge.fromId).font(.callout.weight(.medium))
-                Image(systemName: "arrow.right").font(.caption).foregroundStyle(edge.change.color)
-                Text(to?.title ?? edge.toId).font(.callout.weight(.medium))
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        if edge.onCriticalPath {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text(edge.change == .new ? "New work on a critical path" : "On a critical path")
-                    .font(.callout.weight(.semibold))
-            }
-        }
-
-        if let note = edge.note, !note.isEmpty {
-            field("NOTE") { Text(note).font(.callout) }
-        }
-
-        let decisions = graph.decisions(forEdge: edge)
-        if !decisions.isEmpty {
-            field("REVIEW DECISION") { decisionButtons(decisions) }
-        } else {
-            Text("No decision is linked to this relationship yet.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-
-        HStack {
-            if let from { Button("Inspect \(from.title)") { selection = .node(from.id) }.buttonStyle(.link).font(.caption) }
-            if let to { Button("Inspect \(to.title)") { selection = .node(to.id) }.buttonStyle(.link).font(.caption) }
-        }
-    }
-
-    // MARK: Inspector building blocks
-
-    /// A visible door into the same "Ask about this…" the context menu offers, for
-    /// reviewers who don't think to right-click.
-    private func askButton(_ subject: ReviewSubject) -> some View {
-        Button { actions.ask(subject) } label: {
-            Label("Ask", systemImage: "sparkles").font(.caption)
-        }
-        .buttonStyle(.borderless)
-        .help("Ask about this… (⌘⇧A)")
-    }
-
-    private func inspectorHeader(kind: String, title: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(kind.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            Text(title).font(.title3.weight(.semibold))
-        }
-    }
-
-    private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption2.weight(.bold)).foregroundStyle(.secondary).tracking(0.5)
-            content()
-        }
-    }
-
-    private func relationshipList(_ edges: [ArchitectureEdge], endpoint: KeyPath<ArchitectureEdge, String>, prefix: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(edges) { e in
-                Button { selection = .edge(e.id) } label: {
-                    HStack(spacing: 5) {
-                        if e.change == .new { Circle().fill(Color.green).frame(width: 6, height: 6) }
-                        Text(e.label).font(.callout.weight(e.change == .new ? .semibold : .regular))
-                        Text(graph.component(e[keyPath: endpoint])?.title ?? e[keyPath: endpoint])
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .reviewContextMenu(.relationship(e.id))
-            }
-        }
-    }
-
-    private func decisionButtons(_ decisions: [DecisionNode]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(decisions) { d in
-                Button { onOpenDecision(d.id) } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.bubble").foregroundStyle(.orange)
-                        Text(d.title).font(.callout).multilineTextAlignment(.leading)
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .reviewContextMenu(.decision(d.id))
-            }
-        }
-    }
-
-    private func pill(_ text: String, color: Color, glyph: String? = nil) -> some View {
-        HStack(spacing: 3) {
-            if let glyph { Image(systemName: glyph).font(.caption2) }
-            Text(text).font(.caption2.weight(.medium))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(color.opacity(0.12), in: Capsule())
-    }
-
-    // MARK: Edge queries
-
-    private func edges(from id: String) -> [ArchitectureEdge] { visibleEdges.filter { $0.fromId == id } }
-    private func edges(into id: String) -> [ArchitectureEdge] { visibleEdges.filter { $0.toId == id } }
 }
