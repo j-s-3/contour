@@ -45,6 +45,17 @@ struct OnboardingView: View {
                     .keyboardShortcut(.return, modifiers: [])
                     .disabled(GitHubService.normalize(urlText) == nil)
             }
+
+            // Mock mode only: the canned analysis matches exactly one PR, so offer it
+            // directly rather than making the tester remember its URL.
+            if MockAnalysisFixtures.isEnabled {
+                Button {
+                    onSubmit(MockAnalysisFixtures.sourcePRURL)
+                } label: {
+                    Label("Load test data", systemImage: "testtube.2")
+                }
+                .help(MockAnalysisFixtures.sourcePRURL)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
