@@ -98,6 +98,23 @@ Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
+**Opening a PR is progressive.** There is no full-screen analysis wait: "Opening PR…"
+lasts only as long as the GitHub fetch, then the window shell appears with the title,
+metadata and raw diff, and the analysis fills it in. Every destination is always open.
+The sidebar says per row how far along its section is ("Mapping system change…", "2 found
+so far", ⚠ "Couldn't be generated"). A lens with nothing yet says what it's working on and
+what's already known. A lens with partial content shows it, with a small floating note
+while more arrives. The Overview reserves each section's place with a placeholder ("✦
+Understanding the change…", "Loading…"). Placeholders are replaced in place and
+decisions are appended, so nothing the reviewer is reading moves. Completion never
+navigates, scrolls, or takes focus.
+
+A compact toolbar indicator ("✦ Analyzing PR… 3 remaining" → "✓ Analysis complete",
+which then recedes) opens the details: each section's status with Retry for failures,
+then, behind disclosures, the pipeline's own stages, the latency metrics, and the raw
+technical log. Contextual chat works from the moment the shell appears: the harness can
+read the checkout itself and doesn't need the precomputed analysis.
+
 ### 4.2 Overview (landing page)
 
 A thirty-second briefing from a staff engineer, not a dashboard: one centered column
@@ -422,24 +439,56 @@ development, not assumed:
   away a whole pipeline including the stages already paid for, so a stage retries once on
   unparseable JSON — and only once.
 
-Five sequential analysis stages, each reading the previous stage's output for cross-linking IDs
-(`Pipeline/AnalysisPipeline.swift`, prompts in `Pipeline/PromptBuilder.swift`):
+Six analysis stages, run as a dependency graph rather than a sequence
+(`Pipeline/AnalysisPipeline.swift`, prompts in `Pipeline/PromptBuilder.swift`). Everything
+independent runs in parallel as soon as the checkout exists:
 
-1. **Architecture** (low effort) — the conceptual parts (with sub-parts and
+```
+fetch ──► review opens (title, metadata, raw diff)
+checkout ─┬─ issue lookup ──► Understanding          tier 1: what changed, why
+          ├─ Behavior change                          tier 1: the before/after hero
+          ├─ Decisions (streamed)                     tier 2: what needs judgment
+          ├─ Architecture ──► Flows (streamed)        tier 3: the system around it
+          └────────────────────────────► Judgment     needs all of the above
+```
+
+1. **Behavior change** (low effort) — the Overview's before/after hero, its why and
+   consequence.
+2. **Understanding** (low effort) — the author's intent plus the two plain-language
+   briefs (problem to be solved / how it was solved). One call: these were two calls over
+   the same PR prose, and the second only rediscovered what the first had read.
+3. **Architecture** (low effort) — the conceptual parts (with sub-parts and
    implementation beneath them), what crosses each relationship, meaningful boundaries,
    and an impact assessment that is told not to inflate implementation changes.
-2. **Intent** (low effort) — what the author says the PR does, quoted/paraphrased where
-   possible.
-3. **Decisions** (high effort) — the handful of decisions worth a reviewer's attention,
-   linked to components, each with the tradeoffs it made (primary / secondary, zero when
-   there's no real tension).
-4. **Flows + entry points** (high effort) — traced by the harness actually reading the
+4. **Decisions** (high effort) — the handful of decisions worth a reviewer's attention,
+   most consequential first, each with the tradeoffs it made (primary / secondary, zero
+   when there's no real tension).
+5. **Flows + entry points** (high effort) — traced by the harness actually reading the
    call chain, not guessed, then written as a scenario-named behavior model (stages,
-   branches, boundaries, what the PR changed) with decisions pinned to the stage they shape.
-   The judgment stage then anchors each review question to a stage (`flowAnchors`).
-5. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
+   branches, boundaries, what the PR changed). The judgment stage then anchors each review
+   question to a stage (`flowAnchors`).
+6. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
    graph so far and is asked specifically for what a senior engineer would want to judge,
    plus honest open questions.
+
+Only Architecture → Flows (a flow's stages are attributed to architecture parts) and
+everything → Judgment are real dependencies. Decisions used to wait for Architecture and
+Flows for Decisions, but only to be handed ids for cross-linking — so those links are now
+derived locally, from the code both sides cite (`Pipeline/GraphLinker.swift`): a decision
+links to the most specific parts whose refs overlap its own, and is pinned to the one flow
+stage whose code it touches (never on a tie). That takes two strong-tier calls off the
+critical path. Links a model does supply are kept.
+
+Decisions and flows are **streamed**: the stage runs with the CLI's text deltas on, and
+`StreamingArrayExtractor` hands out each array element as soon as the model finishes
+writing it, so the reviewer sees the first decision long before the stage returns. The
+final parsed response stays authoritative; streamed elements are applied, in order, before
+it lands, so nothing can arrive after and duplicate it.
+
+Every analysis stage **fails on its own**. Its slice stays empty, the section says so and
+offers Retry (and a conversation instead), and every other section carries on; Judgment
+runs with whatever exists. Only fetching and checking out the PR are fatal — and a
+checkout failure after the review has opened still leaves the raw diff on screen.
 
 Every stage's system prompt instructs the harness to treat anything inside
 `<UNTRUSTED_PR_CONTENT>` as data, never instructions — the mitigation for prompt
@@ -515,11 +564,29 @@ Views/*   (one lens per file, all reading GraphStore)
 
 ## 13. Caching and performance
 
-MVP implements checkout-level caching (`RepoContextService` reuses an existing clone if
-the head SHA already matches) but not yet per-stage analysis caching keyed by
-(headSha, baseSha, pipeline-version) — that's a near-term enhancement, not a design gap:
-the seams for it already exist (`AnalysisPipeline.run` is a pure function of the fetched
-context plus the checkout).
+The measure that matters is **time to a useful Overview**, not time to a complete
+analysis: the reviewer should never feel they are waiting for the AI. So the review opens
+as soon as the PR is fetched and fills in as stages land (§4.1), and the pipeline runs
+independent stages in parallel (§10).
+
+- **Checkout.** `RepoContextService` reuses an existing clone if the head SHA matches.
+- **Analysis cache** (`Services/AnalysisCache.swift`), keyed by (repo, PR, headSha,
+  baseSha, pipeline version). Written as each stage lands, recording which stages it
+  holds, so an interrupted run resumes with only the missing stages. Reopening the same
+  commit shows everything at once.
+- **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
+  head is shown straight away, marked "from previous revision" (banner, stage status),
+  and replaced slice by slice as the current revision's stages land. A stale slice is
+  never mixed with a fresh one within a section, is cleared if its stage fails, and is
+  never saved under the new head.
+- **Latency metrics** (`Services/AnalysisMetrics.swift`): time to PR shell, raw diff, what
+  changed, before/after, first decision, useful overview, architecture, flows and full
+  analysis, plus whether the reviewer started working before analysis finished. Shown under
+  the analysis indicator's details and appended locally to `metrics.jsonl`; never sent
+  anywhere.
+
+Nothing is computed lazily on demand yet. That is deliberately left until the metrics say
+which enrichments reviewers actually open before analysis finishes.
 
 ## 14. Handling very large PRs and repositories
 
