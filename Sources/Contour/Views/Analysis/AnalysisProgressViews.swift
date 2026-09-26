@@ -60,8 +60,9 @@ struct StageStatusGlyph: View {
 
 // MARK: - Toolbar indicator
 
-/// "✦ Analyzing PR… 3 remaining" while the analysis fills in; "✓ Analysis complete" when it
-/// finishes, fading to a bare check a few seconds later. Clicking it opens the details.
+/// "Analyzing PR… 3 remaining" beside the resolving Contour mark while the analysis fills
+/// in; "Analysis complete" (or "Opened saved analysis") when it finishes, fading to the bare
+/// mark a few seconds later. Clicking it opens the details.
 struct AnalysisIndicator: View {
     let state: AnalysisState
     let log: [PipelineProgressEntry]
@@ -90,11 +91,15 @@ struct AnalysisIndicator: View {
             }
     }
 
+    /// The Contour mark from the opening screen, carried on into the toolbar: it resolves
+    /// ring by ring as stages settle, and is whole when the analysis is.
     @ViewBuilder
     private var label: some View {
         HStack(spacing: 6) {
+            ContourMarkView(resolution: AnalysisResolution.target(state: state))
+                .frame(height: 13)
+                .animation(.easeInOut(duration: 0.8), value: AnalysisResolution.target(state: state))
             if !state.isComplete {
-                WorkingMark()
                 Text(state.revalidatingFrom != nil ? "Updating analysis…" : "Analyzing PR…")
                     .font(.callout)
                 let remaining = state.remainingCount
@@ -108,11 +113,12 @@ struct AnalysisIndicator: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 let n = state.failedSections.count
                 Text(verbatim: "\(n) \(n == 1 ? "section" : "sections") couldn't be analyzed").font(.callout)
-            } else {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                if !settled {
-                    Text("Analysis complete").font(.callout).transition(.opacity)
-                }
+            } else if !settled {
+                Text(state.fromCache ? "Opened saved analysis" : "Analysis complete")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .transition(.opacity)
             }
         }
         .contentShape(Rectangle())
@@ -400,37 +406,5 @@ struct RevalidationBanner: View {
         .padding(.vertical, 7)
         .background(Color.yellow.opacity(0.12))
         .overlay(alignment: .bottom) { Divider() }
-    }
-}
-
-// MARK: - Before the shell
-
-/// The only full-window wait left: fetching the PR itself, usually a second or two. The
-/// review replaces it as soon as there's a title and a diff to show.
-struct OpeningView: View {
-    let log: [PipelineProgressEntry]
-    @State private var showLog = false
-
-    var body: some View {
-        VStack(spacing: 14) {
-            Spacer()
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text("Opening PR…").font(.title3.weight(.medium))
-            }
-            if let last = log.last {
-                Text(last.detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Button(showLog ? "Hide log" : "Show log") { showLog.toggle() }
-                .buttonStyle(.link)
-                .font(.caption)
-            if showLog {
-                AnalysisLogView(log: log)
-                    .frame(width: 560, height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

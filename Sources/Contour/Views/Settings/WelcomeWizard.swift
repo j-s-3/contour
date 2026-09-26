@@ -45,18 +45,18 @@ struct WelcomeWizard: View {
     // MARK: - Pane 1
 
     private var introPane: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 0) {
             Spacer()
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 52))
-                .foregroundStyle(.tint)
+            ContourMarkView()
+                .frame(height: ContourMarkView.heroHeight)
             Text("Contour")
-                .font(.system(size: 34, weight: .semibold, design: .rounded))
-            Text("Review the decisions, not the diff.")
+                .font(.system(size: 28, weight: .semibold))
+                .padding(.top, 22)
+            Text("Understand the change, not just the diff.")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .padding(.top, 10)
             Text("""
-                 Contour reads a pull request, checks it out locally, and builds a model of \
+                 Contour reads a pull request, checks it out locally, and works out \
                  what changed and why — the decisions made, the tradeoffs taken, the flows \
                  affected — so review is about judgment rather than re-reading every line.
 
@@ -67,7 +67,9 @@ struct WelcomeWizard: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 440)
+                .padding(.top, 18)
             Spacer()
+            Spacer().frame(height: 40)
         }
     }
 

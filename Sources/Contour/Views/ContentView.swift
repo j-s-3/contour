@@ -15,6 +15,8 @@ struct ContentView: View {
     /// reconsiders). Owning the binding — and reasserting it once fullscreen actually
     /// completes — is what keeps the sidebar from vanishing.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+    /// Carries the Contour mark from the welcome screen into the analysis screen.
+    @Namespace private var markNamespace
 
     var body: some View {
         Group {
@@ -65,18 +67,33 @@ struct ContentView: View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView { url in store.load(prURL: url) }
+                OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
             case .opening:
-                OpeningView(log: store.progressLog)
+                // Only the fetch happens here now; the review opens as soon as the PR has
+                // been read, and the mark carries on resolving in the toolbar.
+                AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
                 FailedView(message: message) { store.close() }
             case .review:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView { url in store.load(prURL: url) }
+                    OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
                 }
             }
+        }
+        // Screen changes crossfade (and the mark glides from welcome into opening).
+        .animation(.easeInOut(duration: 0.45), value: screen)
+    }
+
+    /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
+    /// screen, so it never animates here.
+    private var screen: Int {
+        switch store.phase {
+        case .idle: return 0
+        case .opening: return 1
+        case .failed: return 2
+        case .review: return 3
         }
     }
 

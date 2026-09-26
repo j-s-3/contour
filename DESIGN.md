@@ -98,8 +98,8 @@ Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
-**Opening a PR is progressive.** There is no full-screen analysis wait: "Opening PR…"
-lasts only as long as the GitHub fetch, then the window shell appears with the title,
+**Opening a PR is progressive.** There is no full-screen analysis wait: "Opening the pull
+request…" lasts only as long as the GitHub fetch, then the window shell appears with the title,
 metadata and raw diff, and the analysis fills it in. Every destination is always open.
 The sidebar says per row how far along its section is ("Mapping system change…", "2 found
 so far", ⚠ "Couldn't be generated"). A lens with nothing yet says what it's working on and
@@ -109,11 +109,41 @@ Understanding the change…", "Loading…"). Placeholders are replaced in place 
 decisions are appended, so nothing the reviewer is reading moves. Completion never
 navigates, scrolls, or takes focus.
 
-A compact toolbar indicator ("✦ Analyzing PR… 3 remaining" → "✓ Analysis complete",
-which then recedes) opens the details: each section's status with Retry for failures,
-then, behind disclosures, the pipeline's own stages, the latency metrics, and the raw
-technical log. Contextual chat works from the moment the shell appears: the harness can
+A compact toolbar indicator (the resolving Contour mark with "Analyzing PR… 3 remaining"
+→ "Analysis complete", which then recedes; §4.1a) opens the details: each section's
+status with Retry for failures, then, behind disclosures, the pipeline's own stages, the
+latency metrics, and the raw technical log. Contextual chat works from the moment the shell appears: the harness can
 read the checkout itself and doesn't need the precomputed analysis.
+
+### 4.1a Welcome, analysis, and the Contour mark
+
+The rounded-square icon is only the macOS app icon (Dock, Finder, Spotlight). Inside
+the app the brand is the raw mark: the contour rings and amber peak with no tile,
+drawn by `ContourMarkView` from a Swift port of `scripts/generate-logo.py` (a test pins
+it to the icon SVG). Light appearance uses deeper tones of the same teal and amber,
+since the icon's pale amber disappears on a light window.
+
+- **Welcome.** Mark, "Contour", then the proposition ("Understand the change, not just
+  the diff.") and the URL field. The mark stays still. Idle motion would pull the eye
+  away from the one thing to do on this screen.
+- **Opening.** The same mark carries over from the welcome screen and starts to
+  resolve while the PR is fetched: first the peak, then the rings from the summit
+  outward. Each stage owns a slice of the mark sized by its typical cost, and within a
+  stage the line eases toward the end of its slice without reaching it. It is not a
+  percentage meter. Unresolved rings show as a faint trace. Nothing pulses, loops, or
+  glows. A headline in the reviewer's terms and the latest real step always go with
+  the mark, and the full log is behind "Show activity". This screen now lasts only as
+  long as the fetch, because the review opens as soon as the PR has been read (§4.1).
+- **Review.** The mark carries on, small, in the toolbar indicator. There it keeps
+  resolving while the analysis fills in the open review. Stages run in parallel, so
+  each stage's slice resolves when that stage settles, in whatever order they finish. A
+  retried stage's slice unresolves until the stage settles again. When the mark is
+  whole, the indicator says "Analysis complete" (or "Opened saved analysis") and then
+  fades to the bare mark.
+- **Reduce Motion.** No drawn lines and no mark gliding between screens. Whole rings
+  fade in as stages complete, and screens crossfade.
+
+Keep the mark rare. It appears in these places, not as decoration on empty states.
 
 ### 4.2 Overview (landing page)
 
