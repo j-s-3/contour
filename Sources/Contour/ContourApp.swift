@@ -11,6 +11,13 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // With no Info.plist there's no `CFBundleIconFile`, so the Dock shows the generic
+        // "exec" icon. Set it from the bundled resource — after the policy change, which
+        // creates the Dock tile.
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
         NSApp.activate(ignoringOtherApps: true)
         // Push any stored per-tier model overrides into AnalysisTier before the first run
         // can read them.
