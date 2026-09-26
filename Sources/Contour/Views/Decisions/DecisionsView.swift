@@ -444,6 +444,24 @@ private struct DecisionCard: View {
                         .reviewContextMenu(.decision(decision.id))
                 }
             }
+            let appearances = graph.flowAppearances(ofDecision: decision.id)
+            if !appearances.isEmpty {
+                GridRow {
+                    rowLabel("Appears in")
+                    // Where this choice shows up in the runtime behavior — opens the flow with
+                    // that stage selected.
+                    FlowLayout(spacing: 12) {
+                        ForEach(appearances, id: \.flow.id) { flow, nodeId in
+                            Button { actions.navigate(.flowNodeDetail(flowId: flow.id, nodeId: nodeId)) } label: {
+                                Label(graph.scenarioTitle(for: flow) + " flow", systemImage: "arrow.triangle.branch")
+                                    .font(.callout)
+                            }
+                            .buttonStyle(.link)
+                            .reviewContextMenu(.flowNode(flowId: flow.id, nodeId: nodeId))
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -995,7 +1013,7 @@ private struct DecisionDrillDown: View {
                     Text("Flows").font(.callout).foregroundStyle(.secondary)
                     FlowLayout(spacing: 10) {
                         ForEach(affects.flows) { f in
-                            link(f.title, "arrow.triangle.branch", .flowDetail(f.id))
+                            link(graph.scenarioTitle(for: f), "arrow.triangle.branch", .flowDetail(f.id))
                                 .reviewContextMenu(.flow(f.id))
                         }
                     }

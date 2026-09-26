@@ -415,11 +415,17 @@ struct PromptBuilder {
 
     // MARK: - Stage 4: Flows + entry points
 
-    static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
+    static func flowsPrompt(components: [ComponentNode], decisions: [DecisionNode] = [], entryHints: [String]) -> String {
         let componentList = componentOutline(components)
+        let decisionList = decisions.isEmpty
+            ? "(none)"
+            : decisions.map { "- \($0.id): \($0.question ?? $0.title)" }.joined(separator: "\n")
         return """
         Known components (for linking):
         \(componentList)
+
+        Known decisions (for pinning to the point in a flow they shape):
+        \(decisionList)
 
         Step 1 — ENTRY POINTS: find how the changed behavior can be invoked (REST endpoints,
         GraphQL operations, event consumers, scheduled jobs, CLI commands, UI actions, callbacks,
@@ -427,20 +433,62 @@ struct PromptBuilder {
         definitions, annotations, handler registrations, cron config) rather than guessing.
         Classify each as new/changed/touched/unchanged.
 
-        Step 2 — FLOWS: for the 1-3 most important entry points, trace the resulting execution by
-        reading the actual call chain (follow method calls, don't guess).
+        Step 2 — FLOWS: for the 1-3 most important scenarios, trace what happens at runtime by
+        reading the actual call chain (follow method calls, don't guess). A flow answers "what
+        happens when this is triggered?" at the level an engineer would draw on a whiteboard —
+        not an ordered list of the methods involved.
 
-        First write storySteps: 3-6 short, present-tense labels a reviewer reads first ("Validate
-        cart", "Reserve inventory", "Charge card", "Emit order-created event") — no class/method
-        names in these labels, that detail belongs in `steps` below. This is the default view of
-        the flow; `steps` is implementation-level detail disclosed after a story step is selected.
+        title: name the flow as a recognizable scenario, 2-4 words, no arrows or method names
+        ("Open a file", "Pipe data into bat", "Upload a binary", "User logs in", "Process an
+        incoming webhook"). If two triggers eventually run the same behavior, make that shared
+        behavior its own flow and point to it from each trigger's flow with a "subflow" node,
+        rather than duplicating it.
 
-        Then, for `steps` (the implementation-level detail), record for each step the architecture
-        part it happens in (componentId: the most specific part listed above that fits), what happens, any state transformation, branches, external calls, and error
-        paths. Mark isAsyncBoundaryAfter=true on a step where execution crosses an async boundary
-        (queue, event, callback) before the next step runs. Set "caution" on a step only when
-        there's a concrete, code-visible risk (e.g. "no timeout set on this call") — don't invent
-        generic caveats.
+        behavior: the flow as a diagram, written for a reviewer who wants to understand in about
+        ten seconds what happens and how this PR changed it.
+        - summary: one or two plain sentences telling the whole story ("When bat receives input,
+          it samples the content and classifies it. Text continues through syntax detection and
+          rendering; binary content gets a <BINARY> header and its body is suppressed.").
+        - changeSummary: one sentence on how this PR changed the flow, or null if it didn't
+          ("Sampling now looks at up to 1 KB of already-buffered data instead of only the first
+          line, and deliberately doesn't wait for more bytes.").
+        - nodes: 4-8 conceptual stages — the ones you would draw on a whiteboard. Helper calls,
+          intermediate transformations, local variables, and guards that don't change the story
+          belong in `substeps`/`steps`, not here. Each node:
+          - id: short slug, unique within the flow.
+          - label: 2-5 words, present tense, no class/method names ("Inspect content sample").
+          - kind: "trigger" (exactly one, first: what starts the flow), "step", "decision" (a
+            branch point, labeled as the question it asks, e.g. "What is it?"), "outcome" (where
+            a path ends: the resulting behavior), "external" (a call into another system),
+            "datastore" (persistence), or "subflow" (hands off to a shared flow; set subflowId).
+          - detail: one or two sentences on what happens here.
+          - change: "new" (only after this PR), "changed" (both, differently), "existing"
+            (unchanged context), or "removed" (only before this PR). Most stages are usually
+            existing context — only mark what the PR actually changed.
+          - before/after: for a "changed" node only, a few words each on what it did before
+            and does now ("first line" / "up to 1 KB already buffered").
+          - substeps: 2-5 short phrases this stage breaks into, one level down.
+          - stepIds: ids of the implementation `steps` below that this stage summarizes; every
+            step should belong to exactly one node.
+          - componentId, boundaryId, and refs as usual. decisionIds: ids from the known
+            decisions above that materially shape behavior AT THIS POINT — pin each decision to
+            at most one node per flow, and only where it changes what happens.
+          - provenance: "fact" when you traced it in the code; "interpretation" (with a
+            confidence) only when the stage is inferred rather than traced.
+        - edges: how execution moves between nodes, in the direction it travels. Draw meaningful
+          branches as separate edges out of a "decision" node, each with a short label naming the
+          case ("Text", "Binary", "Empty") — never flatten real branches into a line. flow:
+          "async" for a queued/event/callback hop, else "sync". change as for nodes.
+        - boundaries: only when the flow crosses systems that matter (the application, an
+          external service, a datastore, a trust boundary); omit for a flow inside one process.
+
+        Then, for `steps` (the implementation-level evidence underneath), record for each step the
+        architecture part it happens in (componentId: the most specific part listed above that
+        fits), what happens, any state transformation, branches, external calls,
+        and error paths. Mark isAsyncBoundaryAfter=true on a step where execution crosses an async
+        boundary (queue, event, callback) before the next step runs. Set "caution" on a step only
+        when there's a concrete, code-visible risk (e.g. "no timeout set on this call") — don't
+        invent generic caveats.
 
         Respond with ONLY this JSON object:
         {
@@ -457,9 +505,19 @@ struct PromptBuilder {
           "flows": [
             {
               "id": "flow-id",
-              "title": "Checkout -> Order created",
+              "title": "Check out a cart",
               "entryPointId": "entry-point-id",
               "storySteps": [{"text": "Validate cart", "provenance": "fact", "confidence": null, "source": null}],
+              "behavior": {
+                "summary": "...",
+                "changeSummary": "..."|null,
+                "nodes": [
+                  {"id": "checkout", "label": "Shopper checks out", "kind": "trigger", "change": "existing"},
+                  {"id": "validate", "label": "Validate cart", "kind": "step", "detail": "...", "change": "changed", "before": "...", "after": "...", "substeps": ["..."], "stepIds": ["step-id"], "componentId": "component-id-or-null", "boundaryId": "boundary-id-or-null", "decisionIds": [], "refs": [], "provenance": "fact", "confidence": null}
+                ],
+                "edges": [{"fromId": "checkout", "toId": "validate", "label": null, "flow": "sync|async", "change": "new|changed|existing|removed"}],
+                "boundaries": [{"id": "boundary-id", "label": "Payments API", "kind": "application|service|datastore|external|trust"}]
+              },
               "steps": [
                 {
                   "id": "step-id",
@@ -519,13 +577,17 @@ struct PromptBuilder {
           (what crosses from one to the other), also include that entry of architectureEdges by
           its id, so the Architecture lens can mark the question on that arrow. refs: supporting
           CodeRefs.
+        - flowAnchors: the exact point(s) in the flows' behavior diagrams where this matters, as
+          {"flowId", "nodeId"} using the flow ids and behavior node ids above — the stage after
+          which the concern arises (e.g. the stage that inspects piped data, for a question about
+          chunking). Only anchor where it genuinely applies; [] if it isn't about a flow.
         If the behavior change's humanQuestion is still the most important question, include it
         (condensed to the budget) as the first consideration. Merge overlapping items rather than
         listing near-duplicates.
 
         Respond with ONLY this JSON object:
         {
-          "considerations": [{"id": "short-slug", "question": "...?", "detail": "...", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "explanation": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],
+          "considerations": [{"id": "short-slug", "question": "...?", "detail": "...", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "explanation": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
           "needsJudgment": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "uncertainties": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "questions": [{"id": "short-slug", "text": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],

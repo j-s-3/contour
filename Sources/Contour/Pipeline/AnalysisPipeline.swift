@@ -46,7 +46,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 9
+    static let pipelineVersion = 10
 
     struct Result: Sendable {
         var graph: PRGraph
@@ -149,10 +149,11 @@ actor AnalysisPipeline {
         ) { p in onProgress(.decisions, .init(stage: "Extracting decisions", detail: p.detail)) }
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, stageLabel: "Extracting decisions", from: decisionsRaw)
 
-        // Stage 4: flows + entry points — needs component IDs.
+        // Stage 4: flows + entry points — needs component IDs, and decision IDs to pin
+        // decisions to the point in a flow they shape.
         onProgress(.flows, .init(stage: "Tracing flows", detail: "finding entry points"))
         let flowsRaw = try await analysis.runStage(
-            prompt: PromptBuilder.flowsPrompt(components: arch.components, entryHints: []), cwd: checkout.rootDir, tier: .strong, stage: .flows
+            prompt: PromptBuilder.flowsPrompt(components: arch.components, decisions: decisions.decisions, entryHints: []), cwd: checkout.rootDir, tier: .strong, stage: .flows
         ) { p in onProgress(.flows, .init(stage: "Tracing flows", detail: p.detail)) }
         let flows = try StageDecoding.decode(StageDecoding.FlowsResult.self, stageLabel: "Tracing flows", from: flowsRaw)
 
