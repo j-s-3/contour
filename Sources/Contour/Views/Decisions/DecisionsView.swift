@@ -21,6 +21,8 @@ struct DecisionsView: View {
     let graph: PRGraph
     /// Where navigation asked the lens to open.
     var focus: Focus?
+    /// Overview questions talked through in a conversation, for review progress.
+    var discussed: Set<String> = []
     var onSetState: (String, ReviewerState) -> Void
     var onSetNote: (String, String) -> Void
     /// Add to review (true) / Not worth reviewing (false).
@@ -94,7 +96,7 @@ struct DecisionsView: View {
     // MARK: - Header
 
     private var header: some View {
-        let progress = graph.reviewProgress
+        let progress = graph.reviewProgress(discussed: discussed)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Decisions to Review")
@@ -113,10 +115,13 @@ struct DecisionsView: View {
                 Text(Self.framing(toReview: toReview.count, total: graph.decisions.count))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                if !toReview.isEmpty {
-                    ReviewProgressDots(decisions: toReview)
-                    Text(verbatim: "\(progress.reviewed) of \(progress.total) reviewed")
+                // The same n of m as the Overview and the sidebar: its things to think
+                // about, resolved — judging a decision here resolves the questions on it.
+                if progress.total > 0 {
+                    ReviewProgressDots(graph: graph, discussed: discussed)
+                    Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
                         .monospacedDigit()
+                        .help("Things to think about from the Overview you've resolved")
                 }
             }
             .font(.callout)
@@ -458,11 +463,6 @@ private struct DecisionCard: View {
             briefGrid
                 .padding(.leading, 36)
 
-            if let question = questions.first {
-                OverviewQuestionCallout(item: question, isArrival: question.id == arrivedFromConsiderationId)
-                    .padding(.leading, 36)
-            }
-
             HStack(spacing: 8) {
                 ReviewButtons(state: decision.reviewerState, onSet: onSetState)
                 Spacer()
@@ -473,7 +473,7 @@ private struct DecisionCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Move this to Other Decisions — it stops counting toward review progress")
+                .help("Move this to Other Decisions — it stops being judged here")
                 .padding(.trailing, 8)
                 Button(action: onToggleExpanded) {
                     HStack(spacing: 4) {
@@ -496,7 +496,7 @@ private struct DecisionCard: View {
             }
 
             if isExpanded {
-                DecisionDrillDown(decision: decision, graph: graph, moreQuestions: Array(questions.dropFirst()))
+                DecisionDrillDown(decision: decision, graph: graph)
                     .padding(.leading, 36)
                     .transition(.opacity)
             }
@@ -557,6 +557,24 @@ private struct DecisionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .help(Self.provenanceHelp(why))
                         .reviewContextMenu(.decision(decision.id))
+                }
+            }
+            // The Overview's questions are the review checklist; judging this decision
+            // resolves them, so they're named here as one more line — not re-quoted.
+            if !questions.isEmpty {
+                GridRow {
+                    rowLabel("Overview asks")
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(questions) { item in
+                            Text(item.question)
+                                .font(.body.weight(item.id == arrivedFromConsiderationId ? .semibold : .regular))
+                                .foregroundStyle(.orange)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .help(item.detail)
+                                .reviewContextMenu(.consideration(item.id))
+                        }
+                    }
                 }
             }
             let appearances = graph.flowAppearances(ofDecision: decision.id)
@@ -692,7 +710,7 @@ private struct OtherDecisionRow: View {
                 Button(action: onAddToReview) {
                     Label("Add to review", systemImage: "arrow.up.to.line")
                 }
-                .help("Make this one of the decisions you review — it will count toward review progress")
+                .help("Make this one of the decisions you review and judge")
                 Button { actions.ask(.decision(decision.id)) } label: {
                     Label("Ask…", systemImage: "sparkles")
                 }
@@ -713,7 +731,7 @@ private struct OtherDecisionRow: View {
                 VStack(alignment: .leading, spacing: 16) {
                     DecisionChoiceView(decisionId: decision.id, brief: brief)
                         .padding(.top, 6)
-                    DecisionDrillDown(decision: decision, graph: graph, moreQuestions: [])
+                    DecisionDrillDown(decision: decision, graph: graph)
                 }
                 .padding(.leading, 26)
                 .transition(.opacity)
@@ -790,17 +808,21 @@ private struct ReviewedChip: View {
     }
 }
 
-/// One dot per decision to review, filled once judged.
+/// One dot per thing to think about, filled once resolved — in its decision's judgment
+/// color, or green when it was talked through instead.
 private struct ReviewProgressDots: View {
-    let decisions: [DecisionNode]
+    let graph: PRGraph
+    let discussed: Set<String>
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(decisions) { d in
+            ForEach(graph.thingsToThinkAbout) { item in
+                let state = graph.decision(graph.reviewDecisionId(for: item))?.reviewerState ?? .unreviewed
+                let resolved = graph.isResolved(item, discussed: discussed)
                 Circle()
-                    .fill(d.reviewerState == .unreviewed ? Color.secondary.opacity(0.25) : d.reviewerState.tint)
+                    .fill(!resolved ? Color.secondary.opacity(0.25) : state == .unreviewed ? Color.green : state.tint)
                     .frame(width: 7, height: 7)
-                    .help(d.reviewerState.label)
+                    .help(item.question + (resolved ? " — resolved" : ""))
             }
         }
     }
@@ -1107,42 +1129,6 @@ struct TradeoffSpectrum: View {
     }
 }
 
-// MARK: - The Overview question, answered here
-
-private struct OverviewQuestionCallout: View {
-    let item: Consideration
-    var isArrival: Bool
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: item.kind == .question ? "questionmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("QUESTION FROM OVERVIEW")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.5)
-                    .foregroundStyle(.orange)
-                Text(item.question)
-                    .font(.callout.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                if !item.detail.isEmpty {
-                    Text(item.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Color.orange.opacity(isArrival ? 0.13 : 0.06), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.orange.opacity(isArrival ? 0.45 : 0.2)))
-        .contentShape(RoundedRectangle(cornerRadius: 9))
-        .reviewContextMenu(.consideration(item.id))
-    }
-}
-
 // MARK: - More…
 
 /// Everything that isn't needed to judge the choice at a glance: how it's implemented, the
@@ -1151,7 +1137,6 @@ private struct OverviewQuestionCallout: View {
 private struct DecisionDrillDown: View {
     let decision: DecisionNode
     let graph: PRGraph
-    let moreQuestions: [Consideration]
 
     @Environment(\.reviewActions) private var actions
 
@@ -1175,19 +1160,6 @@ private struct DecisionDrillDown: View {
             }
             if !decision.consequences.isEmpty {
                 section("Consequences") { ForEach(decision.consequences) { line($0) } }
-            }
-            if !moreQuestions.isEmpty {
-                section("More questions from Overview") {
-                    ForEach(moreQuestions) { item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.question).font(.callout.weight(.medium))
-                            if !item.detail.isEmpty {
-                                Text(item.detail).font(.callout).foregroundStyle(.secondary)
-                            }
-                        }
-                        .reviewContextMenu(.consideration(item.id))
-                    }
-                }
             }
             if !affects.components.isEmpty || !affects.edges.isEmpty || !affects.flows.isEmpty {
                 section("Affects") { affectsLinks(affects) }

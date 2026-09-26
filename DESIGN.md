@@ -162,7 +162,12 @@ about**, 1–5 question-shaped items (a question plus one sentence) that merge w
 be separate needs-judgment and uncertainty lists, distinguished only by a subtle badge;
 **Other behavior changes**, one line each, expanding inline; and **Explore the change**,
 three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
-with a tooltip rather than a colored badge. Review progress lives in the sidebar. Longer
+with a tooltip rather than a colored badge. The things to think about are the review
+checklist: there is one measure of review progress, "n of m things to think about
+resolved", and the list's header, its checked-off badges, the Decisions tile, the Decisions
+header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An item is
+resolved by judging the decision it's reviewed on; when it has no decision to be judged on
+(none, or one outside Decisions to Review), by talking it through in a conversation. Longer
 reasoning, evidence, and file locations are drill-down only — an expansion, a click, or
 right-click → Ask about this…. The judgment stage writes `considerations` to these budgets;
 older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
@@ -267,11 +272,13 @@ proposes the review surface and the reviewer controls it. **Add to review** prom
 decision, and **Not worth reviewing** on a card demotes one. Both are stored as
 `reviewerPlacement`, and moving a decision back to where the analysis put it clears the
 override. Nothing is promoted to fill the list: when nothing stands out, the screen says so.
-Only decisions to review count toward review progress, which means "n of the
-consequential decisions consciously judged" and sits on the sidebar's Decisions row.
-They are also the only decisions marked on the Architecture drawing and in Flows. An
-Overview question's "Review →" opens its first related decision, highlights it briefly,
-and shows the question there as "Question from Overview". The lens is keyboard-driven
+Decisions is where a judgment is recorded, not a second checklist: review progress counts
+the Overview's things to think about (§4.2), and judging a decision resolves every question
+reviewed on it. The header shows the same n of m as the sidebar's Decisions row, one dot
+per question. Decisions to review are the only ones with judgment buttons, and the only
+decisions marked on the Architecture drawing and in Flows. An Overview question's
+"Review →" opens its first related decision and highlights it briefly; the card names its
+questions as one more line, "Overview asks", rather than re-quoting them as a block. The lens is keyboard-driven
 (J/K or ↑/↓ move, A/Q/C judge, M more). A "One at a time" mode reads like a design review.
 Graphs without `question`/`options`/`why` are condensed by `PRGraph.brief(for:)`. See
 `Views/Decisions/DecisionsView.swift` and `Models/DecisionBriefing.swift`.
@@ -282,7 +289,7 @@ Not a screen, a node, or a review item. A tradeoff exists because a decision was
 it lives on `DecisionNode.tradeoffs` and is judged with that decision: two qualities being
 traded, where the choice landed, and whether it's the decision's primary tension or a
 secondary one — never a verdict. A decision may have none; the analysis is told not to
-manufacture one. Review progress counts decisions only.
+manufacture one. Review progress counts the things to think about, never tradeoffs.
 
 ### 4.6 Flows
 

@@ -190,11 +190,13 @@ struct ContentView: View {
                            status: flowsStatus, section: .flows)
             }
             Section("Review") {
-                // Review progress means "I have consciously judged n of the consequential
-                // decisions this PR made", so it sits on the row where that judgment happens.
-                let p = graph.reviewProgress
+                // Review progress is the Overview's things to think about, resolved — the
+                // same n of m the Overview shows — and sits on the row where judgments are
+                // recorded.
+                let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
                 let decisionsStatus = analysis.status(.decisions)
-                let done = decisionsStatus == .done && p.total > 0 && p.reviewed == p.total
+                let done = decisionsStatus == .done && analysis.status(.judgment) == .done
+                    && p.total > 0 && p.reviewed == p.total
                 sidebarRow("Decisions", "checklist", .decisions, status: decisionsStatus, section: .decisions) {
                     if p.total > 0 {
                         HStack(spacing: 4) {
@@ -208,7 +210,7 @@ struct ContentView: View {
                         .font(.callout)
                     }
                 }
-                .help("Decisions to review you've consciously judged: \(p.reviewed) of \(p.total)")
+                .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
                 sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
@@ -343,7 +345,8 @@ struct ContentView: View {
         let analysis = store.analysis
         switch store.current {
         case .summary:
-            SummaryView(graph: graph, analysis: analysis, onRetry: { store.retry($0) }) { store.navigate(to: $0) }
+            SummaryView(graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
+                        onRetry: { store.retry($0) }) { store.navigate(to: $0) }
         case .architecture, .componentDetail(_), .edgeDetail(_):
             sectionContent(.architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
                            ask: "What part of the system does this change sit in, and how does it change it?",
@@ -357,6 +360,7 @@ struct ContentView: View {
                 DecisionsView(
                     graph: graph,
                     focus: decisionsFocus(graph),
+                    discussed: store.conversations.discussedConsiderationIds,
                     onSetState: { store.setReviewerState($1, forDecision: $0) },
                     onSetNote: { store.setReviewerNote($1, forDecision: $0) },
                     onSetToReview: { store.setToReview($1, forDecision: $0) }
