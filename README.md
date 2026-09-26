@@ -1,26 +1,34 @@
+<p align="center"><img src="Assets/Logo/contour-logo.svg" alt="Contour" width="360"></p>
+
 # Contour
 
 A macOS-native PR review app built around the thesis that human review should validate
 engineering decisions, not re-read every line an AI generated. See `DESIGN.md` for the
 full product and technical design.
 
-Contour is a fork of Aperture, generalized: the AI harness, the issue tracker, and the
-way it reaches GitHub are all pluggable, and nothing about it is specific to one company's
-tooling.
+The AI harness (`pi` or Claude Code), the issue tracker (GitHub issues or Jira), and the
+way it reaches GitHub (`gh` or the anonymous API) are all pluggable. The only hard
+requirements are `git` and one AI CLI you're already signed in to.
+
+> **Status:** early and experimental. Expect rough edges and breaking changes.
 
 ## What's implemented
 
 - Paste a GitHub PR URL → PR metadata/diff/commits/comments are fetched → the repo is
   checked out locally at the PR's head SHA → a staged pipeline of AI calls builds a
-  knowledge graph (components, decisions, tradeoffs, flows, entry points, questions) →
+  knowledge graph (components, decisions, tradeoffs, flows, questions) →
   native SwiftUI views render it.
+- An Overview that reads as a briefing: the before/after behavior change, why it was
+  made, and a short list of "things to think about".
 - Every AI-produced statement is tagged fact / author-claim / AI-interpretation, with
   confidence on interpretations, visible everywhere via `ProvenanceBadge`.
 - Native architecture diagram (SwiftUI `Canvas`, layered layout, no web view).
 - Full decision records (Decision / Rationale / Alternatives / Consequences / Confidence /
   Evidence) with accept / question / discuss reviewer state.
-- Tradeoffs made visible without a verdict; interactive flow step lists; entry points
-  linking into their flows.
+- Tradeoffs made visible without a verdict; interactive flow step lists.
+- Contextual chat: right-click any element and choose "Ask about this…" (⌘⇧A). The model
+  gets that element plus its lineage and neighbors, and cites code and review objects as
+  clickable links.
 - Focused code viewer reading the real local checkout, with expand-context / whole-file /
   a guaranteed path back to wherever the reviewer was in the conceptual review.
 - Command palette (⌘K) jumping to any lens or any named node in the graph.
@@ -30,7 +38,7 @@ jump-to-definition, sequence-diagram rendering, sharded analysis for very large 
 
 ## Requirements
 
-- macOS with Xcode 16+ / Swift 6 toolchain.
+- macOS 15+ with a Swift 6.4 toolchain (the package declares `swift-tools-version: 6.4`).
 - `git`.
 - **One AI harness**, either:
   - `pi`, configured with at least one working model (`pi --list-models`), or
@@ -175,6 +183,7 @@ Sources/Contour/
   Services/EnvironmentProbe.swift    what's installed and usable
   Services/Preferences.swift         settings + resolution precedence
   Services/GraphStore.swift          @Observable session state + semantic nav stack
+  Chat/                              contextual chat: subject resolution, context, links
   Tracker/IssueTracker.swift         the issue-tracker seam
   Tracker/GitHubIssueTracker.swift   default tracker, needs nothing installed
   Tracker/JiraTracker.swift          opt-in tracker via acli
@@ -183,4 +192,9 @@ Sources/Contour/
   Pipeline/StageDecoding.swift       lenient decoding of AI JSON into graph nodes
   Views/                             SwiftUI lenses (Summary, Architecture, Decisions, …)
   Views/Settings/                    Settings scene + first-run wizard
+Assets/Logo/                         app icon and logo (from scripts/generate-logo.py)
 ```
+
+## License
+
+Apache License 2.0; see [`LICENSE`](LICENSE).

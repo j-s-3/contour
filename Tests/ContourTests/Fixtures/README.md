@@ -20,8 +20,8 @@ Mixed provenance, deliberately:
   last block.
 - The five `tool_execution_start` lines are synthesized against the schema
   `PiHarness.interpret` parses (`toolName` plus `args`). They could not be captured live:
-  every provider configured for `pi` on the capture machine routes through a
-  litellm/Bedrock proxy that rejects pi's own tool schema
+  every provider configured for `pi` on the capture machine routes through an
+  API proxy that rejects pi's own tool schema
   (`tools.0.custom.strict: Extra inputs are not permitted`), so `pi` cannot execute a
   tool call there at all. The last of the five uses an unknown tool name on purpose, to
   pin the generic "using <tool>" fallback.
