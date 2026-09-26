@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// One human-readable progress line surfaced while the harness works — e.g. "reading
 /// OrderService.java" or "tracing checkout flow". Built from the harness's own tool-call
@@ -86,18 +87,27 @@ struct AnalysisService {
     /// throw away the whole pipeline — including the stages already paid for. One retry
     /// only; a second failure is a real problem worth surfacing, not something to keep
     /// spending tokens on.
+    ///
+    /// - Parameter streaming: when set, the stage runs with text streaming on and every
+    ///   element of that top-level array is handed to `onElement` as soon as the model
+    ///   finishes writing it — how decisions and flows appear one at a time. The returned
+    ///   object is still the authoritative, fully parsed answer.
     func runStage(
         prompt: String,
         cwd: URL,
         tier: AnalysisTier,
         stage: PipelineStage,
+        streaming: String? = nil,
+        onElement: @escaping @Sendable ([String: Any]) -> Void = { _ in },
         onProgress: @escaping (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         do {
-            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage, onProgress: onProgress)
+            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage,
+                                          streaming: streaming, onElement: onElement, onProgress: onProgress)
         } catch AnalysisServiceError.notJSON {
             onProgress(AnalysisProgress(stageName: "", detail: "model returned malformed JSON, retrying once"))
-            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage, onProgress: onProgress)
+            return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage,
+                                          streaming: streaming, onElement: onElement, onProgress: onProgress)
         }
     }
 
@@ -106,6 +116,8 @@ struct AnalysisService {
         cwd: URL,
         tier: AnalysisTier,
         stage: PipelineStage,
+        streaming: String?,
+        onElement: @escaping @Sendable ([String: Any]) -> Void,
         onProgress: @escaping (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         // Manual-testing escape hatch (see MockAnalysisFixtures): skip the real harness
@@ -114,19 +126,29 @@ struct AnalysisService {
         // working — only the slow AI call is short-circuited.
         if MockAnalysisFixtures.isEnabled {
             onProgress(AnalysisProgress(stageName: "", detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
-            return MockAnalysisFixtures.response(for: stage)
+            let response = MockAnalysisFixtures.response(for: stage)
+            try await Self.simulateLatency(of: stage, response: response, streaming: streaming, onElement: onElement)
+            // CONTOUR_MOCK_FAIL_STAGE=<stage> (e.g. "architecture") makes that one stage fail
+            // the first time it runs, to exercise a section's failure and a successful Retry
+            // without a real broken model call.
+            if ProcessInfo.processInfo.environment["CONTOUR_MOCK_FAIL_STAGE"] == "\(stage)",
+               Self.mockFailures.withLock({ $0.insert(stage).inserted }) {
+                throw AnalysisServiceError.emptyResponse(harness: "mock (CONTOUR_MOCK_FAIL_STAGE)")
+            }
+            return response
         }
 
         let name = harness.id.displayName
-        let args = try harness.arguments(
-            prompt: prompt,
-            contextFile: PromptBuilder.contextFileName,
-            tier: tier,
-            systemPrompt: Self.groundingSystemPrompt
-        )
+        // Streaming needs the CLI's text deltas, which only its conversation form emits.
+        let args = try streaming == nil
+            ? harness.arguments(prompt: prompt, contextFile: PromptBuilder.contextFileName,
+                                tier: tier, systemPrompt: Self.groundingSystemPrompt)
+            : harness.conversationArguments(prompt: prompt, contextFile: PromptBuilder.contextFileName,
+                                            tier: tier, systemPrompt: Self.groundingSystemPrompt)
 
         var finalText: String?
         var lastError: Error?
+        var extractor = streaming.map(StreamingArrayExtractor.init(key:))
 
         do {
             for try await line in Shell.stream(harness.executable, args, cwd: cwd) {
@@ -135,7 +157,9 @@ struct AnalysisService {
                     onProgress(AnalysisProgress(stageName: "", detail: detail))
                 case .finalText(let text):
                     finalText = text
-                case .textDelta, nil:
+                case .textDelta(let text):
+                    extractor?.consume(text).forEach(onElement)
+                case nil:
                     continue
                 }
             }
@@ -153,6 +177,37 @@ struct AnalysisService {
         }
         Self.dumpIfRequested(parsed, stage: stage)
         return parsed
+    }
+
+    /// With `CONTOUR_MOCK_LATENCY=<scale>` set alongside `CONTOUR_MOCK_ANALYSIS=1`, each
+    /// canned stage takes roughly as long as a real one (times the scale), and a streamed
+    /// stage hands out its elements one at a time. Without it, mock stages return at once —
+    /// right for tests, but it hides exactly what progressive opening is about.
+    private static let mockFailures = OSAllocatedUnfairLock<Set<PipelineStage>>(initialState: [])
+
+    private static func simulateLatency(
+        of stage: PipelineStage, response: [String: Any], streaming: String?,
+        onElement: @Sendable ([String: Any]) -> Void
+    ) async throws {
+        guard let raw = ProcessInfo.processInfo.environment["CONTOUR_MOCK_LATENCY"],
+              let scale = Double(raw), scale > 0 else { return }
+        let seconds: Double
+        switch stage {
+        case .understanding: seconds = 3
+        case .behaviorChange: seconds = 6
+        case .architecture: seconds = 9
+        case .decisions: seconds = 12
+        case .flows: seconds = 10
+        case .judgment: seconds = 8
+        default: seconds = 0
+        }
+        let elements = streaming.flatMap { response[$0] as? [[String: Any]] } ?? []
+        // A streamed stage reads for a while before its first element, then writes them.
+        let slices = elements.count + 1
+        for i in 0..<slices {
+            try await Task.sleep(for: .seconds(seconds * scale / Double(slices)))
+            if i < elements.count { onElement(elements[i]) }
+        }
     }
 
     /// With `CONTOUR_DUMP_STAGES=<dir>` set, writes each stage's decoded JSON to

@@ -55,7 +55,7 @@ enum StageDecoding {
         }
     }
 
-    struct BehaviorChangeResult: Decodable {
+    struct BehaviorChangeResult: Decodable, Sendable {
         var behaviorChanges: [BehaviorChange]
 
         enum CodingKeys: String, CodingKey { case behaviorChanges }
@@ -65,7 +65,7 @@ enum StageDecoding {
         }
     }
 
-    struct ArchitectureResult: Decodable {
+    struct ArchitectureResult: Decodable, Sendable {
         var components: [ComponentNode]
         var edges: [ArchitectureEdge]
         var boundaries: [SystemBoundary]
@@ -85,11 +85,8 @@ enum StageDecoding {
         }
     }
 
-    struct IntentResult: Decodable {
-        var intent: Statement
-    }
 
-    struct DecisionsResult: Decodable {
+    struct DecisionsResult: Decodable, Sendable {
         var decisions: [DecisionNode]
 
         enum CodingKeys: String, CodingKey { case decisions }
@@ -99,7 +96,7 @@ enum StageDecoding {
         }
     }
 
-    struct FlowsResult: Decodable {
+    struct FlowsResult: Decodable, Sendable {
         var entryPoints: [EntryPointNode]
         var flows: [FlowNode]
 
@@ -111,7 +108,7 @@ enum StageDecoding {
         }
     }
 
-    struct JudgmentResult: Decodable {
+    struct JudgmentResult: Decodable, Sendable {
         var considerations: [Consideration]
         var needsJudgment: [Statement]
         var uncertainties: [Statement]
@@ -129,9 +126,12 @@ enum StageDecoding {
         }
     }
 
-    /// §ELI5 feature: the two human-friendly briefs surfaced at the top of the summary.
-    struct ELI5Result: Decodable {
-        var problemToBeSolved: Statement
-        var howItWasSolved: Statement
+    /// What the PR is for, in the author's words and in plain language: the intent plus the
+    /// two ELI5 briefs (§ELI5). One call rather than two — both read the same PR prose and
+    /// the linked issue, and splitting them only made the model rediscover the same facts.
+    struct UnderstandingResult: Decodable, Sendable {
+        var intent: Statement
+        var problemToBeSolved: Statement?
+        var howItWasSolved: Statement?
     }
 }

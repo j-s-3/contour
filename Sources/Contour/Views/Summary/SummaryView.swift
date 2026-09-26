@@ -15,9 +15,23 @@ import SwiftUI
 /// Everything here is deliberately short; explanation lives one step down — a click, an
 /// expansion, or right-click → Ask about this…. File paths and line numbers never appear at
 /// this level. Review progress lives in the sidebar, since it's status, not understanding.
+///
+/// It opens before the analysis behind it has finished, so every section has a reserved
+/// place from the start: "✦ Understanding the change…" becomes the plain-language answer,
+/// then the before/after hero; "Loading…" becomes the why; the things to think about fill
+/// in as the analysis finds them. Placeholders are replaced in place and nothing above
+/// the reviewer's reading position is inserted later, so the page doesn't jump.
 struct SummaryView: View {
     let graph: PRGraph
+    var analysis = AnalysisState(isComplete: true)
+    var onRetry: (PipelineStage) -> Void = { _ in }
     var navigate: (NavigationTarget) -> Void
+
+    private var behaviorStatus: StageStatus { analysis.status(.behaviorChange) }
+    private var understandingStatus: StageStatus { analysis.status(.understanding) }
+    private var judgmentStatus: StageStatus { analysis.status(.judgment) }
+    /// Still expecting the before/after: nothing to show yet, and nothing has failed.
+    private var awaitingBehavior: Bool { graph.dominantBehaviorChange == nil && !behaviorStatus.isSettled }
 
     @Environment(\.reviewActions) private var actions
     @State private var expandedConsideration: String?
@@ -38,10 +52,16 @@ struct SummaryView: View {
                 if let change = graph.dominantBehaviorChange, change.why != nil || change.consequence != nil {
                     whyAndConsequence(change)
                         .padding(.top, 26)
+                } else if awaitingBehavior {
+                    whyPlaceholder
+                        .padding(.top, 26)
                 }
 
                 if !graph.thingsToThinkAbout.isEmpty {
                     thingsToThinkAbout
+                        .padding(.top, 36)
+                } else if !judgmentStatus.isSettled {
+                    thingsToThinkAboutPlaceholder
                         .padding(.top, 36)
                 }
 
@@ -130,6 +150,22 @@ struct SummaryView: View {
                     .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
                     .padding(.top, 4)
+                    .transition(.opacity)
+            } else if awaitingBehavior {
+                // The plain-language answer usually lands first; show it while the
+                // before/after is built, in the space the diagram will take.
+                if let how = graph.pr.howItWasSolved {
+                    Text(how.text)
+                        .font(.title3.weight(.medium))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .reviewContextMenu(.pullRequest)
+                        .transition(.opacity)
+                    WorkingLine(text: "Building before / after…")
+                } else {
+                    WorkingLine(text: understandingStatus.failure == nil ? "Understanding the change…" : "Building before / after…",
+                                font: .title3)
+                }
             } else if let problem = graph.pr.problemToBeSolved {
                 // No before/after was extracted: fall back to the plain-language pair, still
                 // as two short statements rather than cards.
@@ -146,7 +182,68 @@ struct SummaryView: View {
                     .lineLimit(3)
                     .reviewContextMenu(.pullRequest)
             }
+            if behaviorStatus.failure != nil {
+                retryLine("Couldn't build the before / after.", stage: .behaviorChange)
+            }
         }
+        .animation(.easeInOut(duration: 0.35), value: graph.dominantBehaviorChange?.id)
+        .animation(.easeInOut(duration: 0.35), value: graph.pr.howItWasSolved?.text)
+    }
+
+    private func retryLine(_ text: String, stage: PipelineStage) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(text).foregroundStyle(.secondary)
+            Button("Retry") { onRetry(stage) }
+                .buttonStyle(.link)
+        }
+        .font(.caption)
+    }
+
+    // MARK: - Placeholders
+
+    /// Reserves the why/consequence rows so the text lands where the reviewer expects it.
+    private var whyPlaceholder: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+            GridRow {
+                Text("WHY")
+                    .font(.caption.weight(.semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary)
+                Text("Loading…").font(.body).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var thingsToThinkAboutPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange.opacity(0.5))
+                    .font(.callout)
+                Text("THINGS TO THINK ABOUT")
+                    .font(.callout.weight(.semibold))
+                    .tracking(0.5)
+            }
+            WorkingLine(text: judgmentWorkingText)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.orange.opacity(0.12)))
+    }
+
+    /// Judgment runs last, over everything else; until then, say what it's waiting on in the
+    /// reviewer's terms, and point at the decisions already found.
+    private var judgmentWorkingText: String {
+        let found = graph.decisions.count
+        let decisions = analysis.status(.decisions)
+        if !judgmentStatus.isRunning, decisions.isRunning || decisions == .pending {
+            return found > 0 ? "\(found) \(found == 1 ? "decision" : "decisions") found · looking for consequential choices…"
+                             : "Looking for consequential choices…"
+        }
+        return "Weighing what needs your judgment…"
     }
 
     private func openStage(_ stage: BehaviorStage) {
@@ -243,6 +340,19 @@ struct SummaryView: View {
                 .padding(.leading, 60)
                 .padding(.bottom, 4)
             }
+
+            // Until judgment lands this list is the behavior change's own question; say
+            // more are coming rather than let it pass for the full list.
+            if !judgmentStatus.isSettled {
+                WorkingLine(text: judgmentWorkingText, font: .caption)
+                    .padding(.leading, 58)
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
+            } else if judgmentStatus.failure != nil {
+                retryLine("Couldn't finish weighing what needs judgment.", stage: .judgment)
+                    .padding(.leading, 58)
+                    .padding(.top, 6)
+            }
         }
         .padding(.bottom, 10)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
@@ -308,17 +418,31 @@ struct SummaryView: View {
         // which says more about the diff than about the architecture.
         let architecture = graph.architecture.map { "\($0.impact.label) architectural impact" }
             ?? "\(graph.topLevelParts.count) parts"
+        let progress = graph.reviewProgress
         return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Explore the change")
             HStack(spacing: 12) {
-                ExploreTile(title: "Architecture", detail: architecture,
+                ExploreTile(title: "Architecture",
+                            detail: tileDetail(.architecture, ready: architecture, count: graph.components.count, noun: "part"),
                             symbol: "square.stack.3d.up") { navigate(.architecture) }
-                ExploreTile(title: "Flows", detail: "\(graph.flows.count) traced",
+                ExploreTile(title: "Flows",
+                            detail: tileDetail(.flows, ready: "\(graph.flows.count) traced", count: graph.flows.count, noun: "flow"),
                             symbol: "arrow.triangle.branch") { navigate(.flows) }
-                let progress = graph.reviewProgress
-                ExploreTile(title: "Decisions", detail: "\(progress.reviewed) of \(progress.total) reviewed",
+                ExploreTile(title: "Decisions",
+                            detail: tileDetail(.decisions, ready: "\(progress.reviewed) of \(progress.total) reviewed",
+                                               count: graph.decisions.count, noun: "decision"),
                             symbol: "checklist") { navigate(.decisions) }
             }
+        }
+    }
+
+    /// A tile's line: its summary once ready, otherwise how far its analysis has got.
+    private func tileDetail(_ stage: PipelineStage, ready: String, count: Int, noun: String) -> String {
+        switch analysis.status(stage) {
+        case .done, .stale: return ready
+        case .failed: return "Couldn't be analyzed"
+        case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
+        case .pending: return "Waiting…"
         }
     }
 

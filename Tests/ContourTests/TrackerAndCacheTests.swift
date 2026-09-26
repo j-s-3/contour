@@ -84,7 +84,7 @@ final class TrackerAndCacheTests: XCTestCase {
         cache.invalidate(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999)
         XCTAssertNil(cache.load(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999))
 
-        cache.save(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999, graph: graph, diff: "diff text")
+        cache.save(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999, graph: graph, diff: "diff text", completedStages: Set(PipelineStage.analysis))
         let loaded = cache.load(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999)
         XCTAssertEqual(loaded?.graph.pr.title, "t")
         XCTAssertEqual(loaded?.diff, "diff text")
@@ -111,12 +111,12 @@ final class TrackerAndCacheTests: XCTestCase {
 
         setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
         defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
-        cache.save(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion, graph: graph, diff: "mock")
+        cache.save(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion, graph: graph, diff: "mock", completedStages: [.decisions])
         unsetenv("CONTOUR_MOCK_ANALYSIS")
         XCTAssertNil(cache.load(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion),
                      "a mock run must not write the real cache entry")
 
-        cache.save(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion, graph: graph, diff: "real")
+        cache.save(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion, graph: graph, diff: "real", completedStages: [.decisions])
         setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
         XCTAssertNil(cache.load(owner: key.owner, repo: key.repo, number: key.number, headSha: key.headSha, baseSha: key.baseSha, pipelineVersion: key.pipelineVersion),
                      "a mock run must show the fixtures, not a real cached analysis")

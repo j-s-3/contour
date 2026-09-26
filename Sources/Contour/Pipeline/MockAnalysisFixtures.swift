@@ -30,8 +30,7 @@ enum MockAnalysisFixtures {
         switch stage {
         case .behaviorChange: json = behaviorChangeJSON
         case .architecture: json = architectureJSON
-        case .intent: json = intentJSON
-        case .eli5: json = eli5JSON
+        case .understanding: json = understandingJSON
         case .decisions: json = decisionsJSON
         case .flows: json = flowsJSON
         case .judgment: json = judgmentJSON
@@ -468,19 +467,14 @@ enum MockAnalysisFixtures {
     }
     """#
 
-    private static let intentJSON = #"""
+    private static let understandingJSON = #"""
     {
       "intent": {
         "confidence": null,
         "provenance": "claim",
         "source": "Title: 'Detect binary content beyond the first line'. Description: 'inspect up to the first 1024 already-buffered bytes before splitting out the first line'; 'preserve the reader's bytes, line boundaries, UTF-16 handling, and streaming behavior'; Root cause: 'content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.' Also: 'it does not add a post-line blocking read'; 'BOM detection still takes precedence... ZIP signature detection is also unchanged.' 'Fixes #3554.'",
         "text": "Make bat detect binary content that appears after the first line. Before this change, bat passed only the first line to content_inspector, so random or encrypted data with a newline before its first NUL byte was classified as UTF-8 and printed to the terminal. The PR instead inspects up to the first 1024 bytes that are already buffered, taken before the first line is split out. It aims to keep the reader's bytes and line boundaries, UTF-16/BOM handling, ZIP detection and streaming behavior unchanged, and to add no extra blocking read. Fixes #3554."
-      }
-    }
-    """#
-
-    private static let eli5JSON = #"""
-    {
+      },
       "howItWasSolved": {
         "confidence": "high",
         "provenance": "interpretation",

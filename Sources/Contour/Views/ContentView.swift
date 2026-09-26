@@ -45,8 +45,8 @@ struct ContentView: View {
             }
         }
         .onChange(of: store.phase) { _, phase in
-            // Companion to CONTOUR_OPEN_PR_URL: land on a specific lens once the PR is ready.
-            guard phase == .ready,
+            // Companion to CONTOUR_OPEN_PR_URL: land on a specific lens once the PR opens.
+            guard phase == .review,
                   let lens = ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"] else { return }
             switch lens {
             case "architecture": store.navigate(to: .architecture)
@@ -66,11 +66,11 @@ struct ContentView: View {
             switch store.phase {
             case .idle:
                 OnboardingView { url in store.load(prURL: url) }
-            case .running(let stage):
-                AnalyzingView(stage: stage, log: store.progressLog)
+            case .opening:
+                OpeningView(log: store.progressLog)
             case .failed(let message):
-                FailedView(message: message) { store.phase = .idle }
-            case .ready:
+                FailedView(message: message) { store.close() }
+            case .review:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
@@ -85,7 +85,13 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
             sidebar(graph)
         } detail: {
-            detailContent(graph)
+            VStack(spacing: 0) {
+                if let head = store.analysis.revalidatingFrom {
+                    RevalidationBanner(head: head)
+                }
+                detailContent(graph)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
                 // The chat is an inspector on the detail column rather than a sheet or a
                 // pane inside a lens: it persists across navigation, so following a code
                 // citation keeps the thread beside the code instead of replacing it.
@@ -127,6 +133,9 @@ struct ContentView: View {
                     .disabled(!store.canGoForward)
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics) {
+                    store.retry($0)
+                }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
                 Button {
@@ -147,57 +156,93 @@ struct ContentView: View {
         }
     }
 
+    /// Every destination is always open, whatever its analysis state; the row just says how
+    /// far along it is, and a finished section simply stops saying anything.
     private func sidebar(_ graph: PRGraph) -> some View {
-        List {
+        let analysis = store.analysis
+        return List {
             Section("Overview") {
-                sidebarRow("Overview", "house", .summary)
+                sidebarRow("Overview", "house", .summary, status: analysis.sectionStatus(.whatChanged), section: .whatChanged)
             }
             Section("System") {
-                sidebarRow("Architecture", "square.stack.3d.up", .architecture)
-                sidebarRow("Flows (\(graph.flows.count))", "arrow.triangle.branch", .flows)
+                sidebarRow("Architecture", "square.stack.3d.up", .architecture,
+                           status: analysis.status(.architecture), section: .architecture)
+                let flowsStatus = analysis.status(.flows)
+                sidebarRow(flowsStatus == .done ? "Flows (\(graph.flows.count))" : "Flows", "arrow.triangle.branch", .flows,
+                           status: flowsStatus, section: .flows)
             }
             Section("Review") {
                 // Review progress means "I have consciously judged n of the consequential
                 // decisions this PR made", so it sits on the row where that judgment happens.
                 let p = graph.reviewProgress
-                let done = p.total > 0 && p.reviewed == p.total
-                sidebarRow("Decisions", "checklist", .decisions) {
-                    HStack(spacing: 4) {
-                        if done {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                let decisionsStatus = analysis.status(.decisions)
+                let done = decisionsStatus == .done && p.total > 0 && p.reviewed == p.total
+                sidebarRow("Decisions", "checklist", .decisions, status: decisionsStatus, section: .decisions) {
+                    if p.total > 0 {
+                        HStack(spacing: 4) {
+                            if done {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            }
+                            Text(verbatim: "\(p.reviewed)/\(p.total)")
+                                .monospacedDigit()
+                                .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
                         }
-                        Text(verbatim: "\(p.reviewed)/\(p.total)")
-                            .monospacedDigit()
-                            .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                        .font(.callout)
                     }
-                    .font(.callout)
                 }
                 .help("Design decisions you've consciously reviewed: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
-                sidebarRow("Raw diff", "doc.text", .diff)
+                sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
             }
         }
         .listStyle(.sidebar)
         .frame(minWidth: 220)
     }
 
-    private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget) -> some View {
-        sidebarRow(title, symbol, target) { EmptyView() }
+    private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget,
+                            status: StageStatus, section: ReviewSection?) -> some View {
+        sidebarRow(title, symbol, target, status: status, section: section) { EmptyView() }
     }
 
     private func sidebarRow<Trailing: View>(_ title: String, _ symbol: String, _ target: NavigationTarget,
+                                            status: StageStatus, section: ReviewSection?,
                                             @ViewBuilder trailing: () -> Trailing) -> some View {
         Button { store.navigate(to: target) } label: {
-            HStack {
-                Label(title, systemImage: symbol)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Label(title, systemImage: symbol)
+                    if let subtitle = sidebarSubtitle(status, section) {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.leading, 27)
+                            .transition(.opacity)
+                    }
+                }
                 Spacer(minLength: 6)
                 trailing()
+                if status != .done {
+                    StageStatusGlyph(status: status)
+                }
             }
             .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.25), value: status)
         }
         .buttonStyle(.plain)
         .listRowBackground(isActive(target) ? Color.accentColor.opacity(0.15) : Color.clear)
+    }
+
+    private func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
+        guard let section else { return nil }
+        switch status {
+        case .running(let detail): return detail ?? section.workingLabel
+        case .failed: return "Couldn't be generated"
+        case .stale: return "Previous revision"
+        case .pending: return "Waiting…"
+        case .done: return nil
+        }
     }
 
     private func isActive(_ target: NavigationTarget) -> Bool {
@@ -247,26 +292,67 @@ struct ContentView: View {
         }
     }
 
+    /// A lens that may still be analyzing. With nothing yet it shows what's known and what's
+    /// being worked on (or, if it failed, a retry); with something, the lens itself, plus a
+    /// floating note while more is still arriving. Never a disabled or blank destination.
+    @ViewBuilder
+    private func sectionContent<Content: View>(
+        _ section: ReviewSection, stage: PipelineStage, hasContent: Bool, ask: String,
+        known: String? = nil, progress: String? = nil, @ViewBuilder content: () -> Content
+    ) -> some View {
+        let status = store.analysis.status(stage)
+        if hasContent {
+            content()
+                .overlay(alignment: .bottom) {
+                    if status.isRunning, let progress {
+                        SectionProgressPill(text: progress)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: status.isRunning)
+        } else if let message = status.failure {
+            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
+            }
+        } else if status == .done {
+            content()
+        } else {
+            SectionPendingView(section: section, status: status, known: known)
+        }
+    }
+
     @ViewBuilder
     private func detailContent(_ graph: PRGraph) -> some View {
+        let analysis = store.analysis
         switch store.current {
         case .summary:
-            SummaryView(graph: graph) { store.navigate(to: $0) }
+            SummaryView(graph: graph, analysis: analysis, onRetry: { store.retry($0) }) { store.navigate(to: $0) }
         case .architecture, .componentDetail(_), .edgeDetail(_):
-            ArchitectureView(graph: graph, focus: architectureFocus)
+            sectionContent(.architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
+                           ask: "What part of the system does this change sit in, and how does it change it?",
+                           known: graph.dominantBehaviorChange.map { $0.after.map(\.label).joined(separator: " → ") }) {
+                ArchitectureView(graph: graph, focus: architectureFocus)
+            }
         case .decisions, .decisionDetail(_), .consideration(_):
-            DecisionsView(
-                graph: graph,
-                focus: decisionsFocus(graph),
-                onSetState: { store.setReviewerState($1, forDecision: $0) },
-                onSetNote: { store.setReviewerNote($1, forDecision: $0) }
-            )
+            sectionContent(.decisions, stage: .decisions, hasContent: !graph.decisions.isEmpty,
+                           ask: "What are the consequential design decisions in this PR?",
+                           progress: "\(graph.decisions.count) found so far · looking for other consequential choices…") {
+                DecisionsView(
+                    graph: graph,
+                    focus: decisionsFocus(graph),
+                    onSetState: { store.setReviewerState($1, forDecision: $0) },
+                    onSetNote: { store.setReviewerNote($1, forDecision: $0) }
+                )
+            }
         case .flows, .flowDetail(_), .flowNodeDetail(_, _):
-            FlowsView(
-                graph: graph,
-                focus: flowsFocus,
-                onOpenEvidence: { store.navigate(to: .evidence($0)) }
-            )
+            sectionContent(.flows, stage: .flows, hasContent: !graph.flows.isEmpty,
+                           ask: "What happens at runtime when this changed behavior is triggered?",
+                           progress: "\(graph.flows.count) traced so far · tracing others…") {
+                FlowsView(
+                    graph: graph,
+                    focus: flowsFocus,
+                    onOpenEvidence: { store.navigate(to: .evidence($0)) }
+                )
+            }
         case .files:
             ContentUnavailableView("No file view", systemImage: "doc.text")
         case .diff:
