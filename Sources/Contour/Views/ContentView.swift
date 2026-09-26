@@ -67,18 +67,18 @@ struct ContentView: View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
+                OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace) { url in store.load(prURL: url) }
             case .opening:
                 // Only the fetch happens here now; the review opens as soon as the PR has
                 // been read, and the mark carries on resolving in the toolbar.
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
-                FailedView(message: message) { store.close() }
+                FailedView(message: message, onRetry: { store.reopen() }, onOpenDifferent: { store.close() })
             case .review:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
+                    OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace) { url in store.load(prURL: url) }
                 }
             }
         }
