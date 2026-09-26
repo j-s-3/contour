@@ -108,6 +108,14 @@ extension PRGraph {
         case .fetching, .checkingOut, .cacheCheck, .ticket:
             break
         }
+        refChecks?[stage.rawValue] = nil
+    }
+
+    /// Records how a stage's refs fared against the checkout, replacing any earlier tally
+    /// for the same stage (a retry, or this revision replacing a previous one's slice).
+    mutating func record(_ check: RefCheck, for stage: PipelineStage) {
+        refChecks = refChecks ?? [:]
+        refChecks?[stage.rawValue] = check
     }
 
     static func shellIntent(title: String) -> Statement {

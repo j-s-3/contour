@@ -151,7 +151,8 @@ struct ContentView: View {
                     .disabled(!store.canGoForward)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics) {
+                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
+                                  refCheck: graph.refCheckTotal) {
                     store.retry($0)
                 }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }

@@ -678,10 +678,20 @@ Three classes, enforced by `Statement`'s `Provenance` and rendered identically e
 via `ProvenanceBadge`/`StatementView` (`Views/Components/Badges.swift`): fact (observed
 directly), claim (author-stated, quoted/paraphrased), interpretation (AI-derived, always
 carries a `Confidence` and is required by every stage's system prompt to use hedged
-language). The grounding gate is enforced by instruction ("every field you emit must be
-backed by a CodeRef your tools actually resolved") rather than a separate mechanical
-verification pass in this MVP — mechanical CodeRef verification against the checkout is
-a near-term hardening item, not yet wired in.
+language). The grounding gate is asked for by instruction ("every field you emit must be
+backed by a CodeRef your tools actually resolved") and then checked mechanically:
+`CodeRefVerifier` (`Pipeline/CodeRefVerifier.swift`) resolves every stage's refs against
+the checkout as the stage lands, before it reaches the screen or `GraphLinker`. A `head`
+ref must name a file in the working tree whose range starts inside it; a `base` ref must
+resolve via `git cat-file blob <baseSha>:<path>`. A range running past the end is trimmed
+to it, and a `head` ref to a file the PR deleted is moved to `base` (the model omits
+`side` more often than not). Refs that still don't resolve are dropped, and a statement
+whose refs *all* failed keeps its text but loses its standing: a fact becomes a
+low-confidence interpretation, an interpretation drops to low confidence, a decision's
+own confidence drops to low; an author's claim stays a claim. Each stage's tally is kept
+on the graph (`PRGraph.refChecks`) and the analysis details say "3 of 41 code references
+couldn't be verified", listing them. File line counts are cached per run, and all of it
+runs off the main actor.
 
 ## 16. Security considerations
 
@@ -724,13 +734,15 @@ ephemeral, and session-less, so nothing a PR contains can persist into a later a
 **Explicitly deferred:** posting reviews back to GitHub, LSP-grade jump-to-
 definition/call-graph navigation, sequence-diagram rendering as an alternate flow view,
 sharded analysis for oversized PRs, per-stage result caching, a Settings screen for
-per-tier model overrides, mechanical CodeRef verification against the checkout.
+per-tier model overrides, mechanical CodeRef verification against the checkout (since
+done, §15).
 
 ## 18. Later enhancements
 
 In priority order given what MVP validated: (1) per-stage analysis caching keyed by
-head/base SHA, since re-opening the same PR should be instant; (2) mechanical CodeRef
+head/base SHA, since re-opening the same PR should be instant; (2) ~~mechanical CodeRef
 verification, since it closes the one remaining gap between "the AI was told to ground
-every claim" and "the app proved it did"; (3) posting reviewer marks back to GitHub as a
+every claim" and "the app proved it did"~~ — done: `CodeRefVerifier` drops refs that don't
+resolve against the checkout and demotes statements resting only on them (§15); (3) posting reviewer marks back to GitHub as a
 real review; (4) sharded analysis for large PRs; (5) LSP-backed code navigation; (6) a
 Settings screen exposing per-tier model overrides for users running multiple providers.
