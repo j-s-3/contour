@@ -203,25 +203,3 @@ struct FlowLayout: Layout {
         }
     }
 }
-
-struct ReviewerStateControl: View {
-    let state: ReviewerState
-    var onSet: (ReviewerState) -> Void
-    var body: some View {
-        HStack(spacing: 6) {
-            stateButton(.accepted, "checkmark", .green)
-            stateButton(.questioned, "questionmark", .orange)
-            stateButton(.discuss, "bubble.left.and.bubble.right", .red)
-        }
-    }
-    private func stateButton(_ target: ReviewerState, _ symbol: String, _ color: Color) -> some View {
-        Button { onSet(target) } label: {
-            Image(systemName: symbol)
-                .frame(width: 22, height: 22)
-                .background(state == target ? color.opacity(0.2) : Color.clear, in: Circle())
-                .foregroundStyle(state == target ? color : .secondary)
-        }
-        .buttonStyle(.plain)
-        .help(target.label)
-    }
-}

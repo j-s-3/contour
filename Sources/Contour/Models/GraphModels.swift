@@ -270,10 +270,46 @@ enum ReviewerState: String, Codable, Hashable, Sendable, CaseIterable {
     var label: String {
         switch self {
         case .unreviewed: return "Unreviewed"
-        case .accepted: return "Accepted"
+        case .accepted: return "Looks good"
         case .questioned: return "Questioned"
         case .discuss: return "Needs discussion"
         }
+    }
+}
+
+// MARK: - A decision as the question it answered (§4.4)
+//
+// The Decisions lens is where the reviewer makes judgments, so a decision is drawn as the
+// question the engineer had to answer, the options on the table, and which one this PR
+// took — not as a paragraph describing the implementation.
+
+/// How the options of a decision are best drawn. Not every choice is a two-sided spectrum.
+enum DecisionShape: String, Codable, Hashable, Sendable {
+    /// Two approaches: A ○────● B.
+    case binary
+    /// An ordered scale (sizes, limits, strictness): 1 line ── 256B ── 1KB ● ── 4KB.
+    case threshold
+    /// Three or more unordered alternatives, drawn as a radio list.
+    case options
+}
+
+/// One option on the table for a decision. `label` is a short noun phrase ("First 1 KB",
+/// "Use what's buffered"); `detail` is the property it buys, in a few words
+/// ("non-blocking streaming").
+struct DecisionOption: Codable, Hashable, Sendable {
+    var label: String
+    var detail: String?
+    var chosen: Bool = false
+
+    init(label: String, detail: String? = nil, chosen: Bool = false) {
+        self.label = label; self.detail = detail; self.chosen = chosen
+    }
+    enum CodingKeys: String, CodingKey { case label, detail, chosen }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        label = try c.decode(String.self, forKey: .label)
+        detail = try c.decodeIfPresent(String.self, forKey: .detail)
+        chosen = try c.decodeIfPresent(Bool.self, forKey: .chosen) ?? false
     }
 }
 
@@ -443,21 +479,33 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     /// decisions (`.component`/`.implementation`) — Decisions view defaults to showing
     /// only the former, disclosing the latter behind a toggle.
     var level: AbstractionLevel = .system
+    /// The decision phrased as the question the engineer had to answer ("How much data
+    /// should binary detection inspect?"). Nil on graphs from before the Decisions redesign;
+    /// `PRGraph.brief(for:)` falls back to `title`.
+    var question: String?
+    /// The options that were on the table, exactly one `chosen`. Empty on older graphs.
+    var options: [DecisionOption] = []
+    var shape: DecisionShape?
+    /// Why this side was chosen, in at most two short lines. The full reasoning stays in
+    /// `rationale`.
+    var why: Statement?
 
     init(id: String, title: String, decision: Statement, rationale: [Statement] = [],
          alternatives: [Statement] = [], consequences: [Statement] = [], confidence: Confidence,
          refs: [CodeRef] = [], tradeoffIds: [String] = [], componentIds: [String] = [],
          reviewerState: ReviewerState = .unreviewed, reviewerNote: String = "",
-         level: AbstractionLevel = .system) {
+         level: AbstractionLevel = .system, question: String? = nil, options: [DecisionOption] = [],
+         shape: DecisionShape? = nil, why: Statement? = nil) {
         self.id = id; self.title = title; self.decision = decision; self.rationale = rationale
         self.alternatives = alternatives; self.consequences = consequences; self.confidence = confidence
         self.refs = refs; self.tradeoffIds = tradeoffIds; self.componentIds = componentIds
         self.reviewerState = reviewerState; self.reviewerNote = reviewerNote
         self.level = level
+        self.question = question; self.options = options; self.shape = shape; self.why = why
     }
     enum CodingKeys: String, CodingKey {
         case id, title, decision, rationale, alternatives, consequences, confidence, refs,
-             tradeoffIds, componentIds, reviewerState, reviewerNote, level
+             tradeoffIds, componentIds, reviewerState, reviewerNote, level, question, options, shape, why
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -474,6 +522,11 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         reviewerState = try c.decodeIfPresent(ReviewerState.self, forKey: .reviewerState) ?? .unreviewed
         reviewerNote = try c.decodeIfPresent(String.self, forKey: .reviewerNote) ?? ""
         level = try c.decodeIfPresent(AbstractionLevel.self, forKey: .level) ?? .system
+        question = try c.decodeIfPresent(String.self, forKey: .question)
+        options = (try? c.decodeIfPresent([DecisionOption].self, forKey: .options)) ?? []
+        // An unrecognized shape degrades to one inferred from the options.
+        shape = (try? c.decodeIfPresent(DecisionShape.self, forKey: .shape)) ?? nil
+        why = try? c.decodeIfPresent(Statement.self, forKey: .why)
     }
 }
 
@@ -788,8 +841,12 @@ struct PRGraph: Codable, Hashable, Sendable {
         return components.filter { $0.dependsOnIds.contains(systemComponentId) && $0.level >= .component }
     }
 
+    /// How many of the consequential decisions — the ones Decisions shows by default — the
+    /// reviewer has consciously judged. Implementation details can still be marked, but
+    /// they don't count: this measures judgment, not coverage.
     var reviewProgress: (reviewed: Int, total: Int) {
-        (decisions.filter { $0.reviewerState != .unreviewed }.count, decisions.count)
+        let judged = primaryDecisions
+        return (judged.filter { $0.reviewerState != .unreviewed }.count, judged.count)
     }
 
     /// The architecture edges to render. Prefers the rich labeled edges; when none were

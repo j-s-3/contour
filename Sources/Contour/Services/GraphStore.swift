@@ -17,13 +17,15 @@ enum NavigationTarget: Hashable {
     case summary
     case architecture
     case decisions
-    case tradeoffs
     case flows
     case files
     case diff
     case decisionDetail(String)
+    /// An Overview "thing to think about", reviewed on the decision it belongs to.
+    case consideration(String)
     case componentDetail(String)
     case edgeDetail(String)
+    /// Tradeoffs live inside their decision, so this opens the owning decision.
     case tradeoffDetail(String)
     case flowDetail(String)
     case evidence(CodeRef)
@@ -159,6 +161,7 @@ final class GraphStore {
         case .componentDetail(let id): return .component(id)
         case .edgeDetail(let id): return .relationship(id)
         case .decisionDetail(let id): return .decision(id)
+        case .consideration(let id): return .consideration(id)
         case .tradeoffDetail(let id): return .tradeoff(id)
         case .flowDetail(let id): return .flow(id)
         case .evidence(let ref): return .codeRef(ref)

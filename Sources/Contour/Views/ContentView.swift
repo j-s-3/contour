@@ -142,30 +142,26 @@ struct ContentView: View {
                 sidebarRow("Architecture", "square.stack.3d.up", .architecture)
                 sidebarRow("Flows (\(graph.flows.count))", "arrow.triangle.branch", .flows)
             }
-            Section("Decisions") {
-                sidebarRow("Decisions (\(graph.decisions.count))", "checklist", .decisions)
-                sidebarRow("Tradeoffs (\(graph.tradeoffs.count))", "arrow.left.arrow.right", .tradeoffs)
+            Section("Review") {
+                // Review progress means "I have consciously judged n of the consequential
+                // decisions this PR made", so it sits on the row where that judgment happens.
+                let p = graph.reviewProgress
+                let done = p.total > 0 && p.reviewed == p.total
+                sidebarRow("Decisions", "checklist", .decisions) {
+                    HStack(spacing: 4) {
+                        if done {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                        Text(verbatim: "\(p.reviewed)/\(p.total)")
+                            .monospacedDigit()
+                            .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                    }
+                    .font(.callout)
+                }
+                .help("Design decisions you've consciously reviewed: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
                 sidebarRow("Raw diff", "doc.text", .diff)
-            }
-            Section("Progress") {
-                // Review progress is status, not PR understanding, so it lives here — compact
-                // and always visible — rather than as a card on the Overview.
-                let p = graph.reviewProgress
-                VStack(alignment: .leading, spacing: 4) {
-                    Label {
-                        Text(verbatim: "\(p.reviewed) / \(p.total) reviewed").monospacedDigit()
-                    } icon: {
-                        Image(systemName: p.total > 0 && p.reviewed == p.total ? "checkmark.circle.fill" : "checkmark.circle")
-                            .foregroundStyle(p.total > 0 && p.reviewed == p.total ? .green : .secondary)
-                    }
-                    .font(.callout)
-                    ProgressView(value: p.total == 0 ? 0 : Double(p.reviewed), total: Double(max(p.total, 1)))
-                        .controlSize(.small)
-                }
-                .padding(.vertical, 2)
-                .help("Decisions you've accepted, questioned, or marked for discussion")
             }
         }
         .listStyle(.sidebar)
@@ -173,8 +169,18 @@ struct ContentView: View {
     }
 
     private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget) -> some View {
+        sidebarRow(title, symbol, target) { EmptyView() }
+    }
+
+    private func sidebarRow<Trailing: View>(_ title: String, _ symbol: String, _ target: NavigationTarget,
+                                            @ViewBuilder trailing: () -> Trailing) -> some View {
         Button { store.navigate(to: target) } label: {
-            Label(title, systemImage: symbol)
+            HStack {
+                Label(title, systemImage: symbol)
+                Spacer(minLength: 6)
+                trailing()
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .listRowBackground(isActive(target) ? Color.accentColor.opacity(0.15) : Color.clear)
@@ -183,10 +189,10 @@ struct ContentView: View {
     private func isActive(_ target: NavigationTarget) -> Bool {
         switch (store.current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
-             (.tradeoffs, .tradeoffs), (.flows, .flows), (.diff, .diff):
+             (.flows, .flows), (.diff, .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
-             (.tradeoffDetail(_), .tradeoffs), (.flowDetail(_), .flows):
+             (.consideration(_), .decisions), (.tradeoffDetail(_), .decisions), (.flowDetail(_), .flows):
             return true
         default:
             return false
@@ -202,6 +208,23 @@ struct ContentView: View {
         }
     }
 
+    /// The decision a navigation target asks Decisions to open, and the Overview question
+    /// that brought the reviewer there, if any.
+    private func decisionsFocus(_ graph: PRGraph) -> DecisionsView.Focus? {
+        switch store.current {
+        case .decisionDetail(let id):
+            return .init(decisionId: id)
+        case .consideration(let id):
+            guard let item = graph.thingsToThinkAbout.first(where: { $0.id == id }),
+                  let decisionId = graph.reviewDecisionId(for: item) else { return nil }
+            return .init(decisionId: decisionId, considerationId: id)
+        case .tradeoffDetail(let id):
+            return graph.tradeoff(id)?.decisionIds.first(where: { graph.decision($0) != nil }).map { .init(decisionId: $0) }
+        default:
+            return nil
+        }
+    }
+
     @ViewBuilder
     private func detailContent(_ graph: PRGraph) -> some View {
         switch store.current {
@@ -214,19 +237,12 @@ struct ContentView: View {
                 onOpenEvidence: { store.navigate(to: .evidence($0)) },
                 onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
             )
-        case .decisions, .decisionDetail(_):
+        case .decisions, .decisionDetail(_), .consideration(_), .tradeoffDetail(_):
             DecisionsView(
                 graph: graph,
-                focusDecisionId: { if case .decisionDetail(let id) = store.current { return id } else { return nil } }(),
+                focus: decisionsFocus(graph),
                 onSetState: { store.setReviewerState($1, forDecision: $0) },
-                onOpenEvidence: { store.navigate(to: .evidence($0)) },
-                onOpenTradeoff: { store.navigate(to: .tradeoffDetail($0)) }
-            )
-        case .tradeoffs, .tradeoffDetail(_):
-            TradeoffsView(
-                graph: graph,
-                onOpenEvidence: { store.navigate(to: .evidence($0)) },
-                onOpenDecision: { store.navigate(to: .decisionDetail($0)) }
+                onSetNote: { store.setReviewerNote($1, forDecision: $0) }
             )
         case .flows, .flowDetail(_):
             FlowsView(

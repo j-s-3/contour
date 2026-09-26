@@ -60,7 +60,6 @@ struct CommandPaletteView: View {
             .init(title: "Go to Overview", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
             .init(title: "Go to Architecture", subtitle: nil, symbol: "square.stack.3d.up") { store.navigate(to: .architecture) },
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
-            .init(title: "Go to Tradeoffs", subtitle: nil, symbol: "arrow.left.arrow.right") { store.navigate(to: .tradeoffs) },
             .init(title: "Go to Flows", subtitle: nil, symbol: "arrow.triangle.branch") { store.navigate(to: .flows) },
             .init(title: "Go to Raw diff", subtitle: nil, symbol: "doc.text") { store.navigate(to: .diff) },
             .init(title: "Open a different PR…", subtitle: nil, symbol: "arrow.uturn.left") { store.phase = .idle },
@@ -70,18 +69,13 @@ struct CommandPaletteView: View {
         ]
         guard let graph = store.graph else { return commands }
         for d in graph.decisions {
-            commands.append(.init(title: d.title, subtitle: "Decision", symbol: "checklist") {
+            commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {
                 store.navigate(to: .decisionDetail(d.id))
             })
         }
         for c in graph.components {
             commands.append(.init(title: c.title, subtitle: "Component", symbol: "square.stack.3d.up") {
                 store.navigate(to: .componentDetail(c.id))
-            })
-        }
-        for t in graph.tradeoffs {
-            commands.append(.init(title: t.title, subtitle: "Tradeoff", symbol: "arrow.left.arrow.right") {
-                store.navigate(to: .tradeoffDetail(t.id))
             })
         }
         for f in graph.flows {

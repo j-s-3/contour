@@ -14,6 +14,9 @@ enum ReviewSubject: Hashable, Sendable {
     case component(String)
     case relationship(String)
     case decision(String)
+    /// One option on a decision's table ("Only inspect what's buffered") — for "why did
+    /// they choose this?" and "what if they'd picked the other one?".
+    case decisionOption(decisionId: String, index: Int)
     case tradeoff(String)
     case flow(String)
     case flowStep(flowId: String, stepId: String)
@@ -25,7 +28,7 @@ enum ReviewSubject: Hashable, Sendable {
 /// What kind of thing a subject is, for the chat header glyph and for picking suggestions.
 enum SubjectKind: String, Sendable {
     case pullRequest, behavior, stage, statement, consideration, component, relationship,
-         decision, tradeoff, flow, flowStep, entryPoint, code
+         decision, option, tradeoff, flow, flowStep, entryPoint, code
 
     var label: String {
         switch self {
@@ -37,6 +40,7 @@ enum SubjectKind: String, Sendable {
         case .component: return "Architecture"
         case .relationship: return "Relationship"
         case .decision: return "Decision"
+        case .option: return "Decision option"
         case .tradeoff: return "Tradeoff"
         case .flow: return "Flow"
         case .flowStep: return "Flow step"
@@ -55,6 +59,7 @@ enum SubjectKind: String, Sendable {
         case .component: return "square.stack.3d.up"
         case .relationship: return "arrow.right"
         case .decision: return "checklist"
+        case .option: return "circle.circle"
         case .tradeoff: return "arrow.left.arrow.right"
         case .flow, .flowStep: return "arrow.triangle.branch"
         case .entryPoint: return "door.left.hand.open"
@@ -268,20 +273,63 @@ extension PRGraph {
         case .decision(let id):
             guard let d = decision(id) else { return nil }
             let tradeoffs = tradeoffs(for: id)
-            var summary = [d.title, d.decision.text]
+            let brief = brief(for: d)
+            let affects = affects(d)
+            var summary = [brief.question]
+            if let chosen = brief.chosen {
+                let others = brief.options.filter { !$0.chosen }.map(\.label)
+                summary.append("Chose \(chosen.label)" + (others.isEmpty ? "" : " over \(others.joined(separator: ", "))"))
+            } else {
+                summary.append(d.decision.text)
+            }
             if let t = tradeoffs.first { summary.append("Tradeoff: \(t.poleA) vs \(t.poleB)") }
             if d.reviewerState != .unreviewed { summary.append("Reviewer marked: \(d.reviewerState.label)") }
+            var detail = Self.describe(d)
+            if let t = tradeoffs.first {
+                detail += "\n- Tradeoff: \(t.poleA) versus \(t.poleB), landing on \(t.chosen) — \(Self.describe(t.explanation))"
+            }
+            for q in overviewQuestions(reviewedOn: id) {
+                detail += "\n- Overview question reviewed on this decision: \(q.question) \(q.detail)"
+            }
             return ResolvedSubject(
-                subject: subject, kind: .decision, title: d.title,
+                subject: subject, kind: .decision, title: brief.question,
                 lineage: [prLine, "Decisions"],
                 summary: summary.compactMap(Self.oneLine),
-                detail: Self.describe(d),
+                detail: detail,
                 componentIds: d.componentIds,
                 decisionIds: [id],
                 tradeoffIds: tradeoffs.map(\.id),
-                flowIds: unique(d.componentIds.flatMap { flows(traversing: $0).map(\.id) }),
+                flowIds: affects.flows.map(\.id),
+                edgeIds: affects.edges.map(\.id),
                 refs: d.refs,
                 detailTarget: .decisionDetail(id)
+            )
+
+        case .decisionOption(let decisionId, let index):
+            guard let d = decision(decisionId), let base = resolve(.decision(decisionId)) else { return nil }
+            let brief = brief(for: d)
+            guard brief.options.indices.contains(index) else { return nil }
+            let option = brief.options[index]
+            let others = brief.options.enumerated().filter { $0.offset != index }.map(\.element)
+            var summary = [option.label, option.chosen ? "The option this PR chose" : "An option this PR did not choose", brief.question]
+            if let detail = option.detail { summary.insert(detail, at: 1) }
+            return ResolvedSubject(
+                subject: subject, kind: .option, title: option.label,
+                lineage: [prLine, "Decisions", brief.question],
+                summary: summary.compactMap(Self.oneLine),
+                detail: """
+                Option "\(option.label)"\(option.detail.map { " (\($0))" } ?? "") — \(option.chosen ? "the option this PR chose" : "an option this PR did NOT choose").
+                The other options were: \(others.map { "\($0.label)\($0.chosen ? " (chosen)" : "")" }.joined(separator: "; ")).
+
+                \(base.detail)
+                """,
+                componentIds: base.componentIds,
+                decisionIds: [decisionId],
+                tradeoffIds: base.tradeoffIds,
+                flowIds: base.flowIds,
+                edgeIds: base.edgeIds,
+                refs: d.refs,
+                detailTarget: .decisionDetail(decisionId)
             )
 
         case .tradeoff(let id):
@@ -402,7 +450,7 @@ extension PRGraph {
             refs.contains { $0.path == ref.path && $0.startLine <= ref.endLine && ref.startLine <= $0.endLine }
         }
         var out: [(ReviewSubject, String)] = []
-        for d in decisions where cites(d.refs) { out.append((.decision(d.id), d.title)) }
+        for d in decisions where cites(d.refs) { out.append((.decision(d.id), brief(for: d).question)) }
         for c in components where cites(c.refs) { out.append((.component(c.id), c.title)) }
         for f in flows {
             for s in f.steps where cites(s.refs) { out.append((.flowStep(flowId: f.id, stepId: s.id), s.title)) }
@@ -450,6 +498,11 @@ extension PRGraph {
 
     static func describe(_ d: DecisionNode) -> String {
         var s = "Decision \"\(d.title)\" (\(d.level.label.lowercased()) level, confidence \(d.confidence.rawValue))\n"
+        if let question = d.question { s += "- Question it answers: \(question)\n" }
+        for option in d.options {
+            s += "- Option: \(option.label)\(option.detail.map { " (\($0))" } ?? "")\(option.chosen ? " ← chosen" : "")\n"
+        }
+        if let why = d.why { s += "- Why (short): \(describe(why))\n" }
         s += "- Decision: \(describe(d.decision))"
         for r in d.rationale { s += "\n- Rationale: \(describe(r))" }
         for a in d.alternatives { s += "\n- Alternative: \(describe(a))" }
