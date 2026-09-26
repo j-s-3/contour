@@ -148,7 +148,9 @@ Keep the mark rare. It appears in these places, not as decoration on empty state
 ### 4.2 Overview (landing page)
 
 A thirty-second briefing from a staff engineer, not a dashboard: one centered column
-(max ~1240pt) that reads top to bottom — title and metadata; **What changed**, the
+(max ~1240pt) that reads top to bottom — title and metadata, with one quiet facts line
+(`12 files · +148 −37 · CI passing · 2 approvals · 3 unresolved threads · opened 2 days
+ago`, `PRGlance`) that omits whatever the source couldn't tell; **What changed**, the
 before/after stage diagram as the hero (3–6 short stages per side, green for a step this PR
 adds, dashed for a step that no longer happens, an optional success/failure outcome on the
 last stage); **Why** and **Consequence** at one or two lines each; **Things to think
@@ -384,11 +386,14 @@ Contour reads GitHub through one of two interchangeable `PRSource` implementatio
 (`Services/PRSource.swift` picks between them), and holds no GitHub credential either way.
 
 - `GHCLISource` shells out to `gh` — `gh pr view --json ...` for
-  metadata/commits/comments/reviews, `gh pr diff` for the raw diff, `gh issue view` for a
+  metadata/commits/comments/reviews and CI (`statusCheckRollup`), `gh pr diff` for the raw
+  diff, one `gh api graphql` query for unresolved review threads, `gh issue view` for a
   linked issue. It inherits whatever `gh auth` is configured, including GitHub Enterprise,
   and it is the only path that can read private repositories.
 - `AnonymousAPISource` uses GitHub's public REST API with no credentials at all, so a
-  public pull request can be reviewed on a machine that has nothing but `git`.
+  public pull request can be reviewed on a machine that has nothing but `git`. It reads
+  CI from the head commit's check runs and statuses, but can't see thread resolution,
+  which is GraphQL-only and needs authentication.
 
 Selection is a user setting (`auto` / `gh` / `anonymous`) defaulting to `auto`: use `gh`
 when it is installed and authenticated — private repos, and 5000 requests/hour — and
