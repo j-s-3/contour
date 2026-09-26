@@ -100,7 +100,9 @@ extension PRGraph {
     func affects(_ d: DecisionNode) -> (components: [ComponentNode], edges: [ArchitectureEdge], flows: [FlowNode]) {
         let components = d.componentIds.compactMap(component)
         let edges = resolvedEdges.filter { edge in decisions(forEdge: edge).contains { $0.id == d.id } }
-        let flows = unique(d.componentIds.flatMap { flows(traversing: $0).map(\.id) }).compactMap(flow)
+        // Flows the decision is pinned in first, then flows through the components it shapes.
+        let pinned = flowAppearances(ofDecision: d.id).map(\.flow.id)
+        let flows = unique(pinned + d.componentIds.flatMap { flows(traversing: $0).map(\.id) }).compactMap(flow)
         return (components, edges, flows)
     }
 
