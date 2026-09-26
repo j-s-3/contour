@@ -131,9 +131,9 @@ struct FlowBehaviorTests {
         let file = try fileFlow(graph)
         let behavior = graph.behavior(for: file)
         let decisions = graph.annotations(for: file).filter { $0.kind == .decision }
-        // The design decisions, and only those — implementation details stay out of the diagram.
-        #expect(Set(decisions.map(\.targetId)) == Set(graph.primaryDecisions.map(\.id)))
-        #expect(!graph.implementationDecisions.isEmpty)
+        // The decisions to review, and only those — other decisions stay out of the diagram.
+        #expect(Set(decisions.map(\.targetId)) == Set(graph.decisionsToReview.map(\.id)))
+        #expect(!graph.otherDecisions.isEmpty)
         // Pinned to a changed stage, never to unchanged context.
         for annotation in decisions {
             #expect(behavior.node(annotation.nodeId)?.change != .existing)

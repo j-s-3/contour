@@ -307,6 +307,9 @@ extension PRGraph {
             if let t = d.primaryTradeoff { summary.append("Trading \(t.dimensionA) against \(t.dimensionB)") }
             if d.reviewerState != .unreviewed { summary.append("Reviewer marked: \(d.reviewerState.label)") }
             var detail = Self.describe(d)
+            let placement = isToReview(d) ? "Decisions to Review" : "Other Decisions"
+            let who = d.reviewerPlacement == nil ? "the analysis placed it" : "the reviewer moved it there"
+            detail += "\n- Shown under \(placement) (\(who)): \(attentionReason(for: d))"
             for q in overviewQuestions(reviewedOn: id) {
                 detail += "\n- Overview question reviewed on this decision: \(q.question) \(q.detail)"
             }
@@ -437,9 +440,9 @@ extension PRGraph {
             var summary = [node.label, "\(Self.flowChangeLabel(node.change)) · \(scenario)"]
             if let before = node.before, let after = node.after { summary.append("Before: \(before) · After: \(after)") }
             if let d = pinned.first.flatMap(decision) { summary.append("Related decision: \(brief(for: d).question)") }
-            // Decisions pinned here, else the design decisions shaping the same components.
+            // Decisions pinned here, else the decisions to review shaping the same components.
             let related = pinned.isEmpty
-                ? decisionIds(affectingAny: componentIds).filter { id in primaryDecisions.contains { $0.id == id } }
+                ? decisionIds(affectingAny: componentIds).filter { id in decisionsToReview.contains { $0.id == id } }
                 : pinned
             return ResolvedSubject(
                 subject: subject, kind: .flowStep, title: node.label,
@@ -565,6 +568,12 @@ extension PRGraph {
 
     static func describe(_ d: DecisionNode) -> String {
         var s = "Decision \"\(d.title)\" (\(d.level.label.lowercased()) level, confidence \(d.confidence.rawValue))\n"
+        if let significance = d.significance {
+            s += "- Review significance: \(significance.rawValue)"
+            if !d.impacts.isEmpty { s += "; impacts \(d.impacts.map(\.label).joined(separator: ", "))" }
+            s += d.significanceReason.map { " — \($0)" } ?? ""
+            s += "\n"
+        }
         if let question = d.question { s += "- Question it answers: \(question)\n" }
         for option in d.options {
             s += "- Option: \(option.label)\(option.detail.map { " (\($0))" } ?? "")\(option.chosen ? " ← chosen" : "")\n"

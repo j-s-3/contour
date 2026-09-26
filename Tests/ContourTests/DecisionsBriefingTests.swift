@@ -7,8 +7,8 @@ import Foundation
 /// older graphs by condensing what they already have.
 struct DecisionsBriefingTests {
 
-    /// The captured bat#3877 run: two design decisions, two implementation decisions, and
-    /// Overview questions that point at them.
+    /// The captured bat#3877 run: four decisions, two of them system-level with substantial
+    /// tradeoffs, and Overview questions that point at them.
     private func fixtureGraph() throws -> PRGraph {
         let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
@@ -24,43 +24,132 @@ struct DecisionsBriefingTests {
     }
 
     private func decision(_ id: String, level: AbstractionLevel = .system, options: [DecisionOption] = [],
-                          shape: DecisionShape? = nil) -> DecisionNode {
+                          shape: DecisionShape? = nil, significance: ReviewSignificance? = nil) -> DecisionNode {
         DecisionNode(
             id: id, title: "Title \(id)",
             decision: Statement(text: "Read one chunk (src/input.rs:12-20). Then stop.", provenance: .fact),
             rationale: [Statement(text: "Waiting could block a tty (src/input.rs:30). More detail.", provenance: .claim)],
             alternatives: [Statement(text: "Loop until 1 KB. It blocks.", provenance: .interpretation)],
-            confidence: .medium, level: level, options: options, shape: shape
+            confidence: .medium, level: level, options: options, shape: shape, significance: significance
         )
     }
 
-    // MARK: - Hierarchy and progress
-
-    @Test func designDecisionsLeadAndImplementationDecisionsWait() throws {
-        let graph = try fixtureGraph()
-        #expect(graph.primaryDecisions.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
-        #expect(graph.implementationDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
+    private func concern(_ id: String, on decisionId: String) -> Consideration {
+        Consideration(id: id, question: "Is \(decisionId) safe?", detail: "", relatedIds: [decisionId])
     }
 
-    /// Progress means "I judged n of the consequential decisions", so implementation
-    /// details don't count toward it.
-    @Test func reviewProgressCountsOnlyDesignDecisions() throws {
+    // MARK: - Significance decides attention, not abstraction
+
+    /// The captured run predates significance, so it's inferred: the two decisions that move
+    /// hard along a real tradeoff are the ones to review. The long-first-line fallback has an
+    /// Overview question (about test coverage) but no tradeoff, so it stays with the others.
+    @Test func capturedRunPromotesTheDecisionsWithSubstantialTradeoffs() throws {
+        let graph = try fixtureGraph()
+        #expect(graph.decisionsToReview.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
+        #expect(graph.otherDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
+        let fallback = try #require(graph.decision("fallback-to-longer-first-line"))
+        #expect(graph.significance(of: fallback) == .medium)
+        #expect(graph.attentionReason(for: fallback).contains("Overview asks"))
+    }
+
+    /// An implementation choice that matters is reviewed; an architectural one that doesn't
+    /// isn't.
+    @Test func levelNeverDecidesVisibility() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.considerations = []
+        graph.decisions = [
+            decision("helper-home", level: .system, significance: .low),
+            decision("idempotent-retry", level: .implementation, significance: .high)
+        ]
+        #expect(graph.decisionsToReview.map(\.id) == ["idempotent-retry"])
+        #expect(graph.otherDecisions.map(\.id) == ["helper-home"])
+    }
+
+    /// An Overview concern about a decision raises its significance a step: enough to promote
+    /// a medium one, not enough to promote a low one.
+    @Test func overviewConcernsRaiseSignificance() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.decisions = [decision("medium", significance: .medium), decision("low", significance: .low),
+                           decision("quiet", significance: .medium)]
+        graph.pr.considerations = [concern("c1", on: "medium"), concern("c2", on: "low")]
+        #expect(graph.decisionsToReview.map(\.id) == ["medium"])
+        #expect(graph.otherDecisions.map(\.id) == ["low", "quiet"])
+    }
+
+    /// Without an assessed significance, only a tradeoff that leans substantially promotes.
+    @Test func inferredSignificanceFollowsTradeoffMagnitude() {
+        var d = decision("d")
+        #expect(PRGraph.inferredSignificance(d) == .low)
+        d.tradeoffs = [DecisionTradeoff(dimensionA: "a", dimensionB: "b", chosenPosition: 0.6)]
+        #expect(PRGraph.inferredSignificance(d) == .medium)
+        d.tradeoffs = [DecisionTradeoff(dimensionA: "a", dimensionB: "b", chosenPosition: 0.2)]
+        #expect(PRGraph.inferredSignificance(d) == .high)
+    }
+
+    /// The reviewer controls the filter: Add to review and Not worth reviewing override the
+    /// analysis, and moving a decision back to where the analysis put it clears the override.
+    @Test func reviewerCanMoveDecisionsEitherWay() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.considerations = []
+        graph.decisions = [decision("a", significance: .high), decision("b", significance: .low)]
+        graph.setToReview(true, forDecision: "b")
+        graph.setToReview(false, forDecision: "a")
+        #expect(graph.decisionsToReview.map(\.id) == ["b"])
+        #expect(graph.otherDecisions.map(\.id) == ["a"])
+        #expect(graph.decision("b")?.reviewerPlacement == .review)
+        #expect(graph.reviewProgress.total == 1)
+        graph.setToReview(true, forDecision: "a")
+        #expect(graph.decision("a")?.reviewerPlacement == nil)
+        #expect(graph.decisionsToReview.map(\.id) == ["a", "b"])
+    }
+
+    /// Progress means "I judged n of the decisions to review", so other decisions don't count.
+    @Test func reviewProgressCountsOnlyDecisionsToReview() throws {
         var graph = try fixtureGraph()
         #expect(graph.reviewProgress.total == 2)
-        let impl = try #require(graph.decisions.firstIndex { $0.id == "skip-read-on-empty-input" })
-        graph.decisions[impl].reviewerState = .accepted
+        let other = try #require(graph.decisions.firstIndex { $0.id == "skip-read-on-empty-input" })
+        graph.decisions[other].reviewerState = .accepted
         #expect(graph.reviewProgress.reviewed == 0)
-        let design = try #require(graph.decisions.firstIndex { $0.id == "use-already-buffered-bytes" })
-        graph.decisions[design].reviewerState = .questioned
+        let review = try #require(graph.decisions.firstIndex { $0.id == "use-already-buffered-bytes" })
+        graph.decisions[review].reviewerState = .questioned
         #expect(graph.reviewProgress.reviewed == 1)
     }
 
-    @Test func whenEverythingIsImplementationEverythingCounts() {
+    /// Nothing is promoted to fill the list: when no choice stands out, the reviewer is told
+    /// so and the decisions found are listed under Other Decisions.
+    @Test func whenNothingStandsOutNothingIsPromoted() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.decisions = [decision("a", level: .implementation), decision("b", level: .implementation)]
-        #expect(graph.primaryDecisions.count == 2)
-        #expect(graph.implementationDecisions.isEmpty)
-        #expect(graph.reviewProgress.total == 2)
+        graph.pr.considerations = []
+        graph.decisions = [decision("a", significance: .low), decision("b", significance: .medium)]
+        #expect(graph.decisionsToReview.isEmpty)
+        #expect(graph.otherDecisions.map(\.id) == ["b", "a"])
+        #expect(graph.reviewProgress.total == 0)
+        #expect(DecisionsView.framing(toReview: 0, total: 2).hasPrefix("No choice in this PR stood out"))
+    }
+
+    @Test func framingSaysMoreWereFound() {
+        #expect(DecisionsView.framing(toReview: 2, total: 4)
+                == "2 choices in this PR appear worth your attention, out of 4 identified. Do you agree with them?")
+        #expect(DecisionsView.framing(toReview: 1, total: 1)
+                == "1 choice in this PR appears worth your attention. Do you agree with it?")
+    }
+
+    @Test func significanceDecodesLeniently() throws {
+        let json = #"""
+        {"id": "d", "title": "t", "decision": {"text": "x", "provenance": "fact"}, "confidence": "high",
+         "level": "implementation", "significance": "high",
+         "impacts": ["Data integrity", "failure-behavior", "vibes", "concurrency"],
+         "significanceReason": "  Retries could duplicate writes.  "}
+        """#
+        let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
+        #expect(d.significance == .high)
+        #expect(d.impacts == [.dataIntegrity, .failureBehavior, .concurrency])
+        #expect(d.significanceReason == "Retries could duplicate writes.")
+        let unknown = try JSONDecoder().decode(DecisionNode.self, from: Data(json.replacingOccurrences(of: #""significance": "high""#, with: #""significance": "critical""#).utf8))
+        #expect(unknown.significance == nil)
+        let roundTrip = try JSONDecoder().decode(DecisionNode.self, from: JSONEncoder().encode(d))
+        #expect(roundTrip.impacts == d.impacts)
+        #expect(roundTrip.significance == .high)
     }
 
     // MARK: - The brief
@@ -224,12 +313,12 @@ struct DecisionsBriefingTests {
         #expect(graph.resolve(.tradeoff(decisionId: d.id, index: 3)) == nil)
     }
 
-    /// The captured run, read the way a reviewer opening Decisions would: two design
-    /// decisions, each drawn with the tradeoff that makes it worth reviewing; two
-    /// implementation decisions whose options already say what was traded.
-    @Test func eachDesignDecisionCarriesItsTradeoff() throws {
+    /// The captured run, read the way a reviewer opening Decisions would: two decisions to
+    /// review, each drawn with the tradeoff that makes it worth reviewing; two other
+    /// decisions whose options already say what was traded.
+    @Test func eachDecisionToReviewCarriesItsTradeoff() throws {
         let graph = try fixtureGraph()
-        for d in graph.primaryDecisions {
+        for d in graph.decisionsToReview {
             let brief = graph.brief(for: d)
             #expect(brief.shape != nil, "\(d.id) has no drawn choice")
             #expect(brief.tradeoff != nil, "\(d.id) has no tradeoff drawn")
@@ -238,7 +327,7 @@ struct DecisionsBriefingTests {
         }
         let blocking = try #require(graph.decision("use-already-buffered-bytes"))
         #expect(blocking.primaryTradeoff?.chosenDimension == "streaming responsiveness")
-        #expect(graph.implementationDecisions.allSatisfy { $0.tradeoffs.isEmpty })
+        #expect(graph.otherDecisions.allSatisfy { $0.tradeoffs.isEmpty })
     }
 
     // MARK: - Decoding

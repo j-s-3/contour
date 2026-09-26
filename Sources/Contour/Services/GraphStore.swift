@@ -190,6 +190,14 @@ final class GraphStore {
         graph = g
     }
 
+    /// "Add to review" / "Not worth reviewing": the reviewer overriding which decisions the
+    /// analysis asked them to judge.
+    func setToReview(_ toReview: Bool, forDecision id: String) {
+        guard var g = graph else { return }
+        g.setToReview(toReview, forDecision: id)
+        graph = g
+    }
+
     func setReviewerNote(_ note: String, forDecision id: String) {
         guard var g = graph, let idx = g.decisions.firstIndex(where: { $0.id == id }) else { return }
         g.decisions[idx].reviewerNote = note

@@ -46,7 +46,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 10
+    static let pipelineVersion = 11
 
     struct Result: Sendable {
         var graph: PRGraph
