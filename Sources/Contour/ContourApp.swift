@@ -37,7 +37,7 @@ struct ContourApp: App {
         }
         .windowStyle(.automatic)
         .commands {
-            CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
+            PRSessionCommands() // replaces New Window and Close: single-window MVP, one PR per window
         }
 
         // ⌘, — the three pluggable choices (harness, GitHub access, issue tracker) plus

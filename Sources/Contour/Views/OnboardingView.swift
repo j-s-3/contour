@@ -10,7 +10,10 @@ import UniformTypeIdentifiers
 /// PR is analyzed, so it is matched across the two screens.
 struct OnboardingView: View {
     @State private var urlText: String = ""
+    @FocusState private var urlFieldFocused: Bool
     var markNamespace: Namespace.ID
+    /// Changes whenever File ▸ Open Pull Request… asks for the URL field.
+    var focusRequest: Int = 0
     var onSubmit: (String) -> Void
 
     var body: some View {
@@ -36,6 +39,7 @@ struct OnboardingView: View {
                 TextField("Paste a GitHub pull request URL…", text: $urlText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 420)
+                    .focused($urlFieldFocused)
                     .onSubmit(submit)
                     // ⌘V occasionally doesn't route through the standard responder chain
                     // in a bare SPM executable (no .app bundle/Edit menu wiring) — this is
@@ -76,6 +80,9 @@ struct OnboardingView: View {
             Spacer().frame(height: 60)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The start screen exists to take a URL, so it arrives ready for one.
+        .onAppear { urlFieldFocused = true }
+        .onChange(of: focusRequest) { urlFieldFocused = true }
     }
 
     private func submit() {

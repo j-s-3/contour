@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     /// Carries the Contour mark from the welcome screen into the analysis screen.
     @Namespace private var markNamespace
+    /// Bumped by Open Pull Request… so the start screen's URL field takes focus even when
+    /// the start screen is already showing.
+    @State private var urlFieldFocusRequest = 0
 
     var body: some View {
         Group {
@@ -38,6 +41,9 @@ struct ContentView: View {
                 .opacity(0)
         )
         .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+        // File ▸ Open / Close Pull Request. Not published during first-run setup, which has
+        // no PR to leave and its own way to open the first one.
+        .focusedSceneValue(\.prSession, needsOnboarding ? nil : sessionActions)
         .onAppear {
             // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
             // rather than pasting a URL on every launch.
@@ -62,12 +68,27 @@ struct ContentView: View {
         }
     }
 
+    private var sessionActions: PRSessionActions {
+        PRSessionActions(
+            hasOpenPR: store.hasOpenPR,
+            pullRequestURL: store.pullRequestURL,
+            openDifferent: openDifferentPR,
+            close: { store.close() }
+        )
+    }
+
+    /// Back to the start screen, ready to paste the next URL.
+    private func openDifferentPR() {
+        store.close()
+        urlFieldFocusRequest += 1
+    }
+
     @ViewBuilder
     private var mainBody: some View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
+                OnboardingView(markNamespace: markNamespace, focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
             case .opening:
                 // Only the fetch happens here now; the review opens as soon as the PR has
                 // been read, and the mark carries on resolving in the toolbar.
@@ -78,7 +99,7 @@ struct ContentView: View {
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView(markNamespace: markNamespace) { url in store.load(prURL: url) }
+                    OnboardingView(markNamespace: markNamespace, focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
                 }
             }
         }
@@ -142,6 +163,16 @@ struct ContentView: View {
         // Int for the current locale — so PR #14039 rendered as "#14,039". A PR number is
         // an identifier, not a quantity, and must never be group-separated.
         .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
+        // The PR name in the title bar is the PR's own menu — the visible way to leave it.
+        .toolbarTitleMenu {
+            let session = sessionActions
+            Button("Open on GitHub") { session.openOnGitHub() }
+                .disabled(session.pullRequestURL == nil)
+            Button("Copy Link") { session.copyLink() }
+                .disabled(session.pullRequestURL == nil)
+            Divider()
+            Button("Open a Different Pull Request…") { session.openDifferent() }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button { store.goBack() } label: { Image(systemName: "chevron.left") }
