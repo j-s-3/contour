@@ -38,8 +38,8 @@ struct DecisionsBriefingTests {
 
     @Test func designDecisionsLeadAndImplementationDecisionsWait() throws {
         let graph = try fixtureGraph()
-        #expect(graph.primaryDecisions.map(\.id) == ["inspect-first-kb-not-first-line", "non-blocking-buffered-snapshot"])
-        #expect(graph.implementationDecisions.map(\.id) == ["fallback-to-first-line-when-longer", "skip-read-on-empty-input"])
+        #expect(graph.primaryDecisions.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
+        #expect(graph.implementationDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
     }
 
     /// Progress means "I judged n of the consequential decisions", so implementation
@@ -50,7 +50,7 @@ struct DecisionsBriefingTests {
         let impl = try #require(graph.decisions.firstIndex { $0.id == "skip-read-on-empty-input" })
         graph.decisions[impl].reviewerState = .accepted
         #expect(graph.reviewProgress.reviewed == 0)
-        let design = try #require(graph.decisions.firstIndex { $0.id == "non-blocking-buffered-snapshot" })
+        let design = try #require(graph.decisions.firstIndex { $0.id == "use-already-buffered-bytes" })
         graph.decisions[design].reviewerState = .questioned
         #expect(graph.reviewProgress.reviewed == 1)
     }
@@ -170,8 +170,8 @@ struct DecisionsBriefingTests {
     /// Each Overview question is reviewed on exactly one decision — the one "Review →" opens.
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
-        let onBlocking = graph.overviewQuestions(reviewedOn: "non-blocking-buffered-snapshot").map(\.id)
-        #expect(onBlocking == ["short-first-read-misses-binary"])
+        let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
+        #expect(onBlocking == ["short-first-read-gap"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(Set(placed) == Set(graph.thingsToThinkAbout.compactMap { graph.reviewDecisionId(for: $0) == nil ? nil : $0.id }))
@@ -179,29 +179,29 @@ struct DecisionsBriefingTests {
 
     @Test func aDecisionReachesItsArchitectureAndFlows() throws {
         let graph = try fixtureGraph()
-        let d = try #require(graph.decision("non-blocking-buffered-snapshot"))
+        let d = try #require(graph.decision("use-already-buffered-bytes"))
         let affects = graph.affects(d)
-        #expect(affects.components.map(\.id) == ["input-reader", "input-source"])
-        #expect(affects.edges.contains { $0.fromId == "input-reader" && $0.toId == "input-source" })
-        #expect(affects.flows.map(\.id).contains("flow-stdin-custom-reader-detection"))
+        #expect(affects.components.map(\.id) == ["input-reading", "content-inspection"])
+        #expect(affects.edges.contains { $0.fromId == "input-reading" && $0.toId == "content-inspection" })
+        #expect(affects.flows.map(\.id).contains("flow-cli-stdin-binary-detection"))
     }
 
     // MARK: - Contextual chat
 
     @Test func anOptionCarriesItsDecisionTradeoffAndQuestions() throws {
         let graph = try fixtureGraph()
-        let resolved = try #require(graph.resolve(.decisionOption(decisionId: "non-blocking-buffered-snapshot", index: 1)))
+        let resolved = try #require(graph.resolve(.decisionOption(decisionId: "use-already-buffered-bytes", index: 1)))
         #expect(resolved.kind == .option)
         #expect(resolved.title == "Use what's buffered")
-        #expect(resolved.lineage.last == graph.brief(for: graph.decision("non-blocking-buffered-snapshot")!).question)
+        #expect(resolved.lineage.last == graph.brief(for: graph.decision("use-already-buffered-bytes")!).question)
         #expect(resolved.detail.contains("the option this PR chose"))
-        #expect(resolved.detail.contains("Read until 1 KB or EOF"))
-        #expect(resolved.detail.contains("Overview question reviewed on this decision: Is detection reliable when the first read returns under 1 KB?"))
-        #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming latency"))
-        #expect(resolved.detailTarget == .decisionDetail("non-blocking-buffered-snapshot"))
+        #expect(resolved.detail.contains("Read until 1 KB"))
+        #expect(resolved.detail.contains("Overview question reviewed on this decision: Can binary data still slip through when the first read is short?"))
+        #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
+        #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))
         #expect(!ChatContextBuilder.availableExpansions(for: resolved).contains(.relatedDecisions))
 
-        #expect(graph.resolve(.decisionOption(decisionId: "non-blocking-buffered-snapshot", index: 5)) == nil)
+        #expect(graph.resolve(.decisionOption(decisionId: "use-already-buffered-bytes", index: 5)) == nil)
     }
 
     /// Right-clicking a tradeoff asks about it inside its decision: the chat gets the choice,
@@ -209,11 +209,11 @@ struct DecisionsBriefingTests {
     /// tradeoff itself, and "Open details" is the decision.
     @Test func aTradeoffIsDiscussedAsPartOfItsDecision() throws {
         let graph = try fixtureGraph()
-        let d = try #require(graph.decision("non-blocking-buffered-snapshot"))
+        let d = try #require(graph.decision("use-already-buffered-bytes"))
         let t = try #require(d.primaryTradeoff)
         let resolved = try #require(graph.resolve(.tradeoff(decisionId: d.id, index: 0)))
         #expect(resolved.kind == .tradeoff)
-        #expect(resolved.title == "detection completeness vs. streaming latency")
+        #expect(resolved.title == "detection completeness vs. streaming responsiveness")
         #expect(resolved.lineage.last == graph.brief(for: d).question)
         #expect(resolved.detail.contains("Option: Use what's buffered"))
         #expect(resolved.detail.contains("Overview question reviewed on this decision"))
@@ -236,8 +236,8 @@ struct DecisionsBriefingTests {
             #expect(brief.why != nil)
             #expect(d.tradeoffs.allSatisfy { !$0.refs.isEmpty }, "\(d.id)'s tradeoff lost its evidence")
         }
-        let blocking = try #require(graph.decision("non-blocking-buffered-snapshot"))
-        #expect(blocking.primaryTradeoff?.chosenDimension == "streaming latency")
+        let blocking = try #require(graph.decision("use-already-buffered-bytes"))
+        #expect(blocking.primaryTradeoff?.chosenDimension == "streaming responsiveness")
         #expect(graph.implementationDecisions.allSatisfy { $0.tradeoffs.isEmpty })
     }
 
