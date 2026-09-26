@@ -13,48 +13,66 @@ struct BehaviorChangeDiagramView: View {
     var compact = false
     var onSelectStage: (BehaviorStage) -> Void
 
+    /// How tightly the chain is set. Each side must read left to right as one sequence, so
+    /// rather than wrap a row onto a second line, the diagram steps down through denser
+    /// settings until both rows fit, and scrolls sideways only as a last resort.
+    fileprivate enum Density {
+        /// Full-size boxes, one-line labels.
+        case regular
+        /// Smaller type, padding and arrows; one-line labels.
+        case tight
+        /// As tight, with each label wrapping inside a narrow box.
+        case wrapped
+    }
+
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: compact ? 12 : 18, verticalSpacing: compact ? 10 : 16) {
-            row(label: "Before", stages: change.before, isAfter: false)
-            row(label: "After", stages: change.after, isAfter: true)
+        // Before and After step down together so their boxes stay the same size.
+        ViewThatFits(in: .horizontal) {
+            if !compact { diagram(.regular) }
+            diagram(.tight)
+            diagram(.wrapped)
+            ScrollView(.horizontal) { diagram(.wrapped) }
+        }
+    }
+
+    private func diagram(_ density: Density) -> some View {
+        let dense = density != .regular
+        return Grid(alignment: .leading, horizontalSpacing: dense ? 12 : 18, verticalSpacing: dense ? 10 : 16) {
+            row(label: "Before", stages: change.before, isAfter: false, density: density)
+            row(label: "After", stages: change.after, isAfter: true, density: density)
         }
     }
 
     @ViewBuilder
-    private func row(label: String, stages: [BehaviorStage], isAfter: Bool) -> some View {
+    private func row(label: String, stages: [BehaviorStage], isAfter: Bool, density: Density) -> some View {
         GridRow(alignment: .center) {
             Text(label.uppercased())
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(isAfter ? .primary : .secondary)
-                .frame(width: compact ? 48 : 56, alignment: .leading)
+                .frame(width: density == .regular ? 56 : 48, alignment: .leading)
             if stages.isEmpty {
                 Text(isAfter ? "Nothing recorded." : "Didn't happen before this PR.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                // One row when it fits (it usually does, at 3-6 short stages); otherwise wrap,
-                // keeping each arrow attached to the box it leads out of.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 0) { chain(stages, isAfter: isAfter) }
-                    FlowLayout(spacing: 8) { chain(stages, isAfter: isAfter) }
-                }
+                // Equal-height boxes, so a wrapped label doesn't leave its neighbors floating.
+                HStack(spacing: 0) { chain(stages, isAfter: isAfter, density: density) }
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     @ViewBuilder
-    private func chain(_ stages: [BehaviorStage], isAfter: Bool) -> some View {
+    private func chain(_ stages: [BehaviorStage], isAfter: Bool, density: Density) -> some View {
         ForEach(Array(stages.enumerated()), id: \.element.id) { index, stage in
-            HStack(spacing: 0) {
-                StageBox(stage: stage, isAfter: isAfter, compact: compact) { onSelectStage(stage) }
-                    .reviewContextMenu(.behaviorStage(changeId: change.id, stageId: stage.id))
-                if index < stages.count - 1 {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: compact ? 11 : 13, weight: .semibold))
-                        .foregroundStyle(isAfter ? .secondary : .tertiary)
-                        .padding(.horizontal, compact ? 7 : 10)
-                }
+            StageBox(stage: stage, isAfter: isAfter, density: density) { onSelectStage(stage) }
+                .reviewContextMenu(.behaviorStage(changeId: change.id, stageId: stage.id))
+            if index < stages.count - 1 {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: density == .regular ? 13 : 11, weight: .semibold))
+                    .foregroundStyle(isAfter ? .secondary : .tertiary)
+                    .padding(.horizontal, density == .regular ? 10 : density == .tight ? 6 : 4)
             }
         }
     }
@@ -63,7 +81,7 @@ struct BehaviorChangeDiagramView: View {
 private struct StageBox: View {
     let stage: BehaviorStage
     let isAfter: Bool
-    let compact: Bool
+    let density: BehaviorChangeDiagramView.Density
     var action: () -> Void
 
     @State private var hovered = false
@@ -80,14 +98,13 @@ private struct StageBox: View {
                 } else if isAfter && isDelta {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
                 }
-                Text(stage.label)
-                    .lineLimit(1)
-                    .fixedSize()
+                label
             }
-            .font(compact ? .callout.weight(.medium) : .body.weight(.medium))
+            .font(density == .regular ? .body.weight(.medium) : .callout.weight(.medium))
             .foregroundStyle(isAfter ? .primary : .secondary)
-            .padding(.horizontal, compact ? 10 : 14)
-            .padding(.vertical, compact ? 6 : 10)
+            .padding(.horizontal, density == .regular ? 14 : 10)
+            .padding(.vertical, density == .regular ? 10 : 6)
+            .frame(maxHeight: .infinity)
             .background(fill, in: RoundedRectangle(cornerRadius: 9))
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
@@ -100,6 +117,20 @@ private struct StageBox: View {
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovered = h } }
         .help(helpText)
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if density == .wrapped {
+            // Short labels keep their own width; longer ones break onto a second or third line.
+            CappedWidth(maxWidth: 88) {
+                Text(stage.label).lineLimit(3)
+            }
+        } else {
+            Text(stage.label)
+                .lineLimit(1)
+                .fixedSize()
+        }
     }
 
     private var tint: Color? {
@@ -127,5 +158,23 @@ private struct StageBox: View {
         if stage.outcome == .success { parts.append("Succeeds") }
         parts.append("Click to open · right-click to ask about it")
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Sizes its content to its natural width up to `maxWidth`, wrapping beyond that — the same
+/// answer whatever width it's offered. A plain `.frame(maxWidth:)` passes an unspecified
+/// proposal straight through, so inside `ViewThatFits` or a horizontal `ScrollView` the text
+/// would measure as one line and then be clipped once it wraps.
+private struct CappedWidth: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let width = min(subview.sizeThatFits(.unspecified).width, maxWidth)
+        return CGSize(width: width, height: subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
