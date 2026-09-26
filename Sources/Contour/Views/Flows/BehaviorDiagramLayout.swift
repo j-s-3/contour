@@ -154,9 +154,12 @@ enum BehaviorDiagramLayoutEngine {
                     points = [CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: bar),
                               CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
                 } else {
-                    // Skip past stages in between along a lane to their right.
-                    let lane = (between.map(\.frame.maxX).max() ?? a.maxX) + 20
-                    let exit = a.maxY + 14
+                    // Skip past stages in between along a lane beside them, turning off before
+                    // the source's notes start so the connector never runs through a note.
+                    let exit = a.maxY + 6
+                    let obstacles = out.nodes.filter { $0.id != edge.fromId && $0.id != edge.toId }.map(\.frame)
+                        + out.annotations.map(\.frame) + out.overflow.map(\.frame)
+                    let lane = detourLane(from: a.midX, exit: exit, bar: bar, to: b.midX, avoiding: obstacles)
                     points = [CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: exit), CGPoint(x: lane, y: exit),
                               CGPoint(x: lane, y: bar), CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
                 }
@@ -180,7 +183,7 @@ enum BehaviorDiagramLayoutEngine {
         }
 
         let extents = out.nodes.map(\.frame) + out.annotations.map(\.frame) + out.boundaries.map(\.frame)
-        let maxX = extents.map(\.maxX).max() ?? 0
+        let maxX = max(extents.map(\.maxX).max() ?? 0, out.edges.flatMap(\.points).map(\.x).max() ?? 0)
         let maxY = extents.map(\.maxY).max() ?? 0
         out.size = CGSize(width: maxX + margin, height: maxY + margin)
         return out
@@ -227,6 +230,43 @@ enum BehaviorDiagramLayoutEngine {
         }
         for n in nodes where layer[n.id] == nil { layer[n.id] = 0 }
         return layer
+    }
+
+    /// The x of a vertical lane from `exit` down to `bar` where it, and the turns into and out
+    /// of it, clear every obstacle. Notes hang to the right of their stage, so the left side is
+    /// usually open; whichever side needs the shorter detour wins.
+    private static func detourLane(from start: CGFloat, exit: CGFloat, bar: CGFloat, to end: CGFloat,
+                                   avoiding obstacles: [CGRect]) -> CGFloat {
+        let clearance: CGFloat = 32
+        let padded = obstacles.map { $0.insetBy(dx: -clearance / 2, dy: -3) }
+        func blocked(_ lane: CGFloat) -> [CGRect] {
+            let segments = [CGRect(x: min(start, lane), y: exit, width: abs(start - lane), height: 0),
+                            CGRect(x: lane, y: exit, width: 0, height: bar - exit),
+                            CGRect(x: min(lane, end), y: bar, width: abs(lane - end), height: 0)]
+            return padded.filter { r in segments.contains { $0.insetBy(dx: -0.5, dy: -0.5).intersects(r) } }
+        }
+        // Step past whatever is in the way until the whole route is clear.
+        func search(_ direction: CGFloat) -> CGFloat? {
+            var lane = start
+            for _ in 0..<(obstacles.count + 1) {
+                let hits = blocked(lane)
+                if hits.isEmpty { return lane }
+                let next = direction > 0 ? hits.map(\.maxX).max()! + 1 : hits.map(\.minX).min()! - 1
+                // Moving further out can't clear an obstacle on a turn we've already passed.
+                guard direction > 0 ? next > lane : next < lane else { return nil }
+                lane = next
+            }
+            return nil
+        }
+        let left = search(-1).flatMap { $0 >= margin / 2 ? $0 : nil }
+        let right = search(1)
+        switch (left, right) {
+        case let (l?, r?): return start - l <= r - start ? l : r
+        case let (l?, nil): return l
+        case let (nil, r?): return r
+        case (nil, nil):
+            return (obstacles.map(\.maxX).max() ?? start) + clearance
+        }
     }
 
     private static func simplified(_ points: [CGPoint]) -> [CGPoint] {
