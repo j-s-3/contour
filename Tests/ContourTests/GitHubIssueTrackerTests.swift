@@ -100,7 +100,7 @@ struct GitHubIssueTrackerTests {
 
     @Test(arguments: [
         "123-add-retry", "feature/123-add-retry", "gh-123", "issue-123",
-        "jstephens/gh-123/fix", "fix/123",
+        "alice/gh-123/fix", "fix/123",
     ])
     func branchNamesYieldTheirIssueNumber(branch: String) {
         #expect(ref(context(headRef: branch))?.id == "123")

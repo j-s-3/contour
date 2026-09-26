@@ -23,7 +23,7 @@ struct GitHubIssueTracker: IssueTracker {
     )
 
     /// A ticket id embedded in a branch name, e.g. `feature/123-add-retry` or
-    /// `jstephens/gh-482/fix`. Branch names can't contain `#`, so they need their own shape.
+    /// `alice/gh-482/fix`. Branch names can't contain `#`, so they need their own shape.
     private static let branchPattern = try! NSRegularExpression(
         pattern: #"(?:^|[/_-])(?:gh-|issue-|#)?(\d{1,6})(?:[/_-]|$)"#,
         options: [.caseInsensitive]
