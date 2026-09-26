@@ -1018,6 +1018,14 @@ struct PRGraph: Codable, Hashable, Sendable {
     /// How much this PR changes the structure, in words. Nil on graphs from before the
     /// Architecture redesign; `pr.architectureImpact` still carries their prose.
     var architecture: ArchitectureAssessment?
+    /// How each stage's code refs fared against the checkout, keyed by `PipelineStage`
+    /// raw value (see `CodeRefVerifier`). Nil on graphs from before verification existed.
+    var refChecks: [String: RefCheck]?
+
+    /// Every stage's ref check added up, for "3 of 41 references couldn't be verified".
+    var refCheckTotal: RefCheck? {
+        refChecks.map { $0.values.reduce(RefCheck(), +) }
+    }
 
     func component(_ id: String?) -> ComponentNode? { components.first { $0.id == id } }
     func decision(_ id: String?) -> DecisionNode? { decisions.first { $0.id == id } }
