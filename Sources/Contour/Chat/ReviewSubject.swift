@@ -23,6 +23,8 @@ enum ReviewSubject: Hashable, Sendable {
     case flow(String)
     case flowStep(flowId: String, stepId: String)
     case storyStep(flowId: String, index: Int)
+    /// A stage of a flow's behavior diagram ("Inspect content sample").
+    case flowNode(flowId: String, nodeId: String)
     case entryPoint(String)
     case codeRef(CodeRef)
 }
@@ -403,6 +405,34 @@ extension PRGraph {
                 detailTarget: .flowDetail(flowId)
             )
 
+        case .flowNode(let flowId, let nodeId):
+            guard let f = flow(flowId) else { return nil }
+            let behavior = behavior(for: f)
+            guard let node = behavior.node(nodeId) else { return nil }
+            let notes = annotations(for: f).filter { $0.nodeId == nodeId }
+            let pinned = notes.filter { $0.kind == .decision }.map(\.targetId)
+            let steps = implementationSteps(for: node, in: f)
+            let componentIds = unique([node.componentId].compactMap { $0 } + steps.compactMap(\.componentId))
+            let scenario = scenarioTitle(for: f)
+            var summary = [node.label, "\(Self.flowChangeLabel(node.change)) · \(scenario)"]
+            if let before = node.before, let after = node.after { summary.append("Before: \(before) · After: \(after)") }
+            if let d = pinned.first.flatMap(decision) { summary.append("Related decision: \(brief(for: d).question)") }
+            // Decisions pinned here, else the design decisions shaping the same components.
+            let related = pinned.isEmpty
+                ? decisionIds(affectingAny: componentIds).filter { id in primaryDecisions.contains { $0.id == id } }
+                : pinned
+            return ResolvedSubject(
+                subject: subject, kind: .flowStep, title: node.label,
+                lineage: [prLine, "Flows", scenario],
+                summary: summary.compactMap(Self.oneLine),
+                detail: describe(node, in: f),
+                componentIds: componentIds,
+                decisionIds: related,
+                flowIds: unique([flowId] + [node.subflowId].compactMap { $0 }),
+                refs: unique(node.refs + steps.flatMap(\.refs)),
+                detailTarget: .flowNodeDetail(flowId: flowId, nodeId: nodeId)
+            )
+
         case .entryPoint(let id):
             guard let e = entryPoint(id) else { return nil }
             let triggered = flow(e.flowId)
@@ -526,12 +556,69 @@ extension PRGraph {
     }
 
     static func describe(_ f: FlowNode, graph: PRGraph) -> String {
-        var s = "Flow \"\(f.title)\""
-        if !f.storySteps.isEmpty {
-            s += "\nStory: " + f.storySteps.map(\.text).joined(separator: " → ")
-        }
+        var s = "Flow \"\(graph.scenarioTitle(for: f))\""
+        let behavior = graph.behavior(for: f)
+        if let summary = behavior.summary { s += "\nWhat happens: \(summary)" }
+        if let change = behavior.changeSummary { s += "\nHow this PR changed it: \(change)" }
+        s += "\nBehavior (stages and where each leads):"
+        for node in behavior.nodes { s += "\n- " + graph.describeStage(node, in: behavior) }
+        if !f.steps.isEmpty { s += "\nImplementation trace underneath:" }
         for step in f.steps { s += "\n\(describe(step, graph: graph))" }
         return s
+    }
+
+    /// One stage on one line: what it is, how the PR changed it, and where it leads.
+    func describeStage(_ node: FlowBehaviorNode, in behavior: FlowBehavior) -> String {
+        var s = "\(node.label) (\(node.kind.rawValue), \(Self.flowChangeLabel(node.change).lowercased())"
+        if node.isUncertain { s += ", inferred rather than traced" }
+        s += ")"
+        if let before = node.before { s += " before: \(before);" }
+        if let after = node.after { s += " after: \(after);" }
+        let next = behavior.outgoing(node.id).map { e in
+            (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " when \($0)" } ?? "") + (e.flow == .async ? " (async)" : "")
+        }
+        if !next.isEmpty { s += " → " + next.joined(separator: "; ") }
+        if let sub = node.subflowId, let f = flow(sub) { s += " (continues in the shared flow \"\(scenarioTitle(for: f))\")" }
+        return s
+    }
+
+    /// A flow stage in full, with the stages around it, the decisions and questions pinned to
+    /// it, and the implementation underneath — what "Ask about this…" on a stage sends.
+    func describe(_ node: FlowBehaviorNode, in f: FlowNode) -> String {
+        let behavior = behavior(for: f)
+        var s = "Flow stage \"\(node.label)\" in the flow \"\(scenarioTitle(for: f))\" — \(Self.flowChangeLabel(node.change).lowercased())."
+        if let detail = node.detail { s += "\nWhat happens here: \(detail)" }
+        if let before = node.before { s += "\nBefore this PR: \(before)" }
+        if let after = node.after { s += "\nAfter this PR: \(after)" }
+        if node.isUncertain { s += "\nThis stage is inferred, not traced in the code." }
+        let previous = behavior.incoming(node.id).compactMap { behavior.node($0.fromId)?.label }
+        if !previous.isEmpty { s += "\nComes after: \(previous.joined(separator: ", "))" }
+        let next = behavior.outgoing(node.id).map { e in (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " (when \($0))" } ?? "") }
+        if !next.isEmpty { s += "\nLeads to: \(next.joined(separator: ", "))" }
+        if !node.substeps.isEmpty { s += "\nSub-steps: \(node.substeps.joined(separator: " → "))" }
+        for note in annotations(for: f) where note.nodeId == node.id {
+            switch note.kind {
+            case .decision: s += "\nDecision that shapes this point: \(note.detail ?? note.text) — chose \(note.text)"
+            case .question: s += "\nReview question raised here: \(note.text)\(note.detail.map { " \($0)" } ?? "")"
+            }
+        }
+        if let c = component(node.componentId) { s += "\nPart of: \(c.title)" }
+        let steps = implementationSteps(for: node, in: f)
+        if !steps.isEmpty {
+            s += "\nImplementation steps underneath:"
+            for step in steps { s += "\n\(Self.describe(step, graph: self))" }
+        }
+        s += "\n\nThe whole flow, for position:\n\(Self.describe(f, graph: self))"
+        return s
+    }
+
+    static func flowChangeLabel(_ change: FlowChange) -> String {
+        switch change {
+        case .new: return "New in this PR"
+        case .changed: return "Changed by this PR"
+        case .existing: return "Unchanged"
+        case .removed: return "Removed by this PR"
+        }
     }
 
     static func describe(_ step: FlowStep, graph: PRGraph) -> String {

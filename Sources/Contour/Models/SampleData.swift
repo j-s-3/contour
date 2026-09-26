@@ -53,8 +53,51 @@ enum ContourSampleData {
             level: .system
         )
 
+        let publishBehavior = FlowBehavior(
+            summary: "When an editor publishes a page, the revision is saved and its search entry is rebuilt by the search service. A successful rebuild makes the page searchable; a failed one is retried.",
+            changeSummary: "Rebuilding now happens through a queued job right after publish, instead of waiting for the nightly batch.",
+            nodes: [
+                FlowBehaviorNode(id: "publish", label: "Editor publishes a page", kind: .trigger,
+                                 refs: [CodeRef(path: "src/main/java/rest/PageResource.java", startLine: 55, endLine: 80)]),
+                FlowBehaviorNode(id: "save", label: "Save page revision", kind: .datastore,
+                                 detail: "The new revision is committed before anything else happens.",
+                                 stepIds: ["step-receive", "step-store"], componentId: "page-publishing", boundaryId: "docs-app"),
+                FlowBehaviorNode(id: "nightly", label: "Wait for nightly rebuild",
+                                 detail: "The page's search entry went stale until the nightly batch ran.", change: .removed, boundaryId: "docs-app"),
+                FlowBehaviorNode(id: "queue", label: "Queue reindex job",
+                                 detail: "The publish handler enqueues an index job and returns without waiting for it.", change: .new,
+                                 substeps: ["Build index job from the revision", "Enqueue on the index queue", "Return to the editor"],
+                                 stepIds: ["step-enqueue"], componentId: "index-queue", boundaryId: "docs-app",
+                                 decisionIds: ["index-on-publish"],
+                                 refs: [CodeRef(path: "src/main/java/queue/IndexQueue.java", startLine: 1, endLine: 30)]),
+                FlowBehaviorNode(id: "rebuild", label: "Rebuild search entry", kind: .external,
+                                 detail: "The search service reindexes the page's content.", change: .changed,
+                                 before: "nightly batch", after: "seconds after publish",
+                                 stepIds: ["step-evaluate"], componentId: "search-service", boundaryId: "search-ext"),
+                FlowBehaviorNode(id: "ok", label: "Did it succeed?", kind: .decision, boundaryId: "docs-app"),
+                FlowBehaviorNode(id: "searchable", label: "Mark page searchable", kind: .outcome,
+                                 stepIds: ["step-update"], componentId: "page-publishing", boundaryId: "docs-app"),
+                FlowBehaviorNode(id: "retry", label: "Retry later", kind: .outcome, boundaryId: "docs-app",
+                                 provenance: .interpretation, confidence: .medium)
+            ],
+            edges: [
+                FlowBehaviorEdge(fromId: "publish", toId: "save"),
+                FlowBehaviorEdge(fromId: "save", toId: "nightly", change: .removed),
+                FlowBehaviorEdge(fromId: "nightly", toId: "rebuild", flow: .async, change: .removed),
+                FlowBehaviorEdge(fromId: "save", toId: "queue", change: .new),
+                FlowBehaviorEdge(fromId: "queue", toId: "rebuild", flow: .async, change: .new),
+                FlowBehaviorEdge(fromId: "rebuild", toId: "ok"),
+                FlowBehaviorEdge(fromId: "ok", toId: "searchable", label: "Yes"),
+                FlowBehaviorEdge(fromId: "ok", toId: "retry", label: "No")
+            ],
+            boundaries: [
+                FlowBoundary(id: "docs-app", label: "Docs Site", kind: .application),
+                FlowBoundary(id: "search-ext", label: "Search Service", kind: .external)
+            ]
+        )
+
         let flow = FlowNode(
-            id: "publish-index-flow", title: "Publish \u{2192} Reindex",
+            id: "publish-index-flow", title: "Publish a page",
             steps: [
                 FlowStep(id: "step-receive", index: 0, title: "receive page edit", componentId: "page-publishing", changeKind: .unchanged),
                 FlowStep(id: "step-store", index: 1, title: "persist page revision", componentId: "page-publishing", changeKind: .unchanged),
@@ -72,7 +115,8 @@ enum ContourSampleData {
                 Statement(text: "Rebuild search entry", provenance: .interpretation, confidence: .high),
                 Statement(text: "Update search state", provenance: .fact),
                 Statement(text: "Queue indexing", provenance: .fact)
-            ]
+            ],
+            behavior: publishBehavior
         )
 
         let entryPoint = EntryPointNode(

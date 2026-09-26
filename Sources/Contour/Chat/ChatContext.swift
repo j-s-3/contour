@@ -74,9 +74,14 @@ enum ChatContextBuilder {
                     "How likely is the downside in practice?", "How much does this matter for a normal file versus a pipe?",
                     "Show me the evidence"]
         case .flow:
-            return ["Walk me through this", "Where can this fail?", "What happens concurrently?",
-                    "Which parts are new?", "Show me the important code"]
+            return ["Walk me through this", "Which paths can execution take?", "What did this PR change?",
+                    "Where can this fail?", "Show me the important code"]
         case .flowStep:
+            if case .flowNode = resolved.subject {
+                return ["What happens here?", "What changed at this step?",
+                        "Can this behave differently depending on the input?", "Where is this implemented?",
+                        "Why does it work this way?"]
+            }
             return ["What happens here?", "What can fail at this step?", "What calls this?",
                     "Show me the code for this step"]
         case .behavior, .stage:
@@ -174,7 +179,7 @@ enum ChatContextBuilder {
         case .component(let id): return "[[component:\(id)]]"
         case .relationship(let id): return "[[relationship:\(id)]]"
         case .decision(let id), .decisionOption(let id, _), .tradeoff(let id, _): return "[[decision:\(id)]]"
-        case .flow(let id), .flowStep(let id, _), .storyStep(let id, _): return "[[flow:\(id)]]"
+        case .flow(let id), .flowStep(let id, _), .storyStep(let id, _), .flowNode(let id, _): return "[[flow:\(id)]]"
         default: return nil
         }
     }
@@ -228,7 +233,7 @@ enum ChatContextBuilder {
 
         let flows = resolved.flowIds.compactMap(graph.flow).filter { f in
             switch resolved.subject {
-            case .flow(let id): return f.id != id
+            case .flow(let id), .flowNode(let id, _): return f.id != id
             default: return true
             }
         }
@@ -237,7 +242,7 @@ enum ChatContextBuilder {
             for f in flows.prefix(6) {
                 out += expansions.contains(.relatedFlows)
                     ? "[[flow:\(f.id)]] " + PRGraph.describe(f, graph: graph) + "\n\n"
-                    : "- \(f.title) [[flow:\(f.id)]]" + (f.storySteps.isEmpty ? "" : ": " + f.storySteps.map(\.text).joined(separator: " → ")) + "\n"
+                    : "- \(graph.flowOutline(f)) [[flow:\(f.id)]]\n"
             }
             out += "\n"
         }
@@ -266,7 +271,7 @@ enum ChatContextBuilder {
         out += "\n### Decisions\n"
         for d in graph.decisions { out += "- \(d.title): \(d.decision.text)\n" }
         out += "\n### Flows\n"
-        for f in graph.flows { out += "- \(f.title)" + (f.storySteps.isEmpty ? "" : ": " + f.storySteps.map(\.text).joined(separator: " → ")) + "\n" }
+        for f in graph.flows { out += "- \(graph.flowOutline(f))\n" }
         out += "\n### Things to think about\n"
         for c in graph.thingsToThinkAbout { out += "- \(c.question) \(c.detail)\n" }
         out += "\n"

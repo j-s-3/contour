@@ -41,6 +41,14 @@ extension PRGraph {
         return trimmed.isEmpty ? flow.title : trimmed
     }
 
+    /// "Open a file: bat samples the input and classifies it" — one line for outlines.
+    func flowOutline(_ flow: FlowNode) -> String {
+        let behavior = behavior(for: flow)
+        let story = behavior.summary
+            ?? behavior.nodes.filter { $0.kind != .trigger }.map(\.label).joined(separator: " → ")
+        return story.isEmpty ? scenarioTitle(for: flow) : "\(scenarioTitle(for: flow)): \(story)"
+    }
+
     // MARK: - Behavior
 
     /// The behavior diagram for a flow: the analysis's own model when it has one, else one

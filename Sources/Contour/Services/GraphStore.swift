@@ -26,6 +26,8 @@ enum NavigationTarget: Hashable {
     case componentDetail(String)
     case edgeDetail(String)
     case flowDetail(String)
+    /// A stage of a flow, selected in the Flows lens.
+    case flowNodeDetail(flowId: String, nodeId: String)
     case evidence(CodeRef)
 }
 
@@ -169,6 +171,7 @@ final class GraphStore {
         case .decisionDetail(let id): return .decision(id)
         case .consideration(let id): return .consideration(id)
         case .flowDetail(let id): return .flow(id)
+        case .flowNodeDetail(let flowId, let nodeId): return .flowNode(flowId: flowId, nodeId: nodeId)
         case .evidence(let ref): return .codeRef(ref)
         default:
             if let change = graph?.dominantBehaviorChange { return .behaviorChange(change.id) }

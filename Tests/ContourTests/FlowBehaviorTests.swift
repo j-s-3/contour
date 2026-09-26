@@ -152,6 +152,108 @@ struct FlowBehaviorTests {
         #expect(appearances.map(\.flow.id).contains("flow-stdin-custom-reader-detection"))
     }
 
+    // MARK: - Layout
+
+    private func sampleLayout(_ mode: FlowMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let flow = try #require(graph.flow("publish-index-flow"))
+        let behavior = graph.behavior(for: flow).visible(in: mode)
+        let ids = Set(behavior.nodes.map(\.id))
+        let notes = graph.annotations(for: flow).filter { ids.contains($0.nodeId) }
+        return (BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: notes), behavior)
+    }
+
+    @Test func executionReadsTopToBottom() throws {
+        for mode in FlowMode.allCases {
+            let (layout, behavior) = try sampleLayout(mode)
+            #expect(layout.nodes.count == behavior.nodes.count)
+            let trigger = try #require(layout.node("publish"))
+            #expect(layout.nodes.allSatisfy { $0.frame.minY >= trigger.frame.minY })
+            for edge in behavior.edges {
+                let a = try #require(layout.node(edge.fromId)), b = try #require(layout.node(edge.toId))
+                #expect(b.frame.minY > a.frame.maxY, "\(edge.id) should point down in \(mode)")
+                let placed = try #require(layout.edges.first { $0.id == edge.id })
+                #expect(placed.points.first == CGPoint(x: a.frame.midX, y: a.frame.maxY))
+                #expect(placed.points.last == CGPoint(x: b.frame.midX, y: b.frame.minY))
+            }
+        }
+    }
+
+    @Test func branchesSitSideBySideAndNothingOverlaps() throws {
+        let (layout, _) = try sampleLayout(.delta)
+        let yes = try #require(layout.node("searchable")), no = try #require(layout.node("retry"))
+        #expect(yes.frame.minY == no.frame.minY)
+        #expect(!yes.frame.intersects(no.frame))
+        // The branch point sits centered over its two outcomes.
+        let branch = try #require(layout.node("ok"))
+        #expect(abs(branch.frame.midX - (yes.frame.midX + no.frame.midX) / 2) < 1)
+        // In Delta the removed and new paths run side by side too.
+        #expect(try #require(layout.node("nightly")).frame.minY == (try #require(layout.node("queue"))).frame.minY)
+
+        let boxes = layout.nodes.map(\.frame) + layout.annotations.map(\.frame)
+        for (i, a) in boxes.enumerated() {
+            for b in boxes[(i + 1)...] { #expect(!a.intersects(b)) }
+        }
+        #expect(layout.edges.first { $0.edge.label == "Yes" }?.labelPoint != nil)
+    }
+
+    @Test func aDecisionNoteHangsOffTheStageItShapes() throws {
+        let (layout, _) = try sampleLayout(.after)
+        let note = try #require(layout.annotations.first { $0.annotation.targetId == "index-on-publish" })
+        let queue = try #require(layout.node("queue"))
+        let next = try #require(layout.node("rebuild"))
+        #expect(note.frame.minX > queue.frame.midX)
+        #expect(note.frame.minY > queue.frame.maxY && note.frame.maxY < next.frame.minY)
+    }
+
+    @Test func aCrowdedStageShowsAFewNotesAndCountsTheRest() throws {
+        let graph = try fixtureGraph()
+        let stdin = try #require(graph.flow("flow-stdin-custom-reader-detection"))
+        let notes = graph.annotations(for: stdin)
+        let crowded = try #require(Dictionary(grouping: notes, by: \.nodeId).max { $0.value.count < $1.value.count })
+        #expect(crowded.value.count > BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        let layout = BehaviorDiagramLayoutEngine.layout(graph.behavior(for: stdin), mode: .delta, annotations: notes)
+        #expect(layout.annotations.filter { $0.annotation.nodeId == crowded.key }.count == BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        #expect(layout.overflow.first { $0.nodeId == crowded.key }?.count == crowded.value.count - BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        // Nothing hangs into the next stage.
+        let next = try #require(layout.nodes.filter { $0.frame.minY > layout.node(crowded.key)!.frame.maxY }.min { $0.frame.minY < $1.frame.minY })
+        #expect(layout.overflow.allSatisfy { $0.frame.maxY < next.frame.minY })
+    }
+
+    @Test func boundariesContainTheirStages() throws {
+        let (layout, behavior) = try sampleLayout(.delta)
+        for placed in layout.boundaries {
+            for node in behavior.nodes where node.boundaryId == placed.id {
+                #expect(placed.frame.contains(try #require(layout.node(node.id)).frame))
+            }
+        }
+    }
+
+    // MARK: - Chat and prompts
+
+    @Test func askingAboutAStageSendsItsNeighborhood() throws {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let resolved = try #require(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "queue")))
+        #expect(resolved.kind == .flowStep)
+        #expect(resolved.lineage.last == "Publish a page")
+        #expect(resolved.decisionIds == ["index-on-publish"])
+        #expect(resolved.detail.contains("Comes after: Save page revision"))
+        #expect(resolved.detail.contains("Leads to: Rebuild search entry"))
+        #expect(resolved.detail.contains("enqueue index job"))
+        #expect(resolved.detailTarget == .flowNodeDetail(flowId: "publish-index-flow", nodeId: "queue"))
+        #expect(ChatContextBuilder.suggestions(for: resolved).contains("What changed at this step?"))
+        #expect(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "nope")) == nil)
+    }
+
+    @Test func theFlowsStageIsAskedForBehaviorAndTheJudgmentStageForAnchors() {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let flows = PromptBuilder.flowsPrompt(components: graph.components, decisions: graph.decisions, entryHints: [])
+        #expect(flows.contains("- index-on-publish:"))
+        #expect(flows.contains("\"behavior\""))
+        #expect(flows.contains("4-8 conceptual stages"))
+        #expect(PromptBuilder.judgmentPrompt(graphSoFar: "{}").contains("flowAnchors"))
+    }
+
     // MARK: - Convergence
 
     @Test func flowsThatHandOffToASharedStageAreFound() {

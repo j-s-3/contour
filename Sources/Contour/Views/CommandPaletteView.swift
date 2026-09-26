@@ -79,7 +79,7 @@ struct CommandPaletteView: View {
             })
         }
         for f in graph.flows {
-            commands.append(.init(title: f.title, subtitle: "Flow", symbol: "arrow.triangle.branch") {
+            commands.append(.init(title: graph.scenarioTitle(for: f), subtitle: "Flow", symbol: "arrow.triangle.branch") {
                 store.navigate(to: .flowDetail(f.id))
             })
         }

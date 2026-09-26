@@ -195,7 +195,8 @@ struct ContentView: View {
              (.flows, .flows), (.diff, .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
-             (.consideration(_), .decisions), (.flowDetail(_), .flows):
+             (.consideration(_), .decisions), (.flowDetail(_), .flows),
+             (.flowNodeDetail(_, _), .flows):
             return true
         default:
             return false
@@ -207,6 +208,15 @@ struct ContentView: View {
         switch store.current {
         case .componentDetail(let id): return .node(id)
         case .edgeDetail(let id): return .edge(id)
+        default: return nil
+        }
+    }
+
+    /// The flow, and stage, a navigation target asks Flows to show.
+    private var flowsFocus: FlowsView.Focus? {
+        switch store.current {
+        case .flowDetail(let id): return .init(flowId: id)
+        case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
         default: return nil
         }
     }
@@ -245,10 +255,10 @@ struct ContentView: View {
                 onSetState: { store.setReviewerState($1, forDecision: $0) },
                 onSetNote: { store.setReviewerNote($1, forDecision: $0) }
             )
-        case .flows, .flowDetail(_):
+        case .flows, .flowDetail(_), .flowNodeDetail(_, _):
             FlowsView(
                 graph: graph,
-                focusFlowId: { if case .flowDetail(let id) = store.current { return id } else { return nil } }(),
+                focus: flowsFocus,
                 onOpenEvidence: { store.navigate(to: .evidence($0)) }
             )
         case .files:
