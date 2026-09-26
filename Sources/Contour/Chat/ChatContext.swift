@@ -58,11 +58,11 @@ enum ChatContextBuilder {
     static func suggestions(for resolved: ResolvedSubject) -> [String] {
         switch resolved.kind {
         case .component:
-            return ["Why does this exist?", "How does this work?", "What could go wrong?",
-                    "Show me the implementation", "What changed from before?"]
+            return ["Why is this its own part?", "What did this PR change here?", "How does this work?",
+                    "What could go wrong?", "Show me the implementation"]
         case .relationship:
-            return ["Why does this need to happen here?", "Is this synchronous on purpose?",
-                    "What happens if both sides run at once?", "Show me where this call happens"]
+            return ["What crosses here, and why?", "What changed about this in the PR?",
+                    "Is this synchronous on purpose?", "Show me where this happens"]
         case .decision:
             return ["Why was this chosen?", "What alternatives were considered?", "What are the risks?",
                     "Do we really need this?", "Show me the evidence"]
@@ -244,7 +244,7 @@ enum ChatContextBuilder {
 
         let considerations = graph.thingsToThinkAbout.filter { item in
             if case .consideration(let id) = resolved.subject, id == item.id { return false }
-            return !Set(item.relatedIds).isDisjoint(with: resolved.componentIds + resolved.decisionIds + resolved.flowIds)
+            return !Set(item.relatedIds).isDisjoint(with: resolved.componentIds + resolved.decisionIds + resolved.flowIds + resolved.edgeIds)
         }
         if !considerations.isEmpty {
             out += "## Open review questions touching this\n"
@@ -259,7 +259,10 @@ enum ChatContextBuilder {
         var out = "## Whole review model (outline)\n"
         for change in graph.behaviorChanges { out += "- " + PRGraph.describe(change).replacingOccurrences(of: "\n", with: "\n  ") + "\n" }
         out += "\n### Architecture\n"
-        for c in graph.components where c.level <= .system {
+        if let assessment = graph.architecture {
+            out += "Impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)\n"
+        }
+        for c in graph.topLevelParts {
             out += "- \(c.title) (\(c.changeKind.label.lowercased()))" + (c.summary.map { ": \($0.text)" } ?? "") + "\n"
         }
         for e in graph.resolvedEdges { out += "- \(graph.describeEdge(e))\n" }

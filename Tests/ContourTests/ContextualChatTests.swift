@@ -17,8 +17,8 @@ struct ContextualChatTests {
         #expect(Set(resolved.componentIds) == ["page-publishing", "index-queue"])
         #expect(resolved.decisionIds == ["index-on-publish"])
         // Both endpoints are described in full, not just named.
-        #expect(resolved.detail.contains("Architecture element \"Page Publishing\""))
-        #expect(resolved.detail.contains("Architecture element \"Index Queue\""))
+        #expect(resolved.detail.contains("Architecture part \"Page Publishing\""))
+        #expect(resolved.detail.contains("Architecture part \"Index Queue\""))
         #expect(resolved.lineage.last == "Architecture")
     }
 
@@ -26,7 +26,7 @@ struct ContextualChatTests {
         let resolved = try #require(graph.resolve(.component("index-queue")))
         #expect(resolved.decisionIds.contains("index-on-publish"))
         #expect(resolved.flowIds.contains("publish-index-flow"))
-        #expect(resolved.summary.contains { $0.hasPrefix("Triggered by Page Publishing") })
+        #expect(resolved.summary.contains { $0.hasPrefix("Receives ") && $0.contains("from Page Publishing") })
         #expect(resolved.detailTarget == .componentDetail("index-queue"))
     }
 

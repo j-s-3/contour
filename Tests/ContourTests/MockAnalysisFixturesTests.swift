@@ -69,10 +69,12 @@ struct MockAnalysisFixturesTests {
             }
         }
 
-        // The redesigned architecture stage emits directional labeled edges and boundaries;
-        // both must reference real component IDs, and every edge must carry a verb label.
+        // Edges and boundaries must reference real parts, and every edge must say what crosses
+        // it. A PR is not required to add a relationship: most change none.
         #expect(!arch.edges.isEmpty, "architecture fixture should define labeled edges")
-        #expect(arch.edges.contains { $0.change == .new }, "a redesigned architecture should surface at least one NEW relationship")
+        for component in arch.components {
+            if let parent = component.parentId { #expect(componentIds.contains(parent), "component \(component.id) has missing parent \(parent)") }
+        }
         for edge in arch.edges {
             #expect(componentIds.contains(edge.fromId), "edge \(edge.id) has missing fromId \(edge.fromId)")
             #expect(componentIds.contains(edge.toId), "edge \(edge.id) has missing toId \(edge.toId)")

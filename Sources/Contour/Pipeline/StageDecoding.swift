@@ -70,14 +70,18 @@ enum StageDecoding {
         var edges: [ArchitectureEdge]
         var boundaries: [SystemBoundary]
         var architectureImpact: Statement?
+        var architecture: ArchitectureAssessment?
 
-        enum CodingKeys: String, CodingKey { case components, edges, boundaries, architectureImpact }
+        enum CodingKeys: String, CodingKey { case components, edges, boundaries, architectureImpact, architecture }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             components = try c.decodeIfPresent([ComponentNode].self, forKey: .components) ?? []
             edges = try c.decodeIfPresent([ArchitectureEdge].self, forKey: .edges) ?? []
             boundaries = try c.decodeIfPresent([SystemBoundary].self, forKey: .boundaries) ?? []
             architectureImpact = try c.decodeIfPresent(Statement.self, forKey: .architectureImpact)
+            // An assessment that doesn't decode degrades to the prose impact alone.
+            architecture = (try? c.decodeIfPresent(ArchitectureAssessment.self, forKey: .architecture)) ?? nil
+            if architectureImpact == nil { architectureImpact = architecture?.explanation }
         }
     }
 
