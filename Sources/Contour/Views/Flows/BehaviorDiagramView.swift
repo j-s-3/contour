@@ -49,6 +49,16 @@ struct BehaviorDiagramView: View {
 
     var body: some View {
         let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations)
+        // The legend sits in its own strip under the canvas rather than floating over it, so
+        // it can never cover a stage however short the window is.
+        VStack(spacing: 0) {
+            canvas(layout)
+            Divider()
+            legend
+        }
+    }
+
+    private func canvas(_ layout: BehaviorDiagramLayout) -> some View {
         GeometryReader { geo in
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
@@ -108,13 +118,10 @@ struct BehaviorDiagramView: View {
                     }
                 }
                 .frame(width: layout.size.width, height: layout.size.height)
-                // Room to scroll the last stage clear of the legend floating over the canvas.
-                .padding(.bottom, 56)
                 // Centered across the canvas when it fits; scrolls when it doesn't.
                 .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .top)
             }
         }
-        .overlay(alignment: .bottomLeading) { legend }
     }
 
     // MARK: - Connectors
@@ -224,9 +231,9 @@ struct BehaviorDiagramView: View {
         }
         .font(.caption2)
         .labelStyle(CompactLabelStyle())
-        .padding(8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .padding(10)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func legendSwatch(_ color: Color, _ label: String) -> some View {
