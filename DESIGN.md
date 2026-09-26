@@ -58,7 +58,7 @@ Summary ◄── home base, one keystroke away at all times
    │
    ├─► Architecture (diagram-first)
    ├─► Decisions (choice + tradeoff + why; accept / question / discuss)
-   ├─► Flows (interactive step list)
+   ├─► Flows (what happens at runtime)
    ├─► Entry points
    │        all cross-linked to each other, all drilling into Evidence
    ▼
@@ -176,10 +176,39 @@ manufacture one. Review progress counts decisions only.
 
 ### 4.6 Flows
 
-A three-pane picker (flow → step list → step detail) rather than a wall of text. Each
-step's detail shows its component, state delta, branches, external calls, error paths,
-an async-boundary marker, and a caution flag for concrete, code-visible risk. See
-`Views/Flows/FlowsView.swift`.
+"Show me what happens when…" — the runtime story at the level an engineer draws on a
+whiteboard, not a call trace translated into English. Architecture is structural (what the
+parts are); Flows is temporal (what happens over time).
+
+Each flow is named as a scenario ("Open a file", "Pipe data into bat") and drawn as a
+top-down behavior diagram (`FlowBehavior`): a trigger, 4–8 conceptual stages, branch points
+labeled as the question they ask with one labeled edge per case, outcomes, external
+systems, storage, and boundaries around the systems it crosses. Async hops are dashed. A
+stage that several triggers converge on is its own flow, reached through a "shared flow"
+stage, and the flow it belongs to lists "Also reached from".
+
+The screen is about how the PR changed the flow. A **Before / After / Delta** control
+defaults to Delta: unchanged stages recede, new stages are green, removed ones dashed red,
+and a changed stage carries its own BEFORE / AFTER lines ("first line" → "up to 1 KB").
+The header gives the ten-second version: one or two sentences of what happens, and one
+line on what this PR changed. Decisions that shape a point in the flow, and Overview
+review questions about it, hang as notes beside the connection where they matter (at most
+three per stage, then "+N more"); clicking one opens it in Decisions, and each decision
+card links back with "Appears in: <flow>". Provenance is not shown on traced stages — only
+an inferred stage gets a "?".
+
+The diagram owns the canvas: scenarios are tabs, and an inspector opens beside the diagram
+only when a stage is selected. It walks the abstraction ladder — Behavior (what happens,
+before/after, neighbors, pinned decisions and questions) › Steps (sub-steps) ›
+Implementation (component and traced `FlowStep`s, with branches, external calls, error
+paths, and cautions) › Code (evidence). Double-click steps down a rung. Right-click on a
+stage adds Show Implementation to the standard menu, and Ask about this… sends the stage
+with its neighbors, pinned decisions and questions, and the implementation underneath.
+
+Graphs from before the redesign carry no `behavior`; `PRGraph.behavior(for:)` condenses a
+linear one from the story steps, classifying each by the implementation steps it most
+plausibly summarizes, and pins decisions and questions by component and related ids. See
+`Views/Flows/`, `Models/FlowBehavior.swift`, and `Models/FlowBriefing.swift`.
 
 ### 4.7 Entry points
 
@@ -369,7 +398,9 @@ Five sequential analysis stages, each reading the previous stage's output for cr
    linked to components, each with the tradeoffs it made (primary / secondary, zero when
    there's no real tension).
 4. **Flows + entry points** (high effort) — traced by the harness actually reading the
-   call chain, not guessed.
+   call chain, not guessed, then written as a scenario-named behavior model (stages,
+   branches, boundaries, what the PR changed) with decisions pinned to the stage they shape.
+   The judgment stage then anchors each review question to a stage (`flowAnchors`).
 5. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
    graph so far and is asked specifically for what a senior engineer would want to judge,
    plus honest open questions.
@@ -404,7 +435,10 @@ DecisionNode   { id, title, decision, rationale[], alternatives[], consequences[
 DecisionTradeoff { dimensionA, dimensionB, chosenPosition, explanation?, prominence, refs }
 FlowStep       { id, index, title, componentId?, refs, stateDelta?, branches[],
                  externalCalls[], errorPaths[], changeKind, isAsyncBoundaryAfter, caution? }
-FlowNode       { id, title, steps[], entryPointId? }
+FlowNode       { id, title, steps[], entryPointId?, storySteps[], behavior? }
+FlowBehavior   { summary?, changeSummary?, nodes[], edges[], boundaries[] }
+FlowBehaviorNode { id, label, kind, detail?, change, before?, after?, substeps[],
+                 stepIds[], componentId?, subflowId?, boundaryId?, decisionIds[], refs }
 EntryPointNode { id, title, kind, changeKind, refs, flowId? }
 QuestionNode   { id, text, relatedIds[], refs }
 
