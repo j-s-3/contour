@@ -20,7 +20,28 @@ import Foundation
 /// fixture, not an analysis of this PR, so writing it under the PR's real key would make
 /// every later real load of that commit show the fixture. Reading is skipped too, so a
 /// mock run always shows the fixtures rather than a real analysis cached earlier.
+///
+/// Alongside the entries it keeps a short index of the PRs most recently opened, which the
+/// start screen lists so a reviewer coming back to a PR doesn't have to go and find its URL
+/// again (and reopening it is instant, from the entries above). An index rather than a scan
+/// of the entries: an entry's date is when a stage last landed, not when the PR was last
+/// opened, and decoding every graph just to list titles would slow down as the cache grows.
 struct AnalysisCache {
+
+    /// A PR on the start screen's "Recently opened" list.
+    struct RecentPR: Codable, Equatable, Identifiable {
+        var url: String
+        /// "owner/repo".
+        var repo: String
+        var number: Int
+        var title: String
+        var lastOpened: Date
+
+        var id: String { "\(repo)#\(number)" }
+    }
+
+    /// How many PRs the recent index remembers; the start screen shows fewer.
+    static let recentCapacity = 20
 
     struct Entry {
         var graph: PRGraph
@@ -94,6 +115,34 @@ struct AnalysisCache {
     func invalidate(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int) {
         let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
         try? FileManager.default.removeItem(at: url)
+    }
+
+    // MARK: - Recently opened
+
+    private var recentURL: URL { cacheDir.appendingPathComponent("recent-prs.json") }
+
+    /// Notes that this PR was just opened: moves it to the top of the recent list with its
+    /// current title, and drops the oldest past `recentCapacity`.
+    func recordOpened(url: String, repo: String, number: Int, title: String, at date: Date = Date()) {
+        guard !MockAnalysisFixtures.isEnabled else { return }
+        let opened = RecentPR(url: url, repo: repo, number: number, title: title, lastOpened: date)
+        var recents = readRecents().filter { $0.id != opened.id }
+        recents.insert(opened, at: 0)
+        guard let data = try? JSONEncoder().encode(Array(recents.prefix(Self.recentCapacity))) else { return }
+        try? data.write(to: recentURL, options: .atomic)
+    }
+
+    /// The PRs most recently opened, newest first.
+    func recentPRs(limit: Int = AnalysisCache.recentCapacity) -> [RecentPR] {
+        guard !MockAnalysisFixtures.isEnabled else { return [] }
+        return Array(readRecents().sorted { $0.lastOpened > $1.lastOpened }.prefix(limit))
+    }
+
+    private func readRecents() -> [RecentPR] {
+        guard let data = try? Data(contentsOf: recentURL),
+              let recents = try? JSONDecoder().decode([RecentPR].self, from: data)
+        else { return [] }
+        return recents
     }
 
     private func decode(_ url: URL, pipelineVersion: Int) -> Entry? {

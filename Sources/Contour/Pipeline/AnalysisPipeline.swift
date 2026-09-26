@@ -117,6 +117,7 @@ actor AnalysisPipeline {
             log(.fetching, "via \(source.describesItself)")
             let ctx = try await source.fetchContext(prURL: prURL)
             self.ctx = ctx
+            cache.recordOpened(url: ctx.url, repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title)
             graph = .shell(from: ctx)
             continuation.yield(.diff(ctx.diff))
             publish()
