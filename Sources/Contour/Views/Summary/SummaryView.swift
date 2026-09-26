@@ -50,7 +50,10 @@ struct SummaryView: View {
             Text(graph.pr.title)
                 .font(.largeTitle.weight(.semibold))
             HStack(spacing: 8) {
-                Text("\(graph.pr.repo) #\(graph.pr.number)")
+                // Verbatim for the same reason as the window title: a literal here is a
+                // LocalizedStringKey, which locale-formats the interpolated Int and turns
+                // PR #14039 into "#14,039".
+                Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)")
                 Text("\u{00b7}").foregroundStyle(.tertiary)
                 Text(graph.pr.state.capitalized)
                 Text("\u{00b7}").foregroundStyle(.tertiary)

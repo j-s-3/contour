@@ -68,7 +68,11 @@ struct ContentView: View {
         } detail: {
             detailContent(graph)
         }
-        .navigationTitle("\(graph.pr.repo) #\(graph.pr.number)")
+        // `Text(verbatim:)`, not a bare string literal: the `navigationTitle` overload that
+        // takes a literal binds it as a `LocalizedStringKey`, which formats an interpolated
+        // Int for the current locale — so PR #14039 rendered as "#14,039". A PR number is
+        // an identifier, not a quantity, and must never be group-separated.
+        .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button { store.goBack() } label: { Image(systemName: "chevron.left") }
