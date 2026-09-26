@@ -59,7 +59,7 @@ struct OnboardingView: View {
 /// Shown while the pipeline runs. Real substeps from the JSONL stream, not a spinner —
 /// this is the "progress panel shows real substeps" behavior from the worked example.
 /// Fills the whole window: a stage rail across the top so the reviewer can see where
-/// they are across all six stages, then a full-size scrolling console underneath so the
+/// they are across every stage, then a full-size scrolling console underneath so the
 /// (often long) tool-call log is actually readable instead of squeezed into a small box.
 struct AnalyzingView: View {
     let stage: PipelineStage
@@ -67,7 +67,7 @@ struct AnalyzingView: View {
 
     private static let orderedStages: [PipelineStage] = [
         .fetching, .checkingOut, .cacheCheck, .ticket, .architecture, .intent, .eli5,
-        .decisions, .tradeoffs, .flows, .judgment
+        .decisions, .flows, .judgment
     ]
 
     var body: some View {
@@ -128,7 +128,6 @@ struct AnalyzingView: View {
         case .intent: return "Intent"
         case .eli5: return "Plain-language"
         case .decisions: return "Decisions"
-        case .tradeoffs: return "Tradeoffs"
         case .flows: return "Flows"
         case .judgment: return "Judgment"
         case .done: return "Done"

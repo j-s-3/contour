@@ -16,7 +16,7 @@ requirements are `git` and one AI CLI you're already signed in to.
 
 - Paste a GitHub PR URL → PR metadata/diff/commits/comments are fetched → the repo is
   checked out locally at the PR's head SHA → a staged pipeline of AI calls builds a
-  knowledge graph (components, decisions, tradeoffs, flows, questions) →
+  knowledge graph (components, decisions with their tradeoffs, flows, questions) →
   native SwiftUI views render it.
 - An Overview that reads as a briefing: the before/after behavior change, why it was
   made, and a short list of "things to think about".
@@ -25,7 +25,8 @@ requirements are `git` and one AI CLI you're already signed in to.
 - Native architecture diagram (SwiftUI `Canvas`, layered layout, no web view).
 - Full decision records (Decision / Rationale / Alternatives / Consequences / Confidence /
   Evidence) with accept / question / discuss reviewer state.
-- Tradeoffs made visible without a verdict; interactive flow step lists.
+- Each decision shows what it traded and why it landed on that side, without a verdict;
+  interactive flow step lists.
 - Contextual chat: right-click any element and choose "Ask about this…" (⌘⇧A). The model
   gets that element plus its lineage and neighbors, and cites code and review objects as
   clickable links.

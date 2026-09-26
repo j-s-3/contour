@@ -291,6 +291,10 @@ enum DecisionShape: String, Codable, Hashable, Sendable {
     case threshold
     /// Three or more unordered alternatives, drawn as a radio list.
     case options
+    /// An architectural change: the structure before (the first option) and after (the
+    /// second, chosen), each label a short chain like "Reader → Inspector", drawn as two
+    /// tiny diagrams.
+    case beforeAfter
 }
 
 /// One option on the table for a decision. `label` is a short noun phrase ("First 1 KB",
@@ -471,7 +475,9 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     var consequences: [Statement] = []
     var confidence: Confidence
     var refs: [CodeRef] = []
-    var tradeoffIds: [String] = []
+    /// What this choice traded, most prominent first. Empty when the choice had no
+    /// meaningful tradeoff — one is never manufactured just because the schema allows it.
+    var tradeoffs: [DecisionTradeoff] = []
     var componentIds: [String] = []
     var reviewerState: ReviewerState = .unreviewed
     var reviewerNote: String = ""
@@ -492,20 +498,20 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
 
     init(id: String, title: String, decision: Statement, rationale: [Statement] = [],
          alternatives: [Statement] = [], consequences: [Statement] = [], confidence: Confidence,
-         refs: [CodeRef] = [], tradeoffIds: [String] = [], componentIds: [String] = [],
+         refs: [CodeRef] = [], tradeoffs: [DecisionTradeoff] = [], componentIds: [String] = [],
          reviewerState: ReviewerState = .unreviewed, reviewerNote: String = "",
          level: AbstractionLevel = .system, question: String? = nil, options: [DecisionOption] = [],
          shape: DecisionShape? = nil, why: Statement? = nil) {
         self.id = id; self.title = title; self.decision = decision; self.rationale = rationale
         self.alternatives = alternatives; self.consequences = consequences; self.confidence = confidence
-        self.refs = refs; self.tradeoffIds = tradeoffIds; self.componentIds = componentIds
+        self.refs = refs; self.tradeoffs = tradeoffs; self.componentIds = componentIds
         self.reviewerState = reviewerState; self.reviewerNote = reviewerNote
         self.level = level
         self.question = question; self.options = options; self.shape = shape; self.why = why
     }
     enum CodingKeys: String, CodingKey {
         case id, title, decision, rationale, alternatives, consequences, confidence, refs,
-             tradeoffIds, componentIds, reviewerState, reviewerNote, level, question, options, shape, why
+             tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -517,7 +523,9 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         consequences = try c.decodeIfPresent([Statement].self, forKey: .consequences) ?? []
         confidence = try c.decodeIfPresent(Confidence.self, forKey: .confidence) ?? .medium
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        tradeoffIds = try c.decodeIfPresent([String].self, forKey: .tradeoffIds) ?? []
+        // A malformed tradeoff drops that one tradeoff, never the decision around it.
+        tradeoffs = ((try? c.decodeIfPresent([LenientDecodable<DecisionTradeoff>].self, forKey: .tradeoffs)) ?? nil)?
+            .compactMap(\.value) ?? []
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
         reviewerState = try c.decodeIfPresent(ReviewerState.self, forKey: .reviewerState) ?? .unreviewed
         reviewerNote = try c.decodeIfPresent(String.self, forKey: .reviewerNote) ?? ""
@@ -530,51 +538,55 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-struct TradeoffNode: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var title: String
-    /// Short phrase (not a sentence) naming one pole, e.g. "simplicity".
-    var poleA: String
-    /// Short phrase (not a sentence) naming the other pole, e.g. "flexibility".
-    var poleB: String
-    /// Short phrase for where the implementation landed — "poleA", "poleB", or a short
-    /// label on the spectrum between them.
-    var chosen: String
-    var explanation: Statement
-    var decisionIds: [String] = []
-    var refs: [CodeRef] = []
-    /// 0 = fully poleA, 1 = fully poleB — lets the UI render a one-line slider instead of
-    /// a paragraph explaining where on the spectrum the implementation landed.
-    var poleAWeight: Double = 0.5
+/// How much a tradeoff matters to the decision that made it. A decision usually has at most
+/// one primary tradeoff — the tension that makes it worth reviewing — which is drawn on the
+/// decision itself. Secondary tradeoffs are real but smaller, and wait in the drill-down.
+enum TradeoffProminence: String, Codable, Hashable, Sendable {
+    case primary
+    case secondary
+}
 
-    init(id: String, title: String, poleA: String, poleB: String, chosen: String,
-         explanation: Statement, decisionIds: [String] = [], refs: [CodeRef] = [], poleAWeight: Double = 0.5) {
-        self.id = id; self.title = title; self.poleA = poleA; self.poleB = poleB
-        self.chosen = chosen; self.explanation = explanation; self.decisionIds = decisionIds; self.refs = refs
-        self.poleAWeight = poleAWeight
+/// Decodes one element of an array, yielding nil instead of failing the whole array.
+struct LenientDecodable<T: Decodable>: Decodable {
+    var value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+}
+
+/// What a decision gave up to get what it chose — a property of the decision, never a
+/// review object of its own. A tradeoff exists because a decision was made, so it lives
+/// inside that decision and is judged along with it.
+struct DecisionTradeoff: Codable, Hashable, Sendable {
+    /// Short phrase naming the quality on one side, e.g. "detection completeness".
+    var dimensionA: String
+    /// Short phrase naming the quality on the other side, e.g. "streaming behavior".
+    var dimensionB: String
+    /// Where the choice landed: 0 = fully `dimensionA`, 1 = fully `dimensionB` — drawn as a
+    /// point on a line rather than explained in a paragraph.
+    var chosenPosition: Double = 0.5
+    var explanation: Statement?
+    var prominence: TradeoffProminence = .primary
+    var refs: [CodeRef] = []
+
+    init(dimensionA: String, dimensionB: String, chosenPosition: Double = 0.5, explanation: Statement? = nil,
+         prominence: TradeoffProminence = .primary, refs: [CodeRef] = []) {
+        self.dimensionA = dimensionA; self.dimensionB = dimensionB; self.chosenPosition = chosenPosition
+        self.explanation = explanation; self.prominence = prominence; self.refs = refs
     }
-    enum CodingKeys: String, CodingKey { case id, title, poleA, poleB, chosen, explanation, decisionIds, refs, poleAWeight }
+    enum CodingKeys: String, CodingKey { case dimensionA, dimensionB, chosenPosition, explanation, prominence, refs }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        title = try c.decode(String.self, forKey: .title)
-        poleA = try c.decode(String.self, forKey: .poleA)
-        poleB = try c.decode(String.self, forKey: .poleB)
-        chosen = try c.decodeIfPresent(String.self, forKey: .chosen) ?? poleA
-        explanation = try c.decode(Statement.self, forKey: .explanation)
-        decisionIds = try c.decodeIfPresent([String].self, forKey: .decisionIds) ?? []
-        refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        let rawWeight = try c.decodeIfPresent(Double.self, forKey: .poleAWeight)
-        if let rawWeight {
-            poleAWeight = rawWeight
-        } else if chosen.lowercased() == poleB.lowercased() || chosen == "poleB" {
-            poleAWeight = 0.85
-        } else if chosen.lowercased() == poleA.lowercased() || chosen == "poleA" {
-            poleAWeight = 0.15
-        } else {
-            poleAWeight = 0.5
-        }
+        dimensionA = try c.decode(String.self, forKey: .dimensionA)
+        dimensionB = try c.decode(String.self, forKey: .dimensionB)
+        let position = (try? c.decodeIfPresent(Double.self, forKey: .chosenPosition)) ?? nil
+        chosenPosition = min(max(position ?? 0.5, 0), 1)
+        explanation = try? c.decodeIfPresent(Statement.self, forKey: .explanation)
+        prominence = (try? c.decodeIfPresent(TradeoffProminence.self, forKey: .prominence)) ?? .primary
+        refs = (try? c.decodeIfPresent([CodeRef].self, forKey: .refs)) ?? []
     }
+
+    /// Which side the choice leans toward, for "why this side?".
+    var chosenDimension: String { chosenPosition >= 0.5 ? dimensionB : dimensionA }
+    var otherDimension: String { chosenPosition >= 0.5 ? dimensionA : dimensionB }
 }
 
 struct FlowStep: Codable, Hashable, Sendable, Identifiable {
@@ -795,7 +807,6 @@ struct PRGraph: Codable, Hashable, Sendable {
     var pr: PRSummary
     var components: [ComponentNode] = []
     var decisions: [DecisionNode] = []
-    var tradeoffs: [TradeoffNode] = []
     var flows: [FlowNode] = []
     var entryPoints: [EntryPointNode] = []
     var questions: [QuestionNode] = []
@@ -812,7 +823,6 @@ struct PRGraph: Codable, Hashable, Sendable {
 
     func component(_ id: String?) -> ComponentNode? { components.first { $0.id == id } }
     func decision(_ id: String?) -> DecisionNode? { decisions.first { $0.id == id } }
-    func tradeoff(_ id: String?) -> TradeoffNode? { tradeoffs.first { $0.id == id } }
     func flow(_ id: String?) -> FlowNode? { flows.first { $0.id == id } }
     func entryPoint(_ id: String?) -> EntryPointNode? { entryPoints.first { $0.id == id } }
 
@@ -821,9 +831,6 @@ struct PRGraph: Codable, Hashable, Sendable {
 
     func decisions(affecting componentId: String) -> [DecisionNode] {
         decisions.filter { $0.componentIds.contains(componentId) }
-    }
-    func tradeoffs(for decisionId: String) -> [TradeoffNode] {
-        tradeoffs.filter { $0.decisionIds.contains(decisionId) }
     }
     func flows(traversing componentId: String) -> [FlowNode] {
         flows.filter { flow in flow.steps.contains { $0.componentId == componentId } }

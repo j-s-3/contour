@@ -17,7 +17,9 @@ enum ReviewSubject: Hashable, Sendable {
     /// One option on a decision's table ("Only inspect what's buffered") — for "why did
     /// they choose this?" and "what if they'd picked the other one?".
     case decisionOption(decisionId: String, index: Int)
-    case tradeoff(String)
+    /// One of a decision's tradeoffs ("detection completeness ◀──●──▶ streaming behavior").
+    /// Addressed through its decision, because that is where it lives and is judged.
+    case tradeoff(decisionId: String, index: Int)
     case flow(String)
     case flowStep(flowId: String, stepId: String)
     case storyStep(flowId: String, index: Int)
@@ -85,7 +87,6 @@ struct ResolvedSubject {
     var detail: String
     var componentIds: [String] = []
     var decisionIds: [String] = []
-    var tradeoffIds: [String] = []
     var flowIds: [String] = []
     var edgeIds: [String] = []
     var refs: [CodeRef] = []
@@ -272,7 +273,6 @@ extension PRGraph {
 
         case .decision(let id):
             guard let d = decision(id) else { return nil }
-            let tradeoffs = tradeoffs(for: id)
             let brief = brief(for: d)
             let affects = affects(d)
             var summary = [brief.question]
@@ -282,12 +282,9 @@ extension PRGraph {
             } else {
                 summary.append(d.decision.text)
             }
-            if let t = tradeoffs.first { summary.append("Tradeoff: \(t.poleA) vs \(t.poleB)") }
+            if let t = d.primaryTradeoff { summary.append("Trading \(t.dimensionA) against \(t.dimensionB)") }
             if d.reviewerState != .unreviewed { summary.append("Reviewer marked: \(d.reviewerState.label)") }
             var detail = Self.describe(d)
-            if let t = tradeoffs.first {
-                detail += "\n- Tradeoff: \(t.poleA) versus \(t.poleB), landing on \(t.chosen) — \(Self.describe(t.explanation))"
-            }
             for q in overviewQuestions(reviewedOn: id) {
                 detail += "\n- Overview question reviewed on this decision: \(q.question) \(q.detail)"
             }
@@ -298,10 +295,9 @@ extension PRGraph {
                 detail: detail,
                 componentIds: d.componentIds,
                 decisionIds: [id],
-                tradeoffIds: tradeoffs.map(\.id),
                 flowIds: affects.flows.map(\.id),
                 edgeIds: affects.edges.map(\.id),
-                refs: d.refs,
+                refs: d.allRefs,
                 detailTarget: .decisionDetail(id)
             )
 
@@ -325,31 +321,35 @@ extension PRGraph {
                 """,
                 componentIds: base.componentIds,
                 decisionIds: [decisionId],
-                tradeoffIds: base.tradeoffIds,
                 flowIds: base.flowIds,
                 edgeIds: base.edgeIds,
                 refs: d.refs,
                 detailTarget: .decisionDetail(decisionId)
             )
 
-        case .tradeoff(let id):
-            guard let t = tradeoff(id) else { return nil }
-            let owning = t.decisionIds.compactMap(decision)
-            var summary = [t.title, "\(t.poleA) ↔ \(t.poleB), landing on \(t.chosen)"]
-            if let d = owning.first { summary.append("From decision: \(d.title)") }
+        case .tradeoff(let decisionId, let index):
+            guard let d = decision(decisionId), d.tradeoffs.indices.contains(index),
+                  let base = resolve(.decision(decisionId)) else { return nil }
+            let t = d.tradeoffs[index]
+            let question = brief(for: d).question
+            var summary = ["\(t.dimensionA) ↔ \(t.dimensionB)", "Leans toward \(t.chosenDimension)", question]
+            if let e = t.explanation { summary.insert(e.text, at: 2) }
             return ResolvedSubject(
-                subject: subject, kind: .tradeoff, title: t.title,
-                lineage: [prLine, "Decisions"] + owning.prefix(1).map(\.title),
+                subject: subject, kind: .tradeoff, title: "\(t.dimensionA) vs. \(t.dimensionB)",
+                lineage: [prLine, "Decisions", question],
                 summary: summary.compactMap(Self.oneLine),
                 detail: """
-                Tradeoff "\(t.title)": \(t.poleA) versus \(t.poleB). The implementation landed on: \(t.chosen).
-                Explanation: \(Self.describe(t.explanation))
+                A tradeoff made by one decision (\(t.prominence == .primary ? "the tension that makes the decision worth reviewing" : "a secondary tradeoff of the decision")): \(Self.describe(t)).
+                The reviewer is weighing this as part of the decision below, not as a separate item.
+
+                \(base.detail)
                 """,
-                componentIds: unique(owning.flatMap(\.componentIds)),
-                decisionIds: t.decisionIds,
-                tradeoffIds: [id],
-                refs: t.refs,
-                detailTarget: .tradeoffDetail(id)
+                componentIds: base.componentIds,
+                decisionIds: [decisionId],
+                flowIds: base.flowIds,
+                edgeIds: base.edgeIds,
+                refs: t.refs.isEmpty ? d.refs : t.refs,
+                detailTarget: .decisionDetail(decisionId)
             )
 
         case .flow(let id):
@@ -450,12 +450,16 @@ extension PRGraph {
             refs.contains { $0.path == ref.path && $0.startLine <= ref.endLine && ref.startLine <= $0.endLine }
         }
         var out: [(ReviewSubject, String)] = []
-        for d in decisions where cites(d.refs) { out.append((.decision(d.id), brief(for: d).question)) }
+        for d in decisions {
+            if cites(d.refs) { out.append((.decision(d.id), brief(for: d).question)) }
+            for (i, t) in d.tradeoffs.enumerated() where cites(t.refs) {
+                out.append((.tradeoff(decisionId: d.id, index: i), "\(t.dimensionA) vs. \(t.dimensionB)"))
+            }
+        }
         for c in components where cites(c.refs) { out.append((.component(c.id), c.title)) }
         for f in flows {
             for s in f.steps where cites(s.refs) { out.append((.flowStep(flowId: f.id, stepId: s.id), s.title)) }
         }
-        for t in tradeoffs where cites(t.refs) { out.append((.tradeoff(t.id), t.title)) }
         return out
     }
 
@@ -503,12 +507,21 @@ extension PRGraph {
             s += "- Option: \(option.label)\(option.detail.map { " (\($0))" } ?? "")\(option.chosen ? " ← chosen" : "")\n"
         }
         if let why = d.why { s += "- Why (short): \(describe(why))\n" }
+        for t in d.tradeoffs { s += "- \(t.prominence == .primary ? "Tradeoff" : "Secondary tradeoff"): \(describe(t))\n" }
         s += "- Decision: \(describe(d.decision))"
         for r in d.rationale { s += "\n- Rationale: \(describe(r))" }
         for a in d.alternatives { s += "\n- Alternative: \(describe(a))" }
         for c in d.consequences { s += "\n- Consequence: \(describe(c))" }
         if d.reviewerState != .unreviewed { s += "\n- Reviewer marked it: \(d.reviewerState.label)" }
         if !d.reviewerNote.isEmpty { s += "\n- Reviewer note: \(d.reviewerNote)" }
+        return s
+    }
+
+    static func describe(_ t: DecisionTradeoff) -> String {
+        let lean = abs(t.chosenPosition - 0.5) < 0.1 ? "roughly balanced" : "leaning toward \(t.chosenDimension)"
+        var s = "\(t.dimensionA) versus \(t.dimensionB), \(lean) (position \(String(format: "%.2f", t.chosenPosition)) from \(t.dimensionA) = 0 to \(t.dimensionB) = 1)"
+        if let e = t.explanation { s += " — \(describe(e))" }
+        if !t.refs.isEmpty { s += " [evidence: \(t.refs.map(\.display).joined(separator: ", "))]" }
         return s
     }
 

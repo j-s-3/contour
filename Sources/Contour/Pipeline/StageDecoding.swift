@@ -6,8 +6,8 @@ import Foundation
 /// stage become an Uncertainty rather than crashing the pipeline (§14 "honest truncation").
 ///
 /// Every array field here uses a lenient custom decode. This was not optional: on a real,
-/// large PR, `pi` sometimes emits `"tradeoffs": null` (or similar) to mean "found none"
-/// rather than `"tradeoffs": []`. Swift's synthesized `Decodable` treats an explicit JSON
+/// large PR, `pi` sometimes emits `"entryPoints": null` (or similar) to mean "found none"
+/// rather than `"entryPoints": []`. Swift's synthesized `Decodable` treats an explicit JSON
 /// `null` against a non-optional `[T]` as `DecodingError.valueNotFound`, whose
 /// `localizedDescription` is the unhelpful "The data couldn't be read because it is
 /// missing." — exactly the crash this lenient decoding exists to prevent.
@@ -92,16 +92,6 @@ enum StageDecoding {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             decisions = try c.decodeIfPresent([DecisionNode].self, forKey: .decisions) ?? []
-        }
-    }
-
-    struct TradeoffsResult: Decodable {
-        var tradeoffs: [TradeoffNode]
-
-        enum CodingKeys: String, CodingKey { case tradeoffs }
-        init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            tradeoffs = try c.decodeIfPresent([TradeoffNode].self, forKey: .tradeoffs) ?? []
         }
     }
 

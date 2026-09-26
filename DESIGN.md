@@ -57,8 +57,7 @@ Staged AI analysis (pi, streamed) ──► summary appears first, deeper lenses
 Summary ◄── home base, one keystroke away at all times
    │
    ├─► Architecture (diagram-first)
-   ├─► Decisions (accept / question / discuss)
-   ├─► Tradeoffs
+   ├─► Decisions (choice + tradeoff + why; accept / question / discuss)
    ├─► Flows (interactive step list)
    ├─► Entry points
    │        all cross-linked to each other, all drilling into Evidence
@@ -75,7 +74,8 @@ The whole app is one knowledge graph rendered through different lenses — not f
 static tabs of generated prose. See `Sources/Contour/Models/GraphModels.swift` for the
 concrete types.
 
-Node types: `PRSummary` (root), `ComponentNode`, `DecisionNode`, `TradeoffNode`,
+Node types: `PRSummary` (root), `ComponentNode`, `DecisionNode` (which carries its own
+`DecisionTradeoff`s — a tradeoff is a property of the decision that made it, not a node),
 `FlowNode` / `FlowStep`, `EntryPointNode`, `QuestionNode`, and `CodeRef` as the terminal
 leaf every other node points at. `Statement` is the atomic provenance-tagged claim
 embedded throughout (`Provenance`: fact / claim / interpretation, plus an optional
@@ -83,8 +83,8 @@ embedded throughout (`Provenance`: fact / claim / interpretation, plus an option
 
 Edges are expressed as ID arrays rather than a separate edge table, since the graph is
 small per PR and this keeps the JSON schema the AI has to fill in simple:
-`decisionIds`, `tradeoffIds`, `componentIds`, `flowId`, `entryPointId`, `dependsOnIds`.
-`PRGraph` provides the traversal helpers (`decisions(affecting:)`, `tradeoffs(for:)`,
+`decisionIds`, `componentIds`, `flowId`, `entryPointId`, `dependsOnIds`.
+`PRGraph` provides the traversal helpers (`decisions(affecting:)`, `affects(_:)`,
 `flows(traversing:)`) that every lens uses to find a node's neighbors, which is what
 makes "a component links the decisions that changed it" a one-line query instead of a
 separate document per lens.
@@ -144,12 +144,18 @@ architecture to review judgment. When a graph has no rich edges (an old cached a
 Where the reviewer makes judgments: the Overview says what deserves thought, Decisions
 records it. Each decision is drawn as the question the engineer had to answer, the options
 on the table with the chosen one marked, drawn in the shape that fits (two approaches on a
-line, an ordered threshold scale, or a radio list; never a forced two-sided spectrum), a
-why of at most two lines with provenance as a quiet note, and the tradeoff the choice made
-as a one-line spectrum. Then come explicit **Looks good / Question / Discuss** buttons:
+line, an ordered threshold scale, a radio list, or a tiny before/after diagram for an
+architectural choice; never a forced two-sided spectrum), then **What we're trading** — the
+decision's primary tradeoff as a one-line spectrum between the two qualities traded — and
+**Why this side?**, at most two lines with provenance as a quiet note. Choice → alternative
+→ tradeoff → rationale reads as one unit. The tradeoff line is omitted when there is none
+or when the options' own details already name both qualities. Then come explicit **Looks good / Question / Discuss** buttons:
 Question opens a note to the author, and Discuss opens a conversation. Everything else
-(how it's implemented, full rationale, alternatives, consequences, the architecture,
-relationships and flows it affects, evidence) sits behind More….
+(how it's implemented, full rationale, alternatives, every tradeoff with its explanation
+and code — secondary tradeoffs only appear here — consequences, the architecture,
+relationships and flows it affects, evidence) sits behind More…. Right-clicking a tradeoff
+offers Ask about this…, Why did the PR choose this side?, Show Consequences, and Show
+Evidence; the conversation gets the whole decision around it.
 
 Design decisions show by default. Implementation decisions are collapsed under
 Implementation details and don't count toward review progress, which means "n of the
@@ -162,8 +168,11 @@ Graphs without `question`/`options`/`why` are condensed by `PRGraph.brief(for:)`
 
 ### 4.5 Tradeoffs
 
-Not a screen. A tradeoff exists because a decision exists, so it is drawn inside its
-decision: two qualities being traded and where the choice landed, never a verdict.
+Not a screen, a node, or a review item. A tradeoff exists because a decision was made, so
+it lives on `DecisionNode.tradeoffs` and is judged with that decision: two qualities being
+traded, where the choice landed, and whether it's the decision's primary tension or a
+secondary one — never a verdict. A decision may have none; the analysis is told not to
+manufacture one. Review progress counts decisions only.
 
 ### 4.6 Flows
 
@@ -220,7 +229,7 @@ navigation model in the app, not one per screen.
 
 Enforced structurally, not just by convention: `ArchitectureView` reads
 `graph.decisions(affecting:)` to show a component's decisions inline; `DecisionsView`
-reads `graph.tradeoffs(for:)` to show a decision's tradeoffs inline;
+draws `decision.tradeoffs` in place;
 `EntryPointsView`/`FlowsView` link through `flowId`/`entryPointId`. Every one of those
 lookups is a graph traversal, not a hand-written per-screen reference.
 
@@ -345,11 +354,11 @@ development, not assumed:
   a list of common install locations, which a Finder-launched app needs because it inherits
   a minimal `PATH`.
 - **Models occasionally emit malformed JSON.** One observed stage returned an otherwise
-  complete response containing a stray bracket. With seven stages per run, that would throw
+  complete response containing a stray bracket. With several stages per run, that would throw
   away a whole pipeline including the stages already paid for, so a stage retries once on
   unparseable JSON — and only once.
 
-Six sequential stages, each reading the previous stage's output for cross-linking IDs
+Five sequential analysis stages, each reading the previous stage's output for cross-linking IDs
 (`Pipeline/AnalysisPipeline.swift`, prompts in `Pipeline/PromptBuilder.swift`):
 
 1. **Architecture** (low effort) — components, `dependsOnIds`, trust boundaries,
@@ -357,11 +366,11 @@ Six sequential stages, each reading the previous stage's output for cross-linkin
 2. **Intent** (low effort) — what the author says the PR does, quoted/paraphrased where
    possible.
 3. **Decisions** (high effort) — the handful of decisions worth a reviewer's attention,
-   linked to components.
-4. **Tradeoffs** (high effort) — named poles per decision that embodies one.
-5. **Flows + entry points** (high effort) — traced by the harness actually reading the
+   linked to components, each with the tradeoffs it made (primary / secondary, zero when
+   there's no real tension).
+4. **Flows + entry points** (high effort) — traced by the harness actually reading the
    call chain, not guessed.
-6. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
+5. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
    graph so far and is asked specifically for what a senior engineer would want to judge,
    plus honest open questions.
 
@@ -390,8 +399,9 @@ CodeRef   { path, startLine, endLine, blobSha?, side: head|base }
 ComponentNode  { id, title, changeKind, summary?, refs, decisionIds, flowIds,
                  dependsOnIds, isTrustBoundaryEdge, filesChanged }
 DecisionNode   { id, title, decision, rationale[], alternatives[], consequences[],
-                 confidence, refs, tradeoffIds, componentIds, reviewerState, reviewerNote }
-TradeoffNode   { id, title, poleA, poleB, chosen, explanation, decisionIds, refs }
+                 confidence, refs, tradeoffs[], componentIds, reviewerState, reviewerNote,
+                 level, question?, options[], shape?, why? }
+DecisionTradeoff { dimensionA, dimensionB, chosenPosition, explanation?, prominence, refs }
 FlowStep       { id, index, title, componentId?, refs, stateDelta?, branches[],
                  externalCalls[], errorPaths[], changeKind, isAsyncBoundaryAfter, caution? }
 FlowNode       { id, title, steps[], entryPointId? }
@@ -402,7 +412,7 @@ PRSummary { repo, number, title, author, state, branch, baseBranch, headSha, bas
             intent, filesChanged, additions, deletions, changeMap[],
             architectureImpact?, needsJudgment[], uncertainties[] }
 
-PRGraph { pr, components[], decisions[], tradeoffs[], flows[], entryPoints[], questions[] }
+PRGraph { pr, components[], decisions[], flows[], entryPoints[], questions[] }
 ```
 
 `PRGraph` is `Codable` end to end and is the only thing `GraphStore` holds — every lens
@@ -487,9 +497,9 @@ ephemeral, and session-less, so nothing a PR contains can persist into a later a
 
 ## 17. MVP scope (implemented)
 
-- Paste-URL → fetch → checkout → six-stage pipeline → knowledge graph, exactly as
+- Paste-URL → fetch → checkout → staged pipeline → knowledge graph, exactly as
   described above.
-- Summary, Architecture (diagram), Decisions (full record + reviewer state), Tradeoffs,
+- Summary, Architecture (diagram), Decisions (choice, tradeoffs, full record + reviewer state),
   Flows, Entry points, Raw diff, Evidence/code viewer.
 - Command palette, semantic back/forward navigation, review-progress tracking.
 - Provenance/confidence rendered throughout.

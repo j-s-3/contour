@@ -61,7 +61,6 @@ enum ChatLinks {
         case "component": return .component(id)
         case "relationship", "edge": return .relationship(id)
         case "decision": return .decision(id)
-        case "tradeoff": return .tradeoff(id)
         case "flow": return .flow(id)
         case "entry", "entrypoint": return .entryPoint(id)
         default: return nil
@@ -141,8 +140,7 @@ extension PRGraph {
     var citedPaths: [String] {
         var refs: [CodeRef] = []
         refs += components.flatMap { $0.refs }
-        refs += decisions.flatMap { $0.refs }
-        refs += tradeoffs.flatMap { $0.refs }
+        refs += decisions.flatMap { $0.allRefs }
         refs += flows.flatMap { f in f.steps.flatMap { $0.refs } }
         refs += entryPoints.flatMap { $0.refs }
         refs += behaviorChanges.flatMap { c in (c.before + c.after).flatMap { $0.refs } }

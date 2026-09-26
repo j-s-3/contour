@@ -9,6 +9,8 @@ struct ReviewActions {
     /// hosts intact rather than assuming github.com).
     var prURL: String?
     var ask: (ReviewSubject) -> Void = { _ in }
+    /// Opens the subject's conversation and asks this question in it.
+    var askQuestion: (String, ReviewSubject) -> Void = { _, _ in }
     var navigate: (NavigationTarget) -> Void = { _ in }
     /// A lens publishes its current selection so ⌘⇧A knows what "this" is.
     var focus: (ReviewSubject?) -> Void = { _ in }
@@ -40,7 +42,13 @@ extension View {
     /// The standard right-click menu for any review artifact: "Ask about this…" first, then
     /// a handful of ways to go deeper, then copy. Kept short on purpose.
     func reviewContextMenu(_ subject: ReviewSubject) -> some View {
-        modifier(ReviewContextMenuModifier(subject: subject))
+        modifier(ReviewContextMenuModifier(subject: subject, extra: EmptyView()))
+    }
+
+    /// The standard menu plus items only the calling view can perform (e.g. expanding the
+    /// card it sits on), placed right after "Ask about this…" and its follow-ups.
+    func reviewContextMenu<Extra: View>(_ subject: ReviewSubject, @ViewBuilder extra: () -> Extra) -> some View {
+        modifier(ReviewContextMenuModifier(subject: subject, extra: extra()))
     }
 }
 
@@ -50,9 +58,10 @@ enum AskShortcut {
     static let modifiers: EventModifiers = [.command, .shift]
 }
 
-private struct ReviewContextMenuModifier: ViewModifier {
+private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
     @Environment(\.reviewActions) private var actions
     let subject: ReviewSubject
+    let extra: Extra
 
     func body(content: Content) -> some View {
         content.contextMenu { menu }
@@ -65,10 +74,17 @@ private struct ReviewContextMenuModifier: ViewModifier {
                 Label("Ask about this…", systemImage: "sparkles")
             }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
+            if resolved.kind == .tradeoff {
+                Button("Why did the PR choose this side?") {
+                    actions.askQuestion("Why did the PR choose this side of the tradeoff?", subject)
+                }
+            }
 
             Divider()
 
-            if let target = resolved.detailTarget {
+            extra
+
+            if let target = resolved.detailTarget, resolved.kind != .tradeoff {
                 Button(resolved.kind == .code ? "Show in code" : "Open details") { actions.navigate(target) }
             }
             relatedDecisions(resolved, graph)
@@ -91,7 +107,7 @@ private struct ReviewContextMenuModifier: ViewModifier {
 
     @ViewBuilder
     private func relatedDecisions(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let decisions = resolved.kind == .decision ? [] : resolved.decisionIds.compactMap(graph.decision)
+        let decisions = [.decision, .tradeoff].contains(resolved.kind) ? [] : resolved.decisionIds.compactMap(graph.decision)
         if decisions.count == 1, let d = decisions.first {
             Button("Show Related Decision") { actions.navigate(.decisionDetail(d.id)) }
         } else if decisions.count > 1 {
@@ -115,10 +131,11 @@ private struct ReviewContextMenuModifier: ViewModifier {
 
     @ViewBuilder
     private func showInCode(_ resolved: ResolvedSubject) -> some View {
+        let title = resolved.kind == .tradeoff ? "Show Evidence" : "Show in Code"
         if resolved.refs.count == 1, let ref = resolved.refs.first {
-            Button("Show in Code") { actions.navigate(.evidence(ref)) }
+            Button(title) { actions.navigate(.evidence(ref)) }
         } else if resolved.refs.count > 1 {
-            Menu("Show in Code") {
+            Menu(title) {
                 ForEach(resolved.refs.prefix(12)) { ref in Button(ref.display) { actions.navigate(.evidence(ref)) } }
             }
         }

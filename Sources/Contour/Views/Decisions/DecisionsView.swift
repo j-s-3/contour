@@ -4,8 +4,10 @@ import SwiftUI
 /// thought; this is where that thought is recorded, one consequential choice at a time.
 ///
 /// Each decision is drawn as the question the engineer had to answer, the options on the
-/// table with the chosen one marked, a two-line why, and the tradeoff that choice made —
-/// scannable in a few seconds, followed by an explicit Looks good / Question / Discuss.
+/// table with the chosen one marked, what that choice traded, and why it landed on that
+/// side — one visual unit, scannable in a few seconds, followed by an explicit Looks good /
+/// Question / Discuss. Tradeoffs are never a separate destination: a tradeoff exists because
+/// a decision was made, so it is drawn on, and judged with, that decision.
 /// Everything else (full rationale, alternatives, consequences, what it affects, evidence)
 /// is behind More…, a right-click, or a conversation.
 ///
@@ -321,7 +323,7 @@ struct DecisionsView: View {
 
 // MARK: - A decision
 
-/// One decision's default surface — question, choice, why, tradeoff, judgment — plus its
+/// One decision's default surface — question, choice, tradeoff, why, judgment — plus its
 /// More… drill-down.
 private struct DecisionCard: View {
     let decision: DecisionNode
@@ -385,7 +387,7 @@ private struct DecisionCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Rationale, alternatives, consequences, what this affects, and evidence (M)")
+                .help("Rationale, alternatives, what it traded, consequences, what this affects, and evidence (M)")
             }
             .padding(.leading, 36)
 
@@ -417,25 +419,29 @@ private struct DecisionCard: View {
         .onTapGesture(perform: onSelect)
     }
 
-    // WHY / TRADEOFF, aligned on one label column.
+    // WHAT WE'RE TRADING / WHY THIS SIDE?, aligned on one label column.
     private var briefGrid: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+            if let tradeoff = brief.tradeoff, let index = decision.tradeoffs.firstIndex(of: tradeoff) {
+                GridRow {
+                    rowLabel("What we're trading")
+                    TradeoffSpectrum(tradeoff: tradeoff)
+                        .reviewContextMenu(.tradeoff(decisionId: decision.id, index: index)) {
+                            if !decision.consequences.isEmpty {
+                                Button("Show Consequences") { if !isExpanded { onToggleExpanded() } }
+                            }
+                        }
+                }
+            }
             if let why = brief.why {
                 GridRow {
-                    rowLabel("Why")
+                    rowLabel(brief.shape == nil && brief.tradeoff == nil ? "Why" : "Why this side?")
                     (Text(why.text) + Text("   " + Self.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
                         .font(.body)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .help(Self.provenanceHelp(why))
                         .reviewContextMenu(.decision(decision.id))
-                }
-            }
-            if let tradeoff = brief.tradeoff {
-                GridRow {
-                    rowLabel("Tradeoff")
-                    TradeoffSpectrum(tradeoff: tradeoff)
-                        .reviewContextMenu(.tradeoff(tradeoff.id))
                 }
             }
         }
@@ -627,6 +633,7 @@ private struct DecisionChoiceView: View {
         case .binary?: binary
         case .threshold?: threshold
         case .options?: optionList
+        case .beforeAfter?: beforeAfter
         case nil: answerLines
         }
     }
@@ -699,6 +706,49 @@ private struct DecisionChoiceView: View {
         }
     }
 
+    // BEFORE  [Reader]→[Printer]      AFTER  [Reader]→[Inspector]→[Printer]
+    private var beforeAfter: some View {
+        let before = brief.options[0], after = brief.options[1]
+        return VStack(alignment: .leading, spacing: 10) {
+            structure(before, index: 0, title: "BEFORE")
+            structure(after, index: 1, title: "AFTER")
+        }
+    }
+
+    /// One side of a before/after: its label drawn as a chain of tiny boxes.
+    private func structure(_ option: DecisionOption, index: Int, title: String) -> some View {
+        let parts = option.label.components(separatedBy: CharacterSet(charactersIn: "→>"))
+            .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "-")) }
+            .filter { !$0.isEmpty }
+        let tint = option.chosen ? Color.accentColor : Color.secondary
+        return HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .tracking(0.6)
+                .foregroundStyle(option.chosen ? Color.accentColor : Color.secondary)
+                .frame(width: 52, alignment: .leading)
+            HStack(spacing: 6) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { i, part in
+                    if i > 0 {
+                        Image(systemName: "arrow.right").font(.caption2).foregroundStyle(tint.opacity(0.7))
+                    }
+                    Text(part)
+                        .font(.callout.weight(option.chosen ? .medium : .regular))
+                        .foregroundStyle(option.chosen ? .primary : .secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(tint.opacity(option.chosen ? 0.1 : 0.05), in: RoundedRectangle(cornerRadius: 5))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(tint.opacity(option.chosen ? 0.45 : 0.25)))
+                }
+            }
+            if let detail = option.detail {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            if option.chosen { chosenTag }
+        }
+        .contentShape(Rectangle())
+        .reviewContextMenu(.decisionOption(decisionId: decisionId, index: index))
+    }
+
     // No options were extracted: the answer and the road not taken, one line each.
     private var answerLines: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 8) {
@@ -765,13 +815,13 @@ private struct DecisionChoiceView: View {
 }
 
 /// Where the choice landed between the two things it traded — a line, not a paragraph.
-private struct TradeoffSpectrum: View {
-    let tradeoff: TradeoffNode
+struct TradeoffSpectrum: View {
+    let tradeoff: DecisionTradeoff
 
     var body: some View {
-        let weight = min(max(tradeoff.poleAWeight, 0), 1)
+        let weight = tradeoff.chosenPosition
         HStack(spacing: 10) {
-            Text(tradeoff.poleA)
+            Text(tradeoff.dimensionA)
                 .foregroundStyle(weight < 0.5 ? .primary : .secondary)
                 .fontWeight(weight < 0.5 ? .medium : .regular)
             GeometryReader { geo in
@@ -795,13 +845,14 @@ private struct TradeoffSpectrum: View {
                 .frame(height: geo.size.height)
             }
             .frame(width: 150, height: 12)
-            Text(tradeoff.poleB)
+            Text(tradeoff.dimensionB)
                 .foregroundStyle(weight >= 0.5 ? .primary : .secondary)
                 .fontWeight(weight >= 0.5 ? .medium : .regular)
         }
         .font(.callout)
         .lineLimit(1)
-        .help(tradeoff.explanation.text)
+        .contentShape(Rectangle())
+        .help((tradeoff.explanation?.text ?? "Leans toward \(tradeoff.chosenDimension)") + " — right-click to ask about it")
     }
 }
 
@@ -864,6 +915,13 @@ private struct DecisionDrillDown: View {
             if !decision.alternatives.isEmpty {
                 section("Alternatives considered") { ForEach(decision.alternatives) { line($0) } }
             }
+            if !decision.tradeoffs.isEmpty {
+                section(decision.tradeoffs.count == 1 ? "What it traded" : "What it traded (\(decision.tradeoffs.count))") {
+                    ForEach(Array(decision.tradeoffs.enumerated()), id: \.offset) { index, tradeoff in
+                        tradeoffDetail(tradeoff, index: index)
+                    }
+                }
+            }
             if !decision.consequences.isEmpty {
                 section("Consequences") { ForEach(decision.consequences) { line($0) } }
             }
@@ -896,6 +954,19 @@ private struct DecisionDrillDown: View {
                     Label("Ask about this…", systemImage: "sparkles").font(.caption)
                 }
                 .buttonStyle(.link)
+            }
+        }
+    }
+
+    /// One tradeoff in full: the line, what it means, and the code that shows it. Secondary
+    /// tradeoffs only ever appear here.
+    private func tradeoffDetail(_ tradeoff: DecisionTradeoff, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TradeoffSpectrum(tradeoff: tradeoff)
+                .reviewContextMenu(.tradeoff(decisionId: decision.id, index: index))
+            if let explanation = tradeoff.explanation { line(explanation) }
+            if !tradeoff.refs.isEmpty {
+                WrapChips(tradeoff.refs) { ref in CodeRefChip(ref: ref) { actions.navigate(.evidence(ref)) } }
             }
         }
     }

@@ -25,9 +25,6 @@ struct MockAnalysisFixturesTests {
         let dec = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: decisions)
         #expect(!dec.decisions.isEmpty)
 
-        let tradeoffs = MockAnalysisFixtures.response(for: .tradeoffs)
-        _ = try StageDecoding.decode(StageDecoding.TradeoffsResult.self, from: tradeoffs)
-
         let flows = MockAnalysisFixtures.response(for: .flows)
         let flowsResult = try StageDecoding.decode(StageDecoding.FlowsResult.self, from: flows)
         #expect(!flowsResult.flows.isEmpty)
@@ -37,7 +34,7 @@ struct MockAnalysisFixturesTests {
         _ = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: judgment)
     }
 
-    /// Every componentId/decisionId/tradeoffId/flowId/entryPointId referenced by one stage's
+    /// Every componentId/decisionId/flowId/entryPointId referenced by one stage's
     /// fixture must actually exist among the IDs another stage's fixture defines — otherwise
     /// the synthetic graph would silently render dangling cross-links, defeating the whole
     /// point of a realistic manual-testing fixture (§6, cross-linking).
@@ -48,16 +45,12 @@ struct MockAnalysisFixturesTests {
         let decisions = try StageDecoding.decode(
             StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions)
         )
-        let tradeoffs = try StageDecoding.decode(
-            StageDecoding.TradeoffsResult.self, from: MockAnalysisFixtures.response(for: .tradeoffs)
-        )
         let flows = try StageDecoding.decode(
             StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows)
         )
 
         let componentIds = Set(arch.components.map(\.id))
         let decisionIds = Set(decisions.decisions.map(\.id))
-        let tradeoffIds = Set(tradeoffs.tradeoffs.map(\.id))
         let flowIds = Set(flows.flows.map(\.id))
 
         for component in arch.components {
@@ -65,11 +58,7 @@ struct MockAnalysisFixturesTests {
             for id in component.dependsOnIds { #expect(componentIds.contains(id), "component \(component.id) depends on missing component \(id)") }
         }
         for decision in decisions.decisions {
-            for id in decision.tradeoffIds { #expect(tradeoffIds.contains(id), "decision \(decision.id) references missing tradeoff \(id)") }
             for id in decision.componentIds { #expect(componentIds.contains(id), "decision \(decision.id) references missing component \(id)") }
-        }
-        for tradeoff in tradeoffs.tradeoffs {
-            for id in tradeoff.decisionIds { #expect(decisionIds.contains(id), "tradeoff \(tradeoff.id) references missing decision \(id)") }
         }
         for entryPoint in flows.entryPoints {
             if let flowId = entryPoint.flowId { #expect(flowIds.contains(flowId), "entry point \(entryPoint.id) references missing flow \(flowId)") }

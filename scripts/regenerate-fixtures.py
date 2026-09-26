@@ -25,7 +25,6 @@ STAGES = [
     ("intent", "intentJSON"),
     ("eli5", "eli5JSON"),
     ("decisions", "decisionsJSON"),
-    ("tradeoffs", "tradeoffsJSON"),
     ("flows", "flowsJSON"),
     ("judgment", "judgmentJSON"),
 ]
@@ -65,7 +64,6 @@ enum MockAnalysisFixtures {
         case .intent: json = intentJSON
         case .eli5: json = eli5JSON
         case .decisions: json = decisionsJSON
-        case .tradeoffs: json = tradeoffsJSON
         case .flows: json = flowsJSON
         case .judgment: json = judgmentJSON
         default: json = "{}"
