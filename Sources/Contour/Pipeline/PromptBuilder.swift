@@ -113,80 +113,108 @@ struct PromptBuilder {
     static func architecturePrompt() -> String {
         """
         Read the context file above, then inspect the actual checked-out repository (at the PR's
-        head commit) to build an ARCHITECTURE STORY of this change — not a dependency graph.
+        head commit) to draw the ARCHITECTURE this change sits in — the conceptual parts of the
+        system and how they relate — and to say honestly how much this PR changes it.
 
         Work in two stages, and only emit JSON after the second.
 
-        STAGE 1 — UNDERSTAND (think privately, do NOT put this in the output). Answer, for
-        yourself: What system behavior changed? What triggers it? What happens next? What data
-        moves, and in which direction? What external systems participate? What runs synchronously
-        vs. asynchronously? What important boundary (process, trust, datastore, external service)
-        is crossed? Which architectural RELATIONSHIP did this PR add, change, or remove? If you
-        had 60 seconds at a whiteboard, which 5-9 boxes and which arrows would you actually draw?
-        Derive the model from behavior and control/data flow — the changed files and call graph
-        are evidence for the model, not the model itself.
+        STAGE 1 — UNDERSTAND (think privately, do NOT put this in the output). If a staff engineer
+        had 30 seconds at a whiteboard to explain where this change sits, which 3-7 boxes would
+        they draw, and what would they write on the arrows between them? Name parts by what they
+        are FOR ("Input", "Content Inspection", "Rendering", "Checkout", "Search Index"), one
+        abstraction level above the code. Changed files, classes, modules, imports, call graphs and
+        functions are EVIDENCE for this drawing; they are not the drawing. A PR that edits seven
+        functions inside one part touches one box. Then ask: did the boxes or arrows change, or
+        only what one box does or what crosses one arrow? Most PRs change little or nothing about
+        the architecture. Say so — do not inflate implementation changes into architecture.
 
         STAGE 2 — DRAW. Emit a small, deliberate model:
 
-        NODES (`components`): SYSTEM-level responsibilities/subsystems a senior engineer would
-        name (e.g. "Session Store", "Payment Gateway", "Ingest Queue", "Search Index"),
-        plus actors and external services where they clarify the story. level "system", one per
-        responsibility, NEVER one per class. Target 5-9 nodes total; prefer fewer. For each,
-        list the real classes/files that realize it in `implementedBy`. You may also emit
-        "implementation"-level nodes for specific classes worth naming, linked to their owning
-        system node via `dependsOnIds`; these are drilldown detail, not primary content.
-        changeKind: "new" | "changed" | "touched" | "unchanged" (unchanged = relevant context).
+        PARTS (`components`, level "system", parentId null): the 3-7 top-level boxes, plus any
+        external system, datastore, queue or actor the change crosses into (e.g. "Terminal",
+        "Payment Gateway"). Never one per class or file. Include unchanged parts that are needed to
+        understand the change; leave out everything else.
+        - title: 1-3 words, a responsibility or system name, never a class/function name.
+        - summary: what the part is for, at most ~10 words ("Determines whether input is text or
+          binary"). provenance "interpretation" unless the code states it plainly.
+        - changeKind: "new" (added by this PR), "changed" (its responsibility or what it consumes
+          changed), "removed", or "unchanged" (context). Editing code inside a part whose
+          responsibility is the same is still "unchanged" at this level, or at most "changed" with
+          a delta that says what differs.
+        - delta (only for new/changed/removed parts): {"before": "2-4 words", "after": "2-4 words",
+          "summary": one-sentence Statement}. E.g. before "first line", after "buffered sample",
+          summary "Classification now sees up to 1 KB of buffered input instead of the first line."
+        - implementedBy: the real classes/functions/files that realize it; refs: code locations.
+        SUB-PARTS (optional, level "component", parentId = the owning part's id): 2-4 parts inside a
+        top-level part, only where a reviewer would want to zoom in — typically inside the part
+        this PR changes ("Text / binary classification", "Encoding detection"). Same fields.
+        IMPLEMENTATION (optional, level "implementation", parentId = the owning part): specific
+        classes or functions worth naming, with refs. These are drill-down only.
 
-        EDGES (`edges`): the heart of the diagram. One per meaningful RELATIONSHIP, directional
-        (fromId → toId is the direction of travel). Every edge MUST have a verb `label` describing
-        the relationship — "uploads", "triggers", "reads", "queues", "persists", "notifies",
-        "calls", "publishes", "consumes", "reconciles". If you can't say what an edge means, don't
-        emit it. For each edge set:
-        - flow: "sync" (blocking call on the caller's critical path) or "async" (queued/event/
-          callback, decoupled).
-        - change: "new" (interaction introduced by this PR — the most interesting thing),
-          "changed", "existing" (unchanged context), or "removed" (deleted by this PR).
-        - isTrustBoundary: true if it crosses into another process / a queue / an external
-          service / a privilege boundary.
-        - onCriticalPath: true if it sits on a user-facing or operationally important path (e.g.
-          the synchronous request/upload path). A new+onCriticalPath edge is the headline.
-        - decisionIds: leave [] here; decisions are linked in a later stage.
-        - note: optional one-line callout, e.g. "NEW: now on the upload path".
-        The single most important output is usually a NEW relationship, not a changed box — make
-        sure the interaction this PR introduces appears as an edge with change "new".
+        RELATIONSHIPS (`edges`): directional (fromId → toId is the direction of travel). The
+        `label` says WHAT CROSSES the arrow — data, an event, a request, a result — as a short noun
+        phrase: "bytes", "content type", "formatted output", "order event", "payment request".
+        Not a verb like "calls" or "depends on"; if you can't say what crosses, don't emit the
+        edge. Connect sub-parts directly when an arrow enters or leaves a specific sub-part; the
+        diagram lifts it to the top-level part when zoomed out. For each edge:
+        - change: "new" (relationship added), "changed" (what crosses it or how changed),
+          "existing" (context), or "removed".
+        - previousLabel: what crossed BEFORE this PR, only when change is "changed" and the thing
+          crossing changed ("first line" → label "buffered sample").
+        - flow: "sync" or "async" (queued/event/callback).
+        - isTrustBoundary: true if it crosses into another process, a queue, an external service
+          or a privilege boundary. onCriticalPath: true if on a user-facing or operationally
+          important path.
+        - decisionIds: []; note: optional one sentence on what this PR did to the relationship.
 
-        BOUNDARIES (`boundaries`): only those relevant to understanding the PR — e.g. the
-        application process vs. an external service, a datastore, or a trust boundary. Each groups
-        the componentIds inside it. kind: "application" | "process" | "service" | "datastore" |
-        "external" | "trust" | "network" | "asyncBoundary".
+        BOUNDARIES (`boundaries`): containers only where meaningful — the application process, a
+        service, an external system, a datastore, a queue, a trust or network boundary. Group
+        top-level part ids. kind: "application" | "process" | "service" | "datastore" | "external"
+        | "trust" | "network" | "asyncBoundary". A single-process CLI has one process boundary
+        and whatever external things it talks to outside it.
 
-        Write one overall architectureImpact statement: what changed structurally, in plain
-        language a staff engineer would say out loud (e.g. "publishing now triggers
-        reindexing synchronously; the nightly rebuild remains as a safety net"). Tag
-        "interpretation" with a confidence unless the PR description states it (then "claim").
+        ASSESSMENT (`architecture`):
+        - impact: "none" (same parts, relationships and information), "low" (same parts and
+          relationships; a responsibility or what crosses one boundary changed), "moderate" (a
+          relationship or part added, removed or moved), "significant" (the shape of the system
+          changed, e.g. new synchronous work on a critical path, a new boundary crossed).
+        - headline: one short line a staff engineer would say out loud, e.g. "No structural
+          change" or "Publishing now reindexes search synchronously".
+        - explanation: 1-3 sentences naming the relationship or responsibility that changed, e.g.
+          "The input → inspection → rendering pipeline is unchanged. Content Inspection now
+          receives a buffered sample of up to 1 KB rather than only the first line."
+        - focusIds: the part/edge ids where the change lives, most important first.
+        Also repeat the explanation as architectureImpact.
 
         Respond with ONLY this JSON object:
         {
+          "architecture": {
+            "impact": "none|low|moderate|significant",
+            "headline": "...",
+            "explanation": {"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null},
+            "focusIds": ["part-or-edge-id"]
+          },
           "components": [
             {
               "id": "short-stable-slug",
-              "title": "Human name — a responsibility/system/actor, not a class name unless level is implementation",
-              "changeKind": "new|changed|touched|unchanged",
-              "filesChanged": 0,
-              "level": "system|implementation",
-              "implementedBy": ["RealClassName", "other/real/file/Path.java"],
+              "title": "Content Inspection",
+              "level": "system|component|implementation",
+              "parentId": null,
+              "changeKind": "new|changed|removed|unchanged",
               "summary": {"text": "...", "provenance": "fact|claim|interpretation", "confidence": "low|medium|high"|null, "source": "..."|null},
+              "delta": {"before": "...", "after": "...", "summary": {"text": "...", "provenance": "fact|claim|interpretation", "confidence": "low|medium|high"|null, "source": null}},
+              "implementedBy": ["RealClassName", "src/real/file.rs"],
               "refs": [{"path": "src/foo/Bar.java", "startLine": 10, "endLine": 40, "blobSha": null, "side": "head"}],
-              "dependsOnIds": ["impl-node-owner-id-if-implementation-level"],
-              "isTrustBoundaryEdge": false
+              "filesChanged": 0
             }
           ],
           "edges": [
             {
               "id": "short-stable-slug",
-              "fromId": "component-id",
-              "toId": "component-id",
-              "label": "triggers",
+              "fromId": "part-id",
+              "toId": "part-id",
+              "label": "buffered sample",
+              "previousLabel": "first line",
               "flow": "sync|async",
               "change": "new|changed|existing|removed",
               "isTrustBoundary": false,
@@ -196,11 +224,25 @@ struct PromptBuilder {
             }
           ],
           "boundaries": [
-            {"id": "short-slug", "label": "Web App", "kind": "application", "componentIds": ["component-id"]}
+            {"id": "short-slug", "label": "bat process", "kind": "process", "componentIds": ["part-id"]}
           ],
           "architectureImpact": {"text": "...", "provenance": "interpretation", "confidence": "high", "source": null}
         }
         """
+    }
+
+    /// The architecture parts later stages link against, indented under their parent so a
+    /// stage can pick the most specific part a decision or step belongs to.
+    static func componentOutline(_ components: [ComponentNode]) -> String {
+        func lines(parent: String?, depth: Int) -> [String] {
+            components.filter { $0.parentId == parent && $0.level != .implementation }.flatMap { c in
+                [String(repeating: "  ", count: depth) + "- \(c.id): \(c.title)"] + lines(parent: c.id, depth: depth + 1)
+            }
+        }
+        let known = Set(components.map(\.id))
+        // Parts whose parent id doesn't resolve are listed at the top rather than dropped.
+        let orphans = components.filter { $0.level != .implementation && $0.parentId.map { !known.contains($0) } == true }
+        return (lines(parent: nil, depth: 0) + orphans.map { "- \($0.id): \($0.title)" }).joined(separator: "\n")
     }
 
     // MARK: - Stage 2: Intent
@@ -277,7 +319,7 @@ struct PromptBuilder {
     // MARK: - Stage 3: Decisions (strong tier)
 
     static func decisionsPrompt(components: [ComponentNode]) -> String {
-        let componentList = components.map { "- \($0.id): \($0.title)" }.joined(separator: "\n")
+        let componentList = componentOutline(components)
         return """
         Known components (from architecture analysis, for linking only — re-verify anything you
         rely on by reading the actual code):
@@ -292,7 +334,8 @@ struct PromptBuilder {
         rationale as "interpretation" with appropriate (often "low" or "medium") confidence rather
         than presenting a guess as settled fact.
 
-        componentIds should link each decision to the component(s) above that it changed.
+        componentIds should link each decision to the architecture part(s) above that it shapes —
+        the most specific (indented) part when one fits.
 
         Classify each decision's level by one test: would a staff engineer reviewing the DESIGN
         care about this choice? "system" is for choices where human judgment is valuable —
@@ -373,7 +416,7 @@ struct PromptBuilder {
     // MARK: - Stage 4: Flows + entry points
 
     static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
-        let componentList = components.map { "- \($0.id): \($0.title)" }.joined(separator: "\n")
+        let componentList = componentOutline(components)
         return """
         Known components (for linking):
         \(componentList)
@@ -392,8 +435,8 @@ struct PromptBuilder {
         names in these labels, that detail belongs in `steps` below. This is the default view of
         the flow; `steps` is implementation-level detail disclosed after a story step is selected.
 
-        Then, for `steps` (the implementation-level detail), record for each step the component it
-        belongs to, what happens, any state transformation, branches, external calls, and error
+        Then, for `steps` (the implementation-level detail), record for each step the architecture
+        part it happens in (componentId: the most specific part listed above that fits), what happens, any state transformation, branches, external calls, and error
         paths. Mark isAsyncBoundaryAfter=true on a step where execution crosses an async boundary
         (queue, event, callback) before the next step runs. Set "caution" on a step only when
         there's a concrete, code-visible risk (e.g. "no timeout set on this call") — don't invent
@@ -472,7 +515,10 @@ struct PromptBuilder {
           shown when the reviewer drills in, so detail belongs here, not in question/detail.
         - relatedIds: the decision/component/flow ids it concerns, the single most relevant
           decision FIRST — the reviewer's "Review →" opens that decision and records their
-          judgment there; refs: supporting CodeRefs.
+          judgment there. When the concern lives on a relationship between two architecture parts
+          (what crosses from one to the other), also include that entry of architectureEdges by
+          its id, so the Architecture lens can mark the question on that arrow. refs: supporting
+          CodeRefs.
         If the behavior change's humanQuestion is still the most important question, include it
         (condensed to the budget) as the first consideration. Merge overlapping items rather than
         listing near-duplicates.

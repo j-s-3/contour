@@ -89,18 +89,24 @@ struct CodeRef: Codable, Hashable, Sendable, Identifiable {
 
 enum ChangeKind: String, Codable, Hashable, Sendable {
     case new, changed, touched, unchanged
+    /// Only architecture parts use this: a responsibility the PR takes out of the system.
+    case removed
 }
 
-// MARK: - Architecture as a directed, labeled story (§4.3 redesign)
+// MARK: - Architecture as a whiteboard drawing (§4.3)
 //
-// The old architecture view was an unlabeled dependency graph: it told you A and B were
-// related, never what the relationship *was* or which way behavior travelled. These types
-// replace that with the thing a senior engineer draws on a whiteboard — directional,
-// labeled edges ("uploads", "triggers", "reads"), sync-vs-async treatment, an explicit
-// change classification on the *relationship* (the new publish→reindex edge is the
-// hero, not the boxes), and system/trust boundaries the behavior crosses. `ComponentNode`
-// stays the node model; edges and boundaries are separate so a PR can add an edge without
-// touching either endpoint node.
+// Architecture is the handful of boxes a staff engineer would draw to explain where a change
+// sits: conceptual parts ("Content Inspection", not `InputReader::try_new`), each with a
+// one-line responsibility, joined by edges that say what crosses them ("bytes", "content
+// type"). The changed files and call graph are evidence for that drawing, never the drawing.
+// A part may contain parts (`ComponentNode.parentId`), which is how the reviewer zooms from
+// system to subsystem; implementation-level nodes and code refs sit below that.
+//
+// Most PRs change little about this structure, and saying so is the point: the delta is
+// carried by `ArchitectureAssessment` (how much the structure changed, in words),
+// `ResponsibilityDelta` (what a part now does differently) and `ArchitectureEdge.change` /
+// `previousLabel` (what now crosses a boundary). Edges and boundaries are separate from
+// nodes so a PR can change a relationship without touching either endpoint.
 
 /// Whether a relationship is synchronous (solid arrow, on the caller's critical path) or
 /// asynchronous/queued (dashed arrow, decoupled). This is the one architectural fact a
@@ -124,16 +130,19 @@ enum ArchPresence: String, Codable, Hashable, Sendable {
     case before, after, both
 }
 
-/// A directed, labeled edge between two `ComponentNode`s. The label is always a verb
-/// phrase describing the relationship ("uploads", "triggers", "reads", "queues",
-/// "persists", "notifies") — an unlabeled edge is never rendered. Direction is the
-/// direction of travel (from → to), so the layout reads left-to-right along it.
+/// A directed edge between two `ComponentNode`s, labeled with what crosses it — data, an
+/// event, a request ("bytes", "content type", "order event"). Direction is the direction of
+/// travel (from → to), so the layout reads left-to-right along it. Edges may join parts
+/// inside different parents; a zoomed-out diagram lifts them to the visible ancestors.
 struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var fromId: String
     var toId: String
-    /// A relationship verb, e.g. "triggers", "reads", "queues". Never a class/method name.
+    /// What crosses the edge, e.g. "buffered bytes", "content type". Older graphs carry a
+    /// verb ("triggers") instead. Never a class/method name.
     var label: String
+    /// What crossed before this PR, when that changed ("first line" → now "buffered sample").
+    var previousLabel: String?
     var flow: EdgeFlow = .sync
     var change: EdgeChange = .existing
     /// True when this edge crosses a security/trust boundary (into another process, a
@@ -160,13 +169,15 @@ struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
 
     init(id: String = UUID().uuidString, fromId: String, toId: String, label: String,
          flow: EdgeFlow = .sync, change: EdgeChange = .existing, isTrustBoundary: Bool = false,
-         onCriticalPath: Bool = false, decisionIds: [String] = [], note: String? = nil) {
+         onCriticalPath: Bool = false, decisionIds: [String] = [], note: String? = nil,
+         previousLabel: String? = nil) {
         self.id = id; self.fromId = fromId; self.toId = toId; self.label = label
+        self.previousLabel = previousLabel
         self.flow = flow; self.change = change; self.isTrustBoundary = isTrustBoundary
         self.onCriticalPath = onCriticalPath; self.decisionIds = decisionIds; self.note = note
     }
     enum CodingKeys: String, CodingKey {
-        case id, fromId, toId, label, flow, change, isTrustBoundary, onCriticalPath, decisionIds, note
+        case id, fromId, toId, label, previousLabel, flow, change, isTrustBoundary, onCriticalPath, decisionIds, note
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -174,6 +185,7 @@ struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
         fromId = try c.decode(String.self, forKey: .fromId)
         toId = try c.decode(String.self, forKey: .toId)
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        previousLabel = (try? c.decodeIfPresent(String.self, forKey: .previousLabel)).flatMap { $0?.isEmpty == false ? $0 : nil }
         flow = try c.decodeIfPresent(EdgeFlow.self, forKey: .flow) ?? .sync
         change = try c.decodeIfPresent(EdgeChange.self, forKey: .change) ?? .existing
         isTrustBoundary = try c.decodeIfPresent(Bool.self, forKey: .isTrustBoundary) ?? false
@@ -219,6 +231,71 @@ struct SystemBoundary: Codable, Hashable, Sendable, Identifiable {
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
         kind = try c.decodeIfPresent(BoundaryKind.self, forKey: .kind) ?? .application
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
+    }
+}
+
+/// How much a PR changes the system's structure. Words, not a score: "low" means the boxes
+/// and arrows are the same and something about one of them moved.
+enum ArchitecturalImpact: String, Codable, Hashable, Sendable, CaseIterable {
+    /// Same parts, same relationships, same information crossing them.
+    case none
+    /// Same parts and relationships; a responsibility or what crosses one boundary changed.
+    case low
+    /// A relationship or part added, removed, or moved.
+    case moderate
+    /// The shape of the system changed — new work on a critical path, a new boundary crossed.
+    case significant
+
+    var label: String {
+        switch self {
+        case .none: return "None"
+        case .low: return "Low"
+        case .moderate: return "Moderate"
+        case .significant: return "Significant"
+        }
+    }
+}
+
+/// The architecture stage's answer to "what did this PR change about the structure?" — the
+/// first thing the Architecture lens says, above the diagram.
+struct ArchitectureAssessment: Codable, Hashable, Sendable {
+    var impact: ArchitecturalImpact
+    /// One short line, e.g. "No structural change" or "Publishing now reindexes search".
+    var headline: String
+    /// One to three sentences naming the relationship or responsibility that changed.
+    var explanation: Statement?
+    /// The part and relationship ids where the change lives, most important first.
+    var focusIds: [String] = []
+
+    init(impact: ArchitecturalImpact, headline: String, explanation: Statement? = nil, focusIds: [String] = []) {
+        self.impact = impact; self.headline = headline; self.explanation = explanation; self.focusIds = focusIds
+    }
+    enum CodingKeys: String, CodingKey { case impact, headline, explanation, focusIds }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        impact = (try? c.decodeIfPresent(ArchitecturalImpact.self, forKey: .impact)) ?? .low
+        headline = try c.decodeIfPresent(String.self, forKey: .headline) ?? ""
+        explanation = try? c.decodeIfPresent(Statement.self, forKey: .explanation)
+        focusIds = (try? c.decodeIfPresent([String].self, forKey: .focusIds)) ?? []
+    }
+}
+
+/// What a part does differently after this PR, as two short phrases ("first line" →
+/// "buffered sample") plus one sentence for the inspector.
+struct ResponsibilityDelta: Codable, Hashable, Sendable {
+    var before: String?
+    var after: String?
+    var summary: Statement?
+
+    init(before: String? = nil, after: String? = nil, summary: Statement? = nil) {
+        self.before = before; self.after = after; self.summary = summary
+    }
+    enum CodingKeys: String, CodingKey { case before, after, summary }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        before = (try? c.decodeIfPresent(String.self, forKey: .before)).flatMap { $0?.isEmpty == false ? $0 : nil }
+        after = (try? c.decodeIfPresent(String.self, forKey: .after)).flatMap { $0?.isEmpty == false ? $0 : nil }
+        summary = try? c.decodeIfPresent(Statement.self, forKey: .summary)
     }
 }
 
@@ -435,11 +512,18 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
     /// `.system`-level nodes; empty on `.implementation`-level nodes, which *are* the
     /// implementation.
     var implementedBy: [String] = []
+    /// The part this one sits inside, for zooming from system to subsystem. Nil for the
+    /// top-level boxes of the drawing.
+    var parentId: String?
+    /// What this part does differently after the PR. Nil when it's unchanged context.
+    var delta: ResponsibilityDelta?
 
     init(id: String, title: String, changeKind: ChangeKind, summary: Statement? = nil,
          refs: [CodeRef] = [], decisionIds: [String] = [], flowIds: [String] = [],
          dependsOnIds: [String] = [], isTrustBoundaryEdge: Bool = false, filesChanged: Int = 0,
-         level: AbstractionLevel = .system, implementedBy: [String] = []) {
+         level: AbstractionLevel = .system, implementedBy: [String] = [],
+         parentId: String? = nil, delta: ResponsibilityDelta? = nil) {
+        self.parentId = parentId; self.delta = delta
         self.id = id; self.title = title; self.changeKind = changeKind; self.summary = summary
         self.refs = refs; self.decisionIds = decisionIds; self.flowIds = flowIds
         self.dependsOnIds = dependsOnIds; self.isTrustBoundaryEdge = isTrustBoundaryEdge
@@ -447,7 +531,7 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
         self.level = level; self.implementedBy = implementedBy
     }
     enum CodingKeys: String, CodingKey {
-        case id, title, changeKind, summary, refs, decisionIds, flowIds, dependsOnIds, isTrustBoundaryEdge, filesChanged, level, implementedBy
+        case id, title, changeKind, summary, refs, decisionIds, flowIds, dependsOnIds, isTrustBoundaryEdge, filesChanged, level, implementedBy, parentId, delta
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -463,6 +547,8 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
         filesChanged = try c.decodeIfPresent(Int.self, forKey: .filesChanged) ?? 0
         level = try c.decodeIfPresent(AbstractionLevel.self, forKey: .level) ?? .system
         implementedBy = try c.decodeIfPresent([String].self, forKey: .implementedBy) ?? []
+        parentId = (try? c.decodeIfPresent(String.self, forKey: .parentId)).flatMap { $0?.isEmpty == false ? $0 : nil }
+        delta = try? c.decodeIfPresent(ResponsibilityDelta.self, forKey: .delta)
     }
 }
 
@@ -820,6 +906,9 @@ struct PRGraph: Codable, Hashable, Sendable {
     var architectureEdges: [ArchitectureEdge] = []
     /// System/trust/datastore boundaries to draw as containers behind the nodes.
     var boundaries: [SystemBoundary] = []
+    /// How much this PR changes the structure, in words. Nil on graphs from before the
+    /// Architecture redesign; `pr.architectureImpact` still carries their prose.
+    var architecture: ArchitectureAssessment?
 
     func component(_ id: String?) -> ComponentNode? { components.first { $0.id == id } }
     func decision(_ id: String?) -> DecisionNode? { decisions.first { $0.id == id } }
