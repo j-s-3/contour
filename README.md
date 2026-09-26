@@ -2,6 +2,8 @@
 
 # Contour
 
+[![Build](https://github.com/j-s-3/contour/actions/workflows/build.yml/badge.svg)](https://github.com/j-s-3/contour/actions/workflows/build.yml)
+
 A macOS-native PR review app built around the thesis that human review should validate
 engineering decisions, not re-read every line an AI generated. See `DESIGN.md` for the
 full product and technical design.

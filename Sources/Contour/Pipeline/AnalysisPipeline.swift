@@ -55,7 +55,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 11
+    static let pipelineVersion = 12
 
     nonisolated let events: AsyncStream<PipelineEvent>
     private let continuation: AsyncStream<PipelineEvent>.Continuation

@@ -354,6 +354,79 @@ enum ReviewerState: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
+// MARK: - Review significance (§4.4)
+//
+// Where human judgment adds the most value, assessed independently of abstraction level:
+// an implementation-level choice about retries or transaction boundaries can matter more
+// than an architectural-looking one about where a helper lives. Significance decides what
+// Decisions asks the reviewer to judge; `AbstractionLevel` only says what kind of choice it is.
+
+/// How much a decision deserves the reviewer's conscious agreement before approving.
+/// Internal ranking only — never shown as a score.
+enum ReviewSignificance: String, Codable, Hashable, Sendable, Comparable {
+    /// Getting it wrong could materially hurt correctness, data, reliability, compatibility…
+    /// A strong engineer would want to stop and consciously agree with it.
+    case high
+    /// Real but contained consequences — worth knowing, not worth stopping for.
+    case medium
+    /// Local, easily reversed, or with no material consequence identified.
+    case low
+
+    private var rank: Int {
+        switch self {
+        case .high: return 2
+        case .medium: return 1
+        case .low: return 0
+        }
+    }
+
+    static func < (lhs: ReviewSignificance, rhs: ReviewSignificance) -> Bool { lhs.rank < rhs.rank }
+
+    /// One step more significant, for a signal (like an Overview concern) that raises it.
+    var raised: ReviewSignificance { self == .low ? .medium : .high }
+}
+
+/// What a decision could affect if it's wrong. A decision names the one to three that
+/// explain its significance.
+enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
+    case correctness, security, dataIntegrity, reliability, concurrency, performance,
+         scalability, compatibility, failureBehavior, operability, maintainability,
+         userBehavior, architecture, evolution, complexity
+
+    var label: String {
+        switch self {
+        case .dataIntegrity: return "data integrity"
+        case .failureBehavior: return "failure behavior"
+        case .userBehavior: return "user-visible behavior"
+        case .evolution: return "future evolution"
+        default: return rawValue
+        }
+    }
+
+    /// Tolerates the spellings a model writes: "data integrity", "data-integrity",
+    /// "dataIntegrity", "Failure behavior".
+    init?(lenient raw: String) {
+        let key = raw.lowercased().filter(\.isLetter)
+        let aliases: [String: DecisionImpact] = [
+            "userbehavior": .userBehavior, "uservisiblebehavior": .userBehavior, "ux": .userBehavior,
+            "failuresemantics": .failureBehavior, "errorhandling": .failureBehavior,
+            "architecturalconstraints": .architecture, "futureevolution": .evolution,
+            "backwardscompatibility": .compatibility, "backwardcompatibility": .compatibility
+        ]
+        guard let match = Self.allCases.first(where: { $0.rawValue.lowercased() == key }) ?? aliases[key] else { return nil }
+        self = match
+    }
+}
+
+/// The reviewer's own call on where a decision belongs, overriding the analysis. The AI
+/// proposes the review surface; the human controls it.
+enum ReviewPlacement: String, Codable, Hashable, Sendable {
+    /// Added to Decisions to Review by the reviewer.
+    case review
+    /// Marked "Not worth reviewing" by the reviewer.
+    case other
+}
+
 // MARK: - A decision as the question it answered (§4.4)
 //
 // The Decisions lens is where the reviewer makes judgments, so a decision is drawn as the
@@ -567,10 +640,20 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     var componentIds: [String] = []
     var reviewerState: ReviewerState = .unreviewed
     var reviewerNote: String = ""
-    /// Product/system decisions (`.behavior`/`.system`) rank above implementation
-    /// decisions (`.component`/`.implementation`) — Decisions view defaults to showing
-    /// only the former, disclosing the latter behind a toggle.
+    /// The kind of choice this is — product behavior, system, component or implementation.
+    /// Descriptive only: it never decides whether the reviewer is asked to judge it
+    /// (`significance` does).
     var level: AbstractionLevel = .system
+    /// How much this deserves the reviewer's conscious judgment. Nil on graphs from before
+    /// significance was assessed; `PRGraph.significance(of:)` infers it for those.
+    var significance: ReviewSignificance?
+    /// What getting this wrong would affect, most relevant first.
+    var impacts: [DecisionImpact] = []
+    /// One sentence on why the decision does, or doesn't, need the reviewer's attention
+    /// ("Classification can vary with how the stream is chunked.").
+    var significanceReason: String?
+    /// The reviewer moved this decision in or out of Decisions to Review.
+    var reviewerPlacement: ReviewPlacement?
     /// The decision phrased as the question the engineer had to answer ("How much data
     /// should binary detection inspect?"). Nil on graphs from before the Decisions redesign;
     /// `PRGraph.brief(for:)` falls back to `title`.
@@ -587,17 +670,22 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
          refs: [CodeRef] = [], tradeoffs: [DecisionTradeoff] = [], componentIds: [String] = [],
          reviewerState: ReviewerState = .unreviewed, reviewerNote: String = "",
          level: AbstractionLevel = .system, question: String? = nil, options: [DecisionOption] = [],
-         shape: DecisionShape? = nil, why: Statement? = nil) {
+         shape: DecisionShape? = nil, why: Statement? = nil, significance: ReviewSignificance? = nil,
+         impacts: [DecisionImpact] = [], significanceReason: String? = nil,
+         reviewerPlacement: ReviewPlacement? = nil) {
         self.id = id; self.title = title; self.decision = decision; self.rationale = rationale
         self.alternatives = alternatives; self.consequences = consequences; self.confidence = confidence
         self.refs = refs; self.tradeoffs = tradeoffs; self.componentIds = componentIds
         self.reviewerState = reviewerState; self.reviewerNote = reviewerNote
         self.level = level
         self.question = question; self.options = options; self.shape = shape; self.why = why
+        self.significance = significance; self.impacts = impacts
+        self.significanceReason = significanceReason; self.reviewerPlacement = reviewerPlacement
     }
     enum CodingKeys: String, CodingKey {
         case id, title, decision, rationale, alternatives, consequences, confidence, refs,
-             tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why
+             tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why,
+             significance, impacts, significanceReason, reviewerPlacement
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -621,6 +709,13 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         // An unrecognized shape degrades to one inferred from the options.
         shape = (try? c.decodeIfPresent(DecisionShape.self, forKey: .shape)) ?? nil
         why = try? c.decodeIfPresent(Statement.self, forKey: .why)
+        // An unrecognized significance is treated as unassessed, and falls back to inference.
+        significance = (try? c.decodeIfPresent(ReviewSignificance.self, forKey: .significance)) ?? nil
+        impacts = ((try? c.decodeIfPresent([String].self, forKey: .impacts)) ?? nil)?
+            .compactMap(DecisionImpact.init(lenient:)) ?? []
+        significanceReason = (try? c.decodeIfPresent(String.self, forKey: .significanceReason))
+            .flatMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        reviewerPlacement = (try? c.decodeIfPresent(ReviewPlacement.self, forKey: .reviewerPlacement)) ?? nil
     }
 }
 
@@ -951,11 +1046,11 @@ struct PRGraph: Codable, Hashable, Sendable {
         return components.filter { $0.dependsOnIds.contains(systemComponentId) && $0.level >= .component }
     }
 
-    /// How many of the consequential decisions — the ones Decisions shows by default — the
-    /// reviewer has consciously judged. Implementation details can still be marked, but
-    /// they don't count: this measures judgment, not coverage.
+    /// How many of the decisions to review — the ones Decisions shows by default — the
+    /// reviewer has consciously judged. Other decisions can still be marked, but they don't
+    /// count: this measures judgment, not coverage.
     var reviewProgress: (reviewed: Int, total: Int) {
-        let judged = primaryDecisions
+        let judged = decisionsToReview
         return (judged.filter { $0.reviewerState != .unreviewed }.count, judged.count)
     }
 

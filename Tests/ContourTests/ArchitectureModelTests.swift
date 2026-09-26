@@ -40,10 +40,10 @@ struct ArchitectureModelTests {
         graph.decisions = [
             DecisionNode(id: "how-much", title: "Inspect a buffered sample",
                          decision: Statement(text: "Inspect up to 1 KB.", provenance: .fact),
-                         confidence: .high, componentIds: ["classification"], level: .system),
+                         confidence: .high, componentIds: ["classification"], level: .system, significance: .high),
             DecisionNode(id: "impl", title: "Fallback to first line",
                          decision: Statement(text: "Use the longer.", provenance: .fact),
-                         confidence: .high, componentIds: ["try-new"], level: .implementation),
+                         confidence: .high, componentIds: ["try-new"], level: .implementation, significance: .low),
         ]
         graph.flows = [
             FlowNode(id: "pipe", title: "Pipe data into bat", steps: [
@@ -107,7 +107,7 @@ struct ArchitectureModelTests {
         #expect(graph.decisions(within: "inspection").map(\.id) == ["how-much", "impl"])
     }
 
-    @Test func onlyDesignDecisionsAreMarkedOnTheDrawing() {
+    @Test func onlyDecisionsToReviewAreMarkedOnTheDrawing() {
         let graph = batGraph()
         let anchors = graph.decisionAnchors(on: graph.architectureLevel(path: []))
         #expect(anchors[.node("inspection")]?.map(\.id) == ["how-much"])

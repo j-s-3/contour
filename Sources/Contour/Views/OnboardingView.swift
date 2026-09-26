@@ -11,9 +11,12 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
+            if let icon = AppDelegate.appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 112, height: 112)
+                    .accessibilityHidden(true)
+            }
             Text("Contour").font(.system(size: 30, weight: .semibold, design: .rounded))
             Text("Paste a GitHub pull request URL to build its review model.")
                 .font(.callout)
@@ -44,6 +47,17 @@ struct OnboardingView: View {
                 Button("Open", action: submit)
                     .keyboardShortcut(.return, modifiers: [])
                     .disabled(GitHubService.normalize(urlText) == nil)
+            }
+
+            // Mock mode only: the canned analysis matches exactly one PR, so offer it
+            // directly rather than making the tester remember its URL.
+            if MockAnalysisFixtures.isEnabled {
+                Button {
+                    onSubmit(MockAnalysisFixtures.sourcePRURL)
+                } label: {
+                    Label("Load test data", systemImage: "testtube.2")
+                }
+                .help(MockAnalysisFixtures.sourcePRURL)
             }
             Spacer()
         }

@@ -131,9 +131,9 @@ struct FlowBehaviorTests {
         let file = try fileFlow(graph)
         let behavior = graph.behavior(for: file)
         let decisions = graph.annotations(for: file).filter { $0.kind == .decision }
-        // The design decisions, and only those — implementation details stay out of the diagram.
-        #expect(Set(decisions.map(\.targetId)) == Set(graph.primaryDecisions.map(\.id)))
-        #expect(!graph.implementationDecisions.isEmpty)
+        // The decisions to review, and only those — other decisions stay out of the diagram.
+        #expect(Set(decisions.map(\.targetId)) == Set(graph.decisionsToReview.map(\.id)))
+        #expect(!graph.otherDecisions.isEmpty)
         // Pinned to a changed stage, never to unchanged context.
         for annotation in decisions {
             #expect(behavior.node(annotation.nodeId)?.change != .existing)
@@ -242,6 +242,52 @@ struct FlowBehaviorTests {
         let next = try #require(layout.node("rebuild"))
         #expect(layout.overflow.allSatisfy { $0.frame.maxY < next.frame.minY })
         #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
+    }
+
+    /// A branch that skips a stage with notes: the Flows screen's own diagram, where "Yes"
+    /// jumps past "Condense from story steps" and used to run through its notes.
+    @Test func aConnectorSkippingAStageRunsClearOfItsNotes() throws {
+        let behavior = FlowBehavior(
+            nodes: [
+                FlowBehaviorNode(id: "open", label: "Reviewer opens Flows", kind: .trigger),
+                FlowBehaviorNode(id: "list", label: "List call-trace steps", change: .removed),
+                FlowBehaviorNode(id: "model", label: "Analysis behavior model?", kind: .decision, change: .new),
+                FlowBehaviorNode(id: "condense", label: "Condense from story steps", change: .new),
+                FlowBehaviorNode(id: "pin", label: "Pin decisions and questions", change: .new),
+                FlowBehaviorNode(id: "draw", label: "Draw the behavior diagram", change: .new)
+            ],
+            edges: [
+                FlowBehaviorEdge(fromId: "open", toId: "list", change: .removed),
+                FlowBehaviorEdge(fromId: "open", toId: "model", change: .new),
+                FlowBehaviorEdge(fromId: "model", toId: "condense", label: "No (older graph)", change: .new),
+                FlowBehaviorEdge(fromId: "model", toId: "pin", label: "Yes", change: .new),
+                FlowBehaviorEdge(fromId: "condense", toId: "pin", change: .new),
+                FlowBehaviorEdge(fromId: "pin", toId: "draw", change: .new)
+            ]
+        )
+        let notes = [("model", 1), ("condense", 3), ("pin", 4)].flatMap { node, count in
+            (0..<count).map { i in
+                FlowAnnotation(kind: i == 0 ? .decision : .question, targetId: "\(node)-\(i)", nodeId: node,
+                               text: "Could the inferred diagram for older graphs mislead reviewers?")
+            }
+        }
+        for mode in FlowMode.allCases {
+            let visible = behavior.visible(in: mode)
+            let ids = Set(visible.nodes.map(\.id))
+            let layout = BehaviorDiagramLayoutEngine.layout(visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) })
+            let obstacles = layout.annotations.map { ($0.id, $0.frame) } + layout.overflow.map { ($0.id, $0.frame) }
+            for placed in layout.edges {
+                let stages = layout.nodes.filter { $0.id != placed.edge.fromId && $0.id != placed.edge.toId }.map { ($0.id, $0.frame) }
+                for (p, q) in zip(placed.points, placed.points.dropFirst()) {
+                    let segment = CGRect(x: min(p.x, q.x), y: min(p.y, q.y), width: abs(p.x - q.x), height: abs(p.y - q.y))
+                        .insetBy(dx: -0.5, dy: -0.5)
+                    for (id, frame) in obstacles + stages {
+                        #expect(!segment.intersects(frame), "\(placed.id) crosses \(id) in \(mode)")
+                    }
+                }
+                #expect(placed.points.allSatisfy { $0.x >= 0 && $0.x <= layout.size.width }, "\(placed.id) leaves the canvas in \(mode)")
+            }
+        }
     }
 
     @Test func boundariesContainTheirStages() throws {

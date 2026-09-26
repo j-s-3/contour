@@ -190,7 +190,7 @@ struct ContentView: View {
                         .font(.callout)
                     }
                 }
-                .help("Design decisions you've consciously reviewed: \(p.reviewed) of \(p.total)")
+                .help("Decisions to review you've consciously judged: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
                 sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
@@ -340,7 +340,8 @@ struct ContentView: View {
                     graph: graph,
                     focus: decisionsFocus(graph),
                     onSetState: { store.setReviewerState($1, forDecision: $0) },
-                    onSetNote: { store.setReviewerNote($1, forDecision: $0) }
+                    onSetNote: { store.setReviewerNote($1, forDecision: $0) },
+                    onSetToReview: { store.setToReview($1, forDecision: $0) }
                 )
             }
         case .flows, .flowDetail(_), .flowNodeDetail(_, _):

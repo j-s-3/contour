@@ -126,13 +126,13 @@ extension PRGraph {
     /// is working would silently reset the decisions they had already judged.
     func carryingReviewerState(from previous: PRGraph?) -> PRGraph {
         guard let previous else { return self }
-        let marks = Dictionary(previous.decisions.map { ($0.id, ($0.reviewerState, $0.reviewerNote)) },
-                               uniquingKeysWith: { a, _ in a })
+        let marks = Dictionary(previous.decisions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var g = self
         for i in g.decisions.indices {
-            guard let (state, note) = marks[g.decisions[i].id] else { continue }
-            g.decisions[i].reviewerState = state
-            g.decisions[i].reviewerNote = note
+            guard let marked = marks[g.decisions[i].id] else { continue }
+            g.decisions[i].reviewerState = marked.reviewerState
+            g.decisions[i].reviewerNote = marked.reviewerNote
+            g.decisions[i].reviewerPlacement = marked.reviewerPlacement
         }
         return g
     }

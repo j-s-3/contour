@@ -206,9 +206,34 @@ relationships and flows it affects, evidence) sits behind More…. Right-clickin
 offers Ask about this…, Why did the PR choose this side?, Show Consequences, and Show
 Evidence; the conversation gets the whole decision around it.
 
-Design decisions show by default. Implementation decisions are collapsed under
-Implementation details and don't count toward review progress, which means "n of the
-consequential decisions consciously judged" and sits on the sidebar's Decisions row. An
+The screen directs scarce attention, so it is titled **Decisions to Review**: "2 choices in
+this PR appear worth your attention, out of 4 identified. Do you agree with them?"
+**Significance determines attention; abstraction does not.** The decisions stage finds every
+meaningful decision, then assesses two separate things. The first is `level`, what kind
+of choice it is: behavior, system, component or implementation. The second is
+`significance` (high/medium/low), whether a strong engineer would want to stop and
+consciously agree with it. Significance weighs failure consequence, blast radius,
+reversibility, novelty, boundary crossing, uncertainty and tradeoff magnitude. Each decision
+also carries its `impacts` (correctness, concurrency, compatibility…) and a one-sentence
+`significanceReason`.
+An implementation choice about retries or transaction boundaries can be high; where a helper
+lives can be low. High-significance decisions get the full card, with a quiet "Impacts … —
+reason" line under the question; there is never a numeric score. An Overview question
+reviewed on a decision raises its significance one step, so a concern can promote a medium
+decision but not a low one. Graphs without an assessed significance infer it from the
+primary tradeoff: a lean of at least 0.25 from the middle is high, any other tradeoff is
+medium, and no tradeoff is low. The level is never used.
+
+Everything else is under **Other Decisions**, collapsed ("Show 2 lower-impact decisions") into
+compact rows: the question, what was chosen, **Why it's here**, and any Overview question,
+with Add to review, Ask…, and Show (the drawn choice, reasoning and evidence). The AI
+proposes the review surface and the reviewer controls it. **Add to review** promotes a
+decision, and **Not worth reviewing** on a card demotes one. Both are stored as
+`reviewerPlacement`, and moving a decision back to where the analysis put it clears the
+override. Nothing is promoted to fill the list: when nothing stands out, the screen says so.
+Only decisions to review count toward review progress, which means "n of the
+consequential decisions consciously judged" and sits on the sidebar's Decisions row.
+They are also the only decisions marked on the Architecture drawing and in Flows. An
 Overview question's "Review →" opens its first related decision, highlights it briefly,
 and shows the question there as "Question from Overview". The lens is keyboard-driven
 (J/K or ↑/↓ move, A/Q/C judge, M more). A "One at a time" mode reads like a design review.

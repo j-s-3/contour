@@ -25,6 +25,10 @@ enum MockAnalysisFixtures {
         ProcessInfo.processInfo.environment["CONTOUR_MOCK_ANALYSIS"] == "1"
     }
 
+    /// The pull request these fixtures were captured from. Mock mode offers it as a
+    /// one-click "Load test data", since the fixtures only line up with this PR's checkout.
+    static let sourcePRURL = "https://github.com/sharkdp/bat/pull/3877"
+
     static func response(for stage: PipelineStage) -> [String: Any] {
         let json: String
         switch stage {
