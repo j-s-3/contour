@@ -9,6 +9,11 @@ import Foundation
 /// version too: bumping `AnalysisPipeline.pipelineVersion` after a prompt/schema change
 /// invalidates old cache entries rather than trying to decode a shape that no longer
 /// matches.
+///
+/// Bypassed entirely under `CONTOUR_MOCK_ANALYSIS=1`: a mock run's graph is the canned
+/// fixture, not an analysis of this PR, so writing it under the PR's real key would make
+/// every later real load of that commit show the fixture. Reading is skipped too, so a
+/// mock run always shows the fixtures rather than a real analysis cached earlier.
 struct AnalysisCache {
 
     private struct CachedAnalysis: Codable {
@@ -31,6 +36,7 @@ struct AnalysisCache {
     }
 
     func load(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int) -> (graph: PRGraph, diff: String)? {
+        guard !MockAnalysisFixtures.isEnabled else { return nil }
         let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let cached = try? JSONDecoder().decode(CachedAnalysis.self, from: data),
@@ -40,6 +46,7 @@ struct AnalysisCache {
     }
 
     func save(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int, graph: PRGraph, diff: String) {
+        guard !MockAnalysisFixtures.isEnabled else { return }
         let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
         let cached = CachedAnalysis(graph: graph, diff: diff, pipelineVersion: pipelineVersion)
         guard let data = try? JSONEncoder().encode(cached) else { return }
