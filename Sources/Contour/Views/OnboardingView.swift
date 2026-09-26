@@ -11,9 +11,12 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
+            if let icon = AppDelegate.appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 112, height: 112)
+                    .accessibilityHidden(true)
+            }
             Text("Contour").font(.system(size: 30, weight: .semibold, design: .rounded))
             Text("Paste a GitHub pull request URL to build its review model.")
                 .font(.callout)

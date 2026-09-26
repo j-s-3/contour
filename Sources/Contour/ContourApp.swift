@@ -9,15 +9,16 @@ import AppKit
 /// requesting a normal foreground presence. Force it explicitly so the window always
 /// appears regardless of launch context.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// The Contour mark, bundled from `Assets/Logo/Contour.icns` by `scripts/build-icon.sh`.
+    static let appIcon: NSImage? = Bundle.module.url(forResource: "AppIcon", withExtension: "icns")
+        .flatMap(NSImage.init(contentsOf:))
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         // With no Info.plist there's no `CFBundleIconFile`, so the Dock shows the generic
         // "exec" icon. Set it from the bundled resource — after the policy change, which
         // creates the Dock tile.
-        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
-           let icon = NSImage(contentsOf: url) {
-            NSApp.applicationIconImage = icon
-        }
+        if let icon = AppDelegate.appIcon { NSApp.applicationIconImage = icon }
         NSApp.activate(ignoringOtherApps: true)
         // Push any stored per-tier model overrides into AnalysisTier before the first run
         // can read them.
