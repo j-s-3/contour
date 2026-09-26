@@ -108,6 +108,8 @@ struct BehaviorDiagramView: View {
                     }
                 }
                 .frame(width: layout.size.width, height: layout.size.height)
+                // Room to scroll the last stage clear of the legend floating over the canvas.
+                .padding(.bottom, 56)
                 // Centered across the canvas when it fits; scrolls when it doesn't.
                 .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .top)
             }
