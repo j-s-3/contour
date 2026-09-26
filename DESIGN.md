@@ -98,6 +98,33 @@ Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
+### 4.1a Welcome, analysis, and the Contour mark
+
+The rounded-square icon is only the macOS app icon (Dock, Finder, Spotlight). Inside
+the app the brand is the raw mark: the contour rings and amber peak with no tile,
+drawn by `ContourMarkView` from a Swift port of `scripts/generate-logo.py` (a test pins
+it to the icon SVG). Light appearance uses deeper tones of the same teal and amber,
+since the icon's pale amber disappears on a light window.
+
+- **Welcome.** Mark, "Contour", then the proposition ("Understand the change, not just
+  the diff.") and the URL field. The mark stays still. Idle motion would pull the eye
+  away from the one thing to do on this screen.
+- **Analysis.** The same mark carries over from the welcome screen and resolves as
+  the pipeline runs: first the peak, then the rings from the summit outward. The shape
+  of the change comes into focus. Each stage owns a slice of the mark sized by its
+  typical cost, and within a stage the line eases toward the end of its slice without
+  reaching it. It is not a percentage meter. Unresolved rings show as a faint trace.
+  Nothing pulses, loops, or glows. A headline in the reviewer's terms ("Tracing the
+  flows it touches…") and the latest real harness step always go with the mark. The
+  full log is behind "Show activity".
+- **Review.** A small resolved mark with "Analysis complete" (or "Opened saved
+  analysis") sits in the toolbar, then fades. Once the pipeline can open the Overview
+  before every stage finishes, this is where the still-resolving mark belongs.
+- **Reduce Motion.** No drawn lines and no mark gliding between screens. Whole rings
+  fade in as stages complete, and screens crossfade.
+
+Keep the mark rare. It appears in these places, not as decoration on empty states.
+
 ### 4.2 Overview (landing page)
 
 A thirty-second briefing from a staff engineer, not a dashboard: one centered column

@@ -59,6 +59,10 @@ final class GraphStore {
 
     private(set) var lastPRURL: String?
 
+    /// Whether the current graph was loaded from the analysis cache rather than analyzed
+    /// just now, so the toolbar can say which.
+    private(set) var analysisFromCache = false
+
     /// The harness this PR was analyzed with. Contextual chat reuses it so a conversation
     /// never talks to a different model than the one that built the review.
     private(set) var harnessID: HarnessID?
@@ -113,6 +117,7 @@ final class GraphStore {
                     self.graph = result.graph
                     self.checkout = result.checkout
                     self.diffText = result.diff
+                    self.analysisFromCache = result.fromCache
                     self.phase = .ready
                 }
             } catch {

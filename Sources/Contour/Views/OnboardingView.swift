@@ -4,26 +4,36 @@ import UniformTypeIdentifiers
 
 /// The core workflow's entry point (§2): "the user pastes a GitHub pull request URL."
 /// Nothing else — no repo picker, no auth flow, since `gh` is already authenticated.
+///
+/// The raw Contour mark, not the app icon: the rounded-square tile belongs to the Dock
+/// and Finder. Inside the app the mark is the brand, and the same mark resolves while a
+/// PR is analyzed, so it is matched across the two screens.
 struct OnboardingView: View {
     @State private var urlText: String = ""
+    var markNamespace: Namespace.ID
     var onSubmit: (String) -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
             Spacer()
-            if let icon = AppDelegate.appIcon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 112, height: 112)
-                    .accessibilityHidden(true)
-            }
-            Text("Contour").font(.system(size: 30, weight: .semibold, design: .rounded))
-            Text("Paste a GitHub pull request URL to build its review model.")
+            ContourMarkView()
+                .matchesContourMark(in: markNamespace)
+                .frame(height: ContourMarkView.heroHeight)
+            Text("Contour")
+                .font(.system(size: 28, weight: .semibold))
+                .padding(.top, 22)
+            Text("Understand the change, not just the diff.")
+                .font(.title3)
+                .padding(.top, 10)
+            Text("See what changed, how the system works, and which decisions deserve your attention.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 400)
+                .padding(.top, 6)
 
             HStack {
-                TextField("https://github.com/owner/repo/pull/123", text: $urlText)
+                TextField("Paste a GitHub pull request URL…", text: $urlText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 420)
                     .onSubmit(submit)
@@ -48,6 +58,7 @@ struct OnboardingView: View {
                     .keyboardShortcut(.return, modifiers: [])
                     .disabled(GitHubService.normalize(urlText) == nil)
             }
+            .padding(.top, 28)
 
             // Mock mode only: the canned analysis matches exactly one PR, so offer it
             // directly rather than making the tester remember its URL.
@@ -58,8 +69,11 @@ struct OnboardingView: View {
                     Label("Load test data", systemImage: "testtube.2")
                 }
                 .help(MockAnalysisFixtures.sourcePRURL)
+                .padding(.top, 16)
             }
             Spacer()
+            // The optical centre sits a little above the geometric one.
+            Spacer().frame(height: 60)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -70,82 +84,81 @@ struct OnboardingView: View {
     }
 }
 
-/// Shown while the pipeline runs. Real substeps from the JSONL stream, not a spinner —
-/// this is the "progress panel shows real substeps" behavior from the worked example.
-/// Fills the whole window: a stage rail across the top so the reviewer can see where
-/// they are across every stage, then a full-size scrolling console underneath so the
-/// (often long) tool-call log is actually readable instead of squeezed into a small box.
+/// Shown while the pipeline runs: the Contour mark resolving as the analysis advances,
+/// what's happening in words, and the latest real substep from the harness — so progress
+/// never depends on the mark alone, and never on a bare spinner (§10). The full tool-call
+/// log is one click away for anyone who wants to watch the work.
 struct AnalyzingView: View {
     let stage: PipelineStage
     let log: [PipelineProgressEntry]
+    var markNamespace: Namespace.ID
 
-    private static let orderedStages: [PipelineStage] = [
-        .fetching, .checkingOut, .cacheCheck, .ticket, .architecture, .intent, .eli5,
-        .decisions, .flows, .judgment
-    ]
+    @AppStorage("showsAnalysisActivity") private var showsActivity = false
 
     var body: some View {
         VStack(spacing: 0) {
-            stageRail
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-            Divider()
-            console
+            VStack(spacing: 0) {
+                Spacer()
+                AnalyzingMark(stage: stage)
+                    .matchesContourMark(in: markNamespace)
+                    .frame(height: ContourMarkView.heroHeight)
+                Text(Self.headline(stage))
+                    .font(.title3)
+                    .padding(.top, 28)
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.4), value: Self.headline(stage))
+                Text(latestDetail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 520)
+                    .padding(.top, 6)
+                Spacer()
+                if !showsActivity { Spacer().frame(height: 60) }
+                activityToggle
+                    .padding(.bottom, 14)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showsActivity {
+                Divider()
+                console
+                    .frame(maxHeight: .infinity)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var stageRail: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text(stage.rawValue).font(.title2.weight(.semibold))
-            }
-            HStack(spacing: 6) {
-                ForEach(Array(Self.orderedStages.enumerated()), id: \.element) { index, s in
-                    stagePill(s)
-                    if index < Self.orderedStages.count - 1 {
-                        Rectangle()
-                            .fill(stageIndex(s) < stageIndex(stage) ? Color.accentColor : Color.secondary.opacity(0.25))
-                            .frame(height: 2)
-                    }
-                }
-            }
+    /// What Contour is working out, in the reviewer's terms rather than the pipeline's.
+    static func headline(_ stage: PipelineStage) -> String {
+        switch stage {
+        case .fetching, .checkingOut, .cacheCheck: return "Opening the pull request…"
+        case .ticket, .behaviorChange, .intent, .eli5: return "Understanding the change…"
+        case .architecture: return "Analyzing architecture…"
+        case .decisions: return "Finding the decisions it makes…"
+        case .flows: return "Tracing the flows it touches…"
+        case .judgment: return "Deciding what needs your judgment…"
+        case .done: return "Ready"
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func stagePill(_ s: PipelineStage) -> some View {
-        let current = stageIndex(s) == stageIndex(stage)
-        let done = stageIndex(s) < stageIndex(stage)
-        return HStack(spacing: 5) {
-            Image(systemName: done ? "checkmark.circle.fill" : (current ? "circle.fill" : "circle"))
-                .font(.caption2)
-                .foregroundStyle(done ? Color.accentColor : (current ? Color.accentColor : Color.secondary.opacity(0.5)))
-            Text(shortLabel(s))
-                .font(.caption.weight(current ? .semibold : .regular))
-                .foregroundStyle(current ? Color.primary : (done ? Color.secondary : Color.secondary.opacity(0.6)))
-        }
-        .fixedSize()
+    private var latestDetail: String {
+        guard let last = log.last else { return stage.rawValue }
+        return last.detail.isEmpty ? last.stage : "\(last.stage) — \(last.detail)"
     }
 
-    private func stageIndex(_ s: PipelineStage) -> Int { Self.orderedStages.firstIndex(of: s) ?? 0 }
-
-    private func shortLabel(_ s: PipelineStage) -> String {
-        switch s {
-        case .fetching: return "Fetch"
-        case .checkingOut: return "Checkout"
-        case .cacheCheck: return "Cache"
-        case .ticket: return "Issue"
-        case .behaviorChange: return "Behavior"
-        case .architecture: return "Architecture"
-        case .intent: return "Intent"
-        case .eli5: return "Plain-language"
-        case .decisions: return "Decisions"
-        case .flows: return "Flows"
-        case .judgment: return "Judgment"
-        case .done: return "Done"
+    private var activityToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) { showsActivity.toggle() }
+        } label: {
+            Label(showsActivity ? "Hide activity" : "Show activity",
+                  systemImage: showsActivity ? "chevron.down" : "chevron.up")
+                .font(.callout)
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Every step the harness takes as it reads the repository")
     }
 
     private var console: some View {
@@ -171,6 +184,7 @@ struct AnalyzingView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Color(nsColor: .textBackgroundColor))
+            .onAppear { if let last = log.last { proxy.scrollTo(last.id, anchor: .bottom) } }
             .onChange(of: log.count) { _, _ in
                 if let last = log.last {
                     withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }

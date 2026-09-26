@@ -10,6 +10,10 @@ Writes into Assets/Logo/:
   contour-icon.svg    macOS app icon (1024x1024, Big Sur squircle grid)
   contour-logo.svg    horizontal lockup: mark + "Contour" wordmark
 
+The app draws the raw mark itself from a Swift port of `mark()`
+(Sources/Contour/Views/Brand/ContourMark.swift); ContourMarkTests fails if the two drift,
+so change both together.
+
 Usage: python3 scripts/generate-logo.py
 Raster/.icns output: scripts/build-icon.sh
 """
