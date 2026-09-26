@@ -23,6 +23,8 @@ enum NavigationTarget: Hashable {
     case flows
     case files
     case diff
+    /// The raw diff, scrolled to the file and hunk a code reference lands in.
+    case diffLocation(CodeRef)
     case decisionDetail(String)
     /// An Overview "thing to think about", reviewed on the decision it belongs to.
     case consideration(String)
@@ -42,6 +44,8 @@ final class GraphStore {
     private(set) var graph: PRGraph?
     private(set) var checkout: RepoCheckout?
     private(set) var diffText: String?
+    /// `diffText` as files and hunks, parsed once when it arrives rather than per render.
+    private(set) var diffFiles: [DiffFile] = []
     private(set) var phase: SessionPhase = .idle
     private(set) var progressLog: [PipelineProgressEntry] = []
     /// Per-stage progress of the analysis filling in the open review.
@@ -88,6 +92,7 @@ final class GraphStore {
         graph = nil
         checkout = nil
         diffText = nil
+        diffFiles = []
         analysis = AnalysisState()
         metrics = AnalysisMetrics(pr: prURL)
         metricsSaved = false
@@ -173,6 +178,7 @@ final class GraphStore {
             if phase == .opening { phase = .review }
         case .diff(let diff):
             diffText = diff
+            diffFiles = UnifiedDiff.parse(diff)
         case .checkout(let checkout):
             self.checkout = checkout
         case .revalidating(let head):
@@ -266,7 +272,7 @@ final class GraphStore {
         case .consideration(let id): return .consideration(id)
         case .flowDetail(let id): return .flow(id)
         case .flowNodeDetail(let flowId, let nodeId): return .flowNode(flowId: flowId, nodeId: nodeId)
-        case .evidence(let ref): return .codeRef(ref)
+        case .evidence(let ref), .diffLocation(let ref): return .codeRef(ref)
         default:
             if let change = graph?.dominantBehaviorChange { return .behaviorChange(change.id) }
             return .pullRequest
