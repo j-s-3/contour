@@ -37,7 +37,9 @@ struct ArchitectureView: View {
                 ContentUnavailableView("Nothing to draw", systemImage: "square.stack.3d.up",
                                        description: Text("The analysis didn't identify any architecture for this PR."))
             } else {
-                ZStack(alignment: .topTrailing) {
+                // The inspector takes its own column only while something is selected, and
+                // the drawing refits beside it rather than being covered.
+                HStack(spacing: 0) {
                     ArchitectureDiagramView(
                         boxes: boxes(level),
                         arrows: arrows(level),
@@ -57,10 +59,8 @@ struct ArchitectureView: View {
                         )
                         .frame(width: 340)
                         .frame(maxHeight: .infinity, alignment: .top)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.2)))
-                        .shadow(color: .black.opacity(0.12), radius: 12, y: 2)
-                        .padding(12)
+                        .background(.background.secondary)
+                        .overlay(alignment: .leading) { Divider() }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
