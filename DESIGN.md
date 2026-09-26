@@ -98,6 +98,10 @@ Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
+The window opens as an ordinary window at its last size and position, not in full screen:
+a reviewer usually arrives from a link in Slack or a browser, and taking over a Space loses
+the window they came from. Full screen at launch is an opt-in in Settings › Window.
+
 **Opening a PR is progressive.** There is no full-screen analysis wait: "Opening the pull
 request…" lasts only as long as the GitHub fetch, then the window shell appears with the title,
 metadata and raw diff, and the analysis fills it in. Every destination is always open.

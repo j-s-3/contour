@@ -8,12 +8,12 @@ struct ContentView: View {
     @State private var showPalette = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
-    /// Explicit, not `.automatic`: `WindowAccessor` force-enters real fullscreen ~0.2s
-    /// after launch, and that AppKit transition is a known trigger for
-    /// `NavigationSplitView` silently collapsing its sidebar column (the automatic
-    /// width-based visibility heuristic gets a bad reading mid-transition and never
-    /// reconsiders). Owning the binding — and reasserting it once fullscreen actually
-    /// completes — is what keeps the sidebar from vanishing.
+    /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
+    /// opted in (`WindowAccessor`), or at any time via the green button — is a known
+    /// trigger for `NavigationSplitView` silently collapsing its sidebar column (the
+    /// automatic width-based visibility heuristic gets a bad reading mid-transition and
+    /// never reconsiders). Owning the binding — and reasserting it once fullscreen
+    /// actually completes — is what keeps the sidebar from vanishing.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     /// Carries the Contour mark from the welcome screen into the analysis screen.
     @Namespace private var markNamespace
@@ -37,7 +37,8 @@ struct ContentView: View {
                 .keyboardShortcut("k", modifiers: .command)
                 .opacity(0)
         )
-        .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+        // Full screen only on opt-in; otherwise the window reopens at its last frame.
+        .background(WindowAccessor(entersFullScreen: Preferences.shared.opensInFullScreen))
         .onAppear {
             // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
             // rather than pasting a URL on every launch.
