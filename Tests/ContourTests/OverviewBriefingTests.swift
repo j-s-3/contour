@@ -97,4 +97,18 @@ struct OverviewBriefingTests {
         #expect(!items.isEmpty)
         #expect(items.allSatisfy { !$0.question.contains("src/") })
     }
+
+    /// The captured fixtures come from a run that wrote `considerations` to budget; if a
+    /// regeneration ever loses them, mock mode would silently fall back to condensing.
+    @Test func mockFixturesCarryBudgetedConsiderations() throws {
+        let judgment = try StageDecoding.decode(
+            StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment)
+        )
+        #expect((1...5).contains(judgment.considerations.count))
+        #expect(judgment.considerations.allSatisfy { $0.question.hasSuffix("?") })
+        let behavior = try StageDecoding.decode(
+            StageDecoding.BehaviorChangeResult.self, from: MockAnalysisFixtures.response(for: .behaviorChange)
+        )
+        #expect(behavior.behaviorChanges.first?.after.last?.outcome != nil)
+    }
 }
