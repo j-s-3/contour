@@ -22,8 +22,7 @@ import sys
 STAGES = [
     ("behaviorChange", "behaviorChangeJSON"),
     ("architecture", "architectureJSON"),
-    ("intent", "intentJSON"),
-    ("eli5", "eli5JSON"),
+    ("understanding", "understandingJSON"),
     ("decisions", "decisionsJSON"),
     ("flows", "flowsJSON"),
     ("judgment", "judgmentJSON"),
@@ -65,8 +64,7 @@ enum MockAnalysisFixtures {
         switch stage {
         case .behaviorChange: json = behaviorChangeJSON
         case .architecture: json = architectureJSON
-        case .intent: json = intentJSON
-        case .eli5: json = eli5JSON
+        case .understanding: json = understandingJSON
         case .decisions: json = decisionsJSON
         case .flows: json = flowsJSON
         case .judgment: json = judgmentJSON

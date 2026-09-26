@@ -37,10 +37,28 @@ final class IntegrationSmokeTests: XCTestCase {
         let expected = try GitHubService.parse(prURL: prURL)
 
         let pipeline = AnalysisPipeline(harnessID: harness, trackerID: .github, githubAccess: access)
-        let result = try await pipeline.run(prURL: prURL) { stage, entry in
-            print("[\(stage.rawValue)] \(entry.detail)")
+        await pipeline.start(prURL: prURL, forceRefresh: true)
+        let started = Date()
+        var graph: PRGraph?
+        var diff = ""
+        var failures: [String] = []
+        loop: for await event in pipeline.events {
+            switch event {
+            case .log(let entry): print("[\(entry.stage)] \(entry.detail)")
+            case .status(let stage, let status):
+                print(String(format: "%6.1fs  %@ → %@", Date().timeIntervalSince(started), stage.shortLabel, "\(status)"))
+                if case .failed(let message) = status { failures.append("\(stage.shortLabel): \(message)") }
+            case .graph(let g): graph = g
+            case .diff(let d): diff = d
+            case .fatal(let message): XCTFail(message); break loop
+            case .complete: break loop
+            case .checkout, .revalidating, .fromCache: break
+            }
         }
+        await pipeline.cancel()
+        XCTAssertEqual(failures, [])
 
+        let result = (graph: try XCTUnwrap(graph), diff: diff)
         XCTAssertEqual(result.graph.pr.number, expected.number)
         XCTAssertEqual(result.graph.pr.repo, "\(expected.owner)/\(expected.repo)")
         XCTAssertFalse(result.graph.components.isEmpty)

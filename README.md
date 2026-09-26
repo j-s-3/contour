@@ -20,6 +20,10 @@ requirements are `git` and one AI CLI you're already signed in to.
   checked out locally at the PR's head SHA → a staged pipeline of AI calls builds a
   knowledge graph (components, decisions with their tradeoffs, flows, questions) →
   native SwiftUI views render it.
+- Progressive opening: the review appears as soon as the PR is fetched and fills in while
+  you work. Independent stages run in parallel, decisions and flows stream in one at a
+  time, each section fails and retries on its own, and a previously analyzed revision is
+  shown (marked as such) while the new one is analyzed.
 - An Overview that reads as a briefing: the before/after behavior change, why it was
   made, and a short list of "things to think about".
 - Every AI-produced statement is tagged fact / author-claim / AI-interpretation, with
@@ -78,6 +82,8 @@ behavior. Precedence is **environment > stored setting > what's detected on the 
 | `CONTOUR_TRACKER` | `github`, `jira`, `none` | Where to look for the originating issue |
 | `CONTOUR_GITHUB_ACCESS` | `auto`, `gh`, `anonymous` | How to reach GitHub |
 | `CONTOUR_MOCK_ANALYSIS` | `1` | Use canned analysis (and canned chat answers) instead of calling a model |
+| `CONTOUR_MOCK_LATENCY` | a scale, e.g. `1` | With mock analysis, make each stage take about as long as a real one, so progressive opening can be seen |
+| `CONTOUR_MOCK_FAIL_STAGE` | a stage, e.g. `architecture` | With mock analysis, fail that stage once, to exercise its failure and Retry |
 | `CONTOUR_OPEN_PR_URL` | a PR URL | Open straight into that PR on launch |
 | `CONTOUR_DUMP_STAGES` | a directory | Write each stage's raw JSON there |
 
@@ -164,9 +170,10 @@ CONTOUR_PR_URL=https://github.com/sharkdp/bat/pull/3877 \
   swift test --filter IntegrationSmokeTests/testFullPipelineAgainstRealTinyPR
 ```
 
-This is unrelated to `AnalysisCache` (§13), which instead caches a real completed run
-keyed by (repo, PR number, headSha, baseSha, pipeline version) so re-opening the *same* PR
-is instant on a later run.
+This is unrelated to `AnalysisCache` (§13), which instead caches real runs — stage by
+stage — keyed by (repo, PR number, headSha, baseSha, pipeline version). Reopening the
+*same* PR is instant, an interrupted run resumes, and a PR with new commits opens on its
+previous revision's analysis while the new one runs.
 
 ## Project layout
 
@@ -191,7 +198,11 @@ Sources/Contour/
   Tracker/GitHubIssueTracker.swift   default tracker, needs nothing installed
   Tracker/JiraTracker.swift          opt-in tracker via acli
   Pipeline/PromptBuilder.swift       per-stage prompts + JSON schema contracts
-  Pipeline/AnalysisPipeline.swift    orchestrates the staged harness calls
+  Pipeline/AnalysisPipeline.swift    runs the stages as a dependency graph, streaming events
+  Pipeline/AnalysisStatus.swift      per-stage status and the review sections they feed
+  Pipeline/GraphAssembly.swift       the PR shell and per-stage graph slices
+  Pipeline/GraphLinker.swift         cross-links decisions/parts/flows by the code they cite
+  Pipeline/StreamingArrayExtractor.swift  pulls finished elements out of streaming JSON
   Pipeline/StageDecoding.swift       lenient decoding of AI JSON into graph nodes
   Views/                             SwiftUI lenses (Summary, Architecture, Decisions, …)
   Views/Settings/                    Settings scene + first-run wizard

@@ -62,7 +62,7 @@ struct CommandPaletteView: View {
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
             .init(title: "Go to Flows", subtitle: nil, symbol: "arrow.triangle.branch") { store.navigate(to: .flows) },
             .init(title: "Go to Raw diff", subtitle: nil, symbol: "doc.text") { store.navigate(to: .diff) },
-            .init(title: "Open a different PR…", subtitle: nil, symbol: "arrow.uturn.left") { store.phase = .idle },
+            .init(title: "Open a different PR…", subtitle: nil, symbol: "arrow.uturn.left") { store.close() },
             .init(title: "Re-analyze (ignore cache)", subtitle: "re-runs all analysis stages for this PR", symbol: "arrow.clockwise") {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }

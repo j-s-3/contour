@@ -91,15 +91,42 @@ struct ContourMarkTests {
     // MARK: - Analysis progress
 
     private static let pipelineOrder: [PipelineStage] = [
-        .fetching, .checkingOut, .cacheCheck, .ticket, .behaviorChange, .architecture,
-        .intent, .eli5, .decisions, .flows, .judgment, .done,
+        .fetching, .checkingOut, .cacheCheck, .ticket, .behaviorChange, .understanding,
+        .architecture, .decisions, .flows, .judgment,
     ]
 
     @Test func everyStageHasItsOwnSliceInPipelineOrder() {
         let starts = Self.pipelineOrder.map { AnalysisResolution.target(stage: $0, elapsed: 0) }
         #expect(starts.first == 0)
-        #expect(starts.last == 1)
+        #expect(starts.last! < 1)
         for (a, b) in zip(starts, starts.dropFirst()) { #expect(a < b) }
+    }
+
+    /// In an open review the stages run in parallel: each settled stage resolves its own
+    /// slice, in whatever order they finish, and only a finished analysis is whole.
+    @Test func anOpenReviewResolvesOneSliceForEachSettledStage() {
+        var state = AnalysisState()
+        let opened = AnalysisResolution.target(state: state)
+        #expect(opened > 0 && opened < 0.2)
+
+        state.stages[.decisions] = .done
+        let oneDone = AnalysisResolution.target(state: state)
+        #expect(oneDone > opened)
+
+        state.stages[.architecture] = .failed("boom")
+        let twoSettled = AnalysisResolution.target(state: state)
+        #expect(twoSettled > oneDone, "a failed stage is settled too")
+
+        // Retrying decisions gives its slice back until it settles again.
+        state.stages[.decisions] = .running(detail: nil)
+        let retrying = AnalysisResolution.target(state: state)
+        #expect(retrying < twoSettled)
+        #expect(abs(retrying - opened - (twoSettled - oneDone)) < 1e-9, "only architecture's slice remains")
+
+        for stage in PipelineStage.analysis { state.stages[stage] = .done }
+        #expect(abs(AnalysisResolution.target(state: state) - 1) < 1e-9)
+        state.isComplete = true
+        #expect(AnalysisResolution.target(state: state) == 1)
     }
 
     @Test func aLongStageCreepsTowardItsEndButNeverClaimsTheNextStage() {

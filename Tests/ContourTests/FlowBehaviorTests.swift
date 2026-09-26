@@ -317,8 +317,11 @@ struct FlowBehaviorTests {
 
     @Test func theFlowsStageIsAskedForBehaviorAndTheJudgmentStageForAnchors() {
         let graph = ContourSampleData.publishTriggeredReindex
-        let flows = PromptBuilder.flowsPrompt(components: graph.components, decisions: graph.decisions, entryHints: [])
-        #expect(flows.contains("- index-on-publish:"))
+        let flows = PromptBuilder.flowsPrompt(components: graph.components, entryHints: [])
+        // Decisions are pinned to stages afterwards (GraphLinker), so the flows stage no
+        // longer waits for them — or sees them.
+        #expect(!flows.contains("- index-on-publish:"))
+        #expect(!flows.contains("decisionIds"))
         #expect(flows.contains("\"behavior\""))
         #expect(flows.contains("4-8 conceptual stages"))
         #expect(PromptBuilder.judgmentPrompt(graphSoFar: "{}").contains("flowAnchors"))

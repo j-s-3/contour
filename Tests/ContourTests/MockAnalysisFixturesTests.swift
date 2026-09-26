@@ -15,11 +15,12 @@ struct MockAnalysisFixturesTests {
         let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: architecture)
         #expect(!arch.components.isEmpty)
 
-        let intent = MockAnalysisFixtures.response(for: .intent)
-        _ = try StageDecoding.decode(StageDecoding.IntentResult.self, from: intent)
-
-        let eli5 = MockAnalysisFixtures.response(for: .eli5)
-        _ = try StageDecoding.decode(StageDecoding.ELI5Result.self, from: eli5)
+        let understanding = try StageDecoding.decode(
+            StageDecoding.UnderstandingResult.self, from: MockAnalysisFixtures.response(for: .understanding)
+        )
+        #expect(!understanding.intent.text.isEmpty)
+        #expect(understanding.problemToBeSolved != nil)
+        #expect(understanding.howItWasSolved != nil)
 
         let decisions = MockAnalysisFixtures.response(for: .decisions)
         let dec = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: decisions)

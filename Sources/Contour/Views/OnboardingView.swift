@@ -84,7 +84,9 @@ struct OnboardingView: View {
     }
 }
 
-/// Shown while the pipeline runs: the Contour mark resolving as the analysis advances,
+/// Shown while the PR itself is fetched — the one wait left before the review opens (the
+/// analysis then fills in the open review; see `AnalysisIndicator`). The Contour mark
+/// resolving as it goes,
 /// what's happening in words, and the latest real substep from the harness — so progress
 /// never depends on the mark alone, and never on a bare spinner (§10). The full tool-call
 /// log is one click away for anyone who wants to watch the work.
@@ -134,12 +136,11 @@ struct AnalyzingView: View {
     static func headline(_ stage: PipelineStage) -> String {
         switch stage {
         case .fetching, .checkingOut, .cacheCheck: return "Opening the pull request…"
-        case .ticket, .behaviorChange, .intent, .eli5: return "Understanding the change…"
+        case .ticket, .behaviorChange, .understanding: return "Understanding the change…"
         case .architecture: return "Analyzing architecture…"
         case .decisions: return "Finding the decisions it makes…"
         case .flows: return "Tracing the flows it touches…"
         case .judgment: return "Deciding what needs your judgment…"
-        case .done: return "Ready"
         }
     }
 
@@ -199,7 +200,7 @@ struct FailedView: View {
     var onRetry: () -> Void
     var body: some View {
         ContentUnavailableView {
-            Label("Analysis failed", systemImage: "exclamationmark.triangle")
+            Label("Couldn't open this PR", systemImage: "exclamationmark.triangle")
         } description: {
             Text(message)
         } actions: {

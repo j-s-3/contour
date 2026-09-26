@@ -17,17 +17,31 @@ enum AnalysisResolution {
         (.cacheCheck, 0.10, 2),
         (.ticket, 0.12, 4),
         (.behaviorChange, 0.14, 45),
-        (.architecture, 0.24, 60),
-        (.intent, 0.36, 40),
-        (.eli5, 0.44, 45),
+        (.understanding, 0.24, 45),
+        (.architecture, 0.36, 60),
         (.decisions, 0.54, 120),
         (.flows, 0.72, 120),
         (.judgment, 0.86, 90),
     ]
 
+    /// The resolution for an analysis filling in an open review. Its stages run in
+    /// parallel, so there is no "current stage" to ease through: the fetch/checkout slices
+    /// are resolved (the review is open), and each analysis stage's slice resolves once
+    /// that stage has settled — done or failed, since either way nothing more is coming.
+    static func target(state: AnalysisState) -> Double {
+        guard !state.isComplete else { return 1 }
+        guard let first = slices.firstIndex(where: { PipelineStage.analysis.contains($0.stage) }) else { return 1 }
+        var total = slices[first].start
+        for i in first..<slices.count where state.status(slices[i].stage).isSettled {
+            let end = i + 1 < slices.count ? slices[i + 1].start : 1
+            total += end - slices[i].start
+        }
+        return total
+    }
+
     /// The resolution `elapsed` seconds into `stage`.
     static func target(stage: PipelineStage, elapsed: TimeInterval) -> Double {
-        guard let i = slices.firstIndex(where: { $0.stage == stage }) else { return 1 } // .done
+        guard let i = slices.firstIndex(where: { $0.stage == stage }) else { return 1 }
         let slice = slices[i]
         let end = i + 1 < slices.count ? slices[i + 1].start : 1
         // Two-thirds of the way through the slice at the typical duration, ~95% at triple.
@@ -82,35 +96,6 @@ struct AnalyzingMark: View {
             last = date
             current = AnalysisResolution.approach(from: current, to: target, over: dt)
             return current
-        }
-    }
-}
-
-/// The small mark in the review toolbar. The review opens once analysis is done, so it
-/// arrives resolved, says so, and fades away after a few seconds.
-struct AnalysisStatusIndicator: View {
-    /// Identifies the analysis, so opening another PR shows the status again.
-    let id: String
-    let fromCache: Bool
-
-    @State private var visible = true
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if visible {
-                ContourMarkView()
-                    .frame(height: 13)
-                Text(fromCache ? "Opened saved analysis" : "Analysis complete")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-            }
-        }
-        .transition(.opacity)
-        .task(id: id) {
-            visible = true
-            try? await Task.sleep(for: .seconds(4))
-            withAnimation(.easeOut(duration: 0.8)) { visible = false }
         }
     }
 }
