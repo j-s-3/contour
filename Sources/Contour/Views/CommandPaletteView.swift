@@ -67,6 +67,14 @@ struct CommandPaletteView: View {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }
         ]
+        // On a diagram screen, the same switch as its "Show:" control and B / A / D.
+        if store.current.showsDiagram {
+            let modes = DiagramMode.allCases.filter { $0 != store.diagramMode }.map { mode in
+                PaletteCommand(title: "Show: \(mode.label)", subtitle: "Diagram view · \(mode.key.uppercased())",
+                               symbol: "eye") { store.diagramMode = mode }
+            }
+            commands.insert(contentsOf: modes, at: 0)
+        }
         guard let graph = store.graph else { return commands }
         for d in graph.decisions {
             commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {

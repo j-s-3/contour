@@ -188,9 +188,10 @@ relationship or responsibility that moved. Below it, the drawing:
 - **Decisions** (◇, design-level only) and **Overview questions** (⚠) are marked on the box
   or arrow they explain (`decisionAnchors`/`questionAnchors`), and open the Decisions lens.
 
-**Delta** (the default) colors only the change; **Before** and **After** are plain
-snapshots. Parts nest (`ComponentNode.parentId`), which is how the reviewer zooms: system →
-the parts inside one part (drawn as a container, with its neighbors as quiet context) →
+**What changed** (the default) colors only the change; **Before this PR** and **After this
+PR** are plain snapshots, switched by the same control as on Flows (§4.6). Parts nest
+(`ComponentNode.parentId`), which is how the reviewer zooms: system → the parts inside
+one part (drawn as a container, with its neighbors as quiet context) →
 implementation and code from the inspector. `PRGraph.architectureLevel(path:)` projects the
 graph onto one zoom level: every node and edge is represented by its visible ancestor,
 arrows inside one box disappear, and parallel arrows fold into the most important one — so
@@ -291,11 +292,14 @@ systems, storage, and boundaries around the systems it crosses. Async hops are d
 stage that several triggers converge on is its own flow, reached through a "shared flow"
 stage, and the flow it belongs to lists "Also reached from".
 
-The screen is about how the PR changed the flow. A **Before / After / Delta** control
-defaults to Delta: unchanged stages recede, new stages are green, removed ones dashed red,
-and a changed stage carries its own BEFORE / AFTER lines ("first line" → "up to 1 KB").
-The header gives the ten-second version: one or two sentences of what happens, and one
-line on what this PR changed. Decisions that shape a point in the flow, and Overview
+The screen is about how the PR changed the flow. A **Show: Before this PR / After this PR /
+What changed** control sits at the foot of the header, on the edge of the drawing it
+filters, with a sentence saying which is on screen ("Showing what this PR changed"). It
+defaults to What changed: unchanged stages recede, new stages are green, removed ones
+dashed red, and a changed stage carries its own BEFORE / AFTER lines ("first line" → "up
+to 1 KB"). B / A / D and ⌘K switch it; the one `GraphStore.diagramMode` drives both Flows
+and Architecture. The header gives the ten-second version: one or two sentences of what
+happens, and one line on what this PR changed. Decisions that shape a point in the flow, and Overview
 review questions about it, hang as notes beside the connection where they matter (at most
 three per stage, then "+N more"); clicking one opens it in Decisions, and each decision
 card links back with "Appears in: <flow>". Provenance is not shown on traced stages — only
@@ -356,7 +360,8 @@ Conversations persist for the review session, one per subject. See `Chat/` and
 
 ## 5. Interaction model
 
-Keyboard-first: `⌘K` command palette (jump to any lens or any named node), `esc` to pop
+Keyboard-first: `⌘K` command palette (jump to any lens or any named node, or switch a
+diagram between before, after and what changed — also B / A / D), `esc` to pop
 one level of the navigation stack, back/forward toolbar buttons backed by the same stack.
 The sidebar and the palette both call `GraphStore.navigate(to:)`, so there's exactly one
 navigation model in the app, not one per screen.

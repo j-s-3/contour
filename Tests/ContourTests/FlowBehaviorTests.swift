@@ -174,7 +174,7 @@ struct FlowBehaviorTests {
 
     // MARK: - Layout
 
-    private func sampleLayout(_ mode: FlowMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
+    private func sampleLayout(_ mode: DiagramMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
         let graph = ContourSampleData.publishTriggeredReindex
         let flow = try #require(graph.flow("publish-index-flow"))
         let behavior = graph.behavior(for: flow).visible(in: mode)
@@ -184,7 +184,7 @@ struct FlowBehaviorTests {
     }
 
     @Test func executionReadsTopToBottom() throws {
-        for mode in FlowMode.allCases {
+        for mode in DiagramMode.allCases {
             let (layout, behavior) = try sampleLayout(mode)
             #expect(layout.nodes.count == behavior.nodes.count)
             let trigger = try #require(layout.node("publish"))
@@ -271,7 +271,7 @@ struct FlowBehaviorTests {
                                text: "Could the inferred diagram for older graphs mislead reviewers?")
             }
         }
-        for mode in FlowMode.allCases {
+        for mode in DiagramMode.allCases {
             let visible = behavior.visible(in: mode)
             let ids = Set(visible.nodes.map(\.id))
             let layout = BehaviorDiagramLayoutEngine.layout(visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) })

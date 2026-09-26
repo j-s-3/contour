@@ -32,6 +32,14 @@ enum NavigationTarget: Hashable {
     /// A stage of a flow, selected in the Flows lens.
     case flowNodeDetail(flowId: String, nodeId: String)
     case evidence(CodeRef)
+
+    /// Architecture and Flows draw a diagram that `GraphStore.diagramMode` filters.
+    var showsDiagram: Bool {
+        switch self {
+        case .architecture, .componentDetail, .edgeDetail, .flows, .flowDetail, .flowNodeDetail: return true
+        default: return false
+        }
+    }
 }
 
 /// Holds one PR's knowledge graph plus all reviewer-session state (selection stack,
@@ -78,6 +86,11 @@ final class GraphStore {
     /// current lens has selected, published by that lens.
     var focusedSubject: ReviewSubject?
 
+    /// Before / after / what changed, for both Architecture and Flows. Held here rather
+    /// than in each lens so the ⌘K palette can switch it, and so it survives moving between
+    /// the two drawings.
+    var diagramMode: DiagramMode = .delta
+
     /// MainActor-isolated because it reads `Preferences`, which is UI-owned observable
     /// state. Every caller is a view action, so this costs nothing.
     @MainActor
@@ -96,6 +109,7 @@ final class GraphStore {
         lastPRURL = prURL
         conversations.reset()
         focusedSubject = nil
+        diagramMode = .delta
 
         // Contour can't analyze anything without a harness. This is the one hard
         // requirement, and it fails here with an actionable message rather than several

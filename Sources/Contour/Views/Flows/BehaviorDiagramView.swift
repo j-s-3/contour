@@ -36,7 +36,7 @@ struct BehaviorDiagramView: View {
     let flowId: String
     let behavior: FlowBehavior
     let annotations: [FlowAnnotation]
-    let mode: FlowMode
+    let mode: DiagramMode
     var selectedNodeId: String?
     var onSelect: (FlowBehaviorNode) -> Void
     var onDrill: (FlowBehaviorNode) -> Void
@@ -262,7 +262,7 @@ private struct CompactLabelStyle: LabelStyle {
 /// for an outside system, a double outline for a shared flow.
 private struct StageBox: View {
     let node: FlowBehaviorNode
-    let mode: FlowMode
+    let mode: DiagramMode
     let isSelected: Bool
     let isHovered: Bool
     let subflowTitle: String?

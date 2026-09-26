@@ -61,7 +61,7 @@ enum BehaviorDiagramLayoutEngine {
     static let maxNotesPerStage = 3
     static let overflowHeight: CGFloat = 20
 
-    static func layout(_ behavior: FlowBehavior, mode: FlowMode, annotations: [FlowAnnotation]) -> BehaviorDiagramLayout {
+    static func layout(_ behavior: FlowBehavior, mode: DiagramMode, annotations: [FlowAnnotation]) -> BehaviorDiagramLayout {
         let nodes = behavior.nodes
         guard !nodes.isEmpty else { return BehaviorDiagramLayout() }
         let index = Dictionary(nodes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -292,7 +292,7 @@ enum BehaviorDiagramLayoutEngine {
         min(cap, max(1, Int((Double(text.count) / Double(perLine)).rounded(.up))))
     }
 
-    static func height(of node: FlowBehaviorNode, mode: FlowMode) -> CGFloat {
+    static func height(of node: FlowBehaviorNode, mode: DiagramMode) -> CGFloat {
         if node.kind == .trigger { return 26 + CGFloat(lines(node.label, perLine: 22, max: 2)) * 18 }
         var h: CGFloat = 22 + CGFloat(lines(node.label, perLine: 28, max: 3)) * 19
         if [.external, .datastore, .subflow].contains(node.kind) { h += 16 }
