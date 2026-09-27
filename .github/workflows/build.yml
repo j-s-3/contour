@@ -45,7 +45,7 @@ jobs:
         # No real model, no network: measures Contour's own share of "time to a useful
         # Overview" (DESIGN.md §13) against a fixed fixture corpus and fails the job on a
         # regression past a deliberately generous threshold — see BenchTests.swift.
-        run: swift test --filter Bench
+        run: swift test --filter BenchTests
 
       - name: Build release
         run: swift build -c release

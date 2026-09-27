@@ -232,7 +232,7 @@ RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter In
 see its `README.md` for what came from where, including one fixture that is partly
 synthesized and why.
 
-`swift test --filter Bench` measures Contour's own latency — diff parsing, graph
+`swift test --filter BenchTests` measures Contour's own latency — diff parsing, graph
 assembly, verification, linking — against a deterministic fixture corpus of small,
 medium and large PRs, run through `CONTOUR_MOCK_ANALYSIS` so no model or network is
 involved. It prints a per-milestone table (see `LatencyMilestone`) and fails on a

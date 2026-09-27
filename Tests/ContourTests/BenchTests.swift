@@ -8,7 +8,7 @@ import XCTest
 /// same pipeline path a real run takes (cache lookup, stage dispatch, verification, graph
 /// assembly, linking), minus the GitHub fetch and `git clone`.
 ///
-///   swift test --filter Bench
+///   swift test --filter BenchTests
 ///
 /// Prints a per-milestone (`LatencyMilestone`) table for each corpus size and fails if a
 /// corpus's own time, or the large-vs-small ratio, blows past a deliberately generous
