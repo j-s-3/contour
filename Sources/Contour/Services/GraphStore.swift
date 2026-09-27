@@ -79,8 +79,9 @@ final class GraphStore {
 
     private(set) var lastPRURL: String?
 
-    /// Whether the reviewer has approved this PR from Contour, and how that went.
-    private(set) var approval: PRApproval.State = .idle
+    /// Whether the reviewer has approved or requested changes on this PR from Contour, and
+    /// how that went.
+    private(set) var review: PRReview.State = .idle
 
     /// The harness this PR was analyzed with. Contextual chat reuses it so a conversation
     /// never talks to a different model than the one that built the review.
@@ -115,7 +116,7 @@ final class GraphStore {
         path = [.summary]
         forwardStack = []
         lastPRURL = prURL
-        approval = .idle
+        review = .idle
         conversations.reset()
         focusedSubject = nil
         diagramMode = .delta
@@ -176,26 +177,28 @@ final class GraphStore {
         phase = .idle
     }
 
-    /// Submits an approving review as the reviewer, through `gh`.
+    /// Submits a review as the reviewer, through `gh`: an approval, or a request for
+    /// changes carrying the reviewer's comment.
     @MainActor
-    func approvePullRequest() {
-        guard canApprove, let url = pullRequestWebURL else { return }
-        approval = .approving
+    func submitReview(_ verdict: PRReview.Verdict, comment: String = "") {
+        guard canSubmitReview(verdict), PRReview.isReady(verdict, comment: comment),
+              let url = pullRequestWebURL else { return }
+        review = .submitting(verdict)
         Task { @MainActor in
             do {
-                try await PRApproval.approve(prURL: url.absoluteString)
+                try await PRReview.submit(prURL: url.absoluteString, verdict: verdict, comment: comment)
                 // A different PR may have opened while the review was in flight.
                 guard pullRequestWebURL == url else { return }
-                approval = .approved
+                review = .submitted(verdict)
             } catch {
                 guard pullRequestWebURL == url else { return }
-                approval = .failed(error.localizedDescription)
+                review = .failed(verdict, error.localizedDescription)
             }
         }
     }
 
-    func dismissApprovalFailure() {
-        if case .failed = approval { approval = .idle }
+    func dismissReviewFailure() {
+        if case .failed = review { review = .idle }
     }
 
     /// Re-runs one failed or stopped section. Without a checkout nothing can be re-run in
