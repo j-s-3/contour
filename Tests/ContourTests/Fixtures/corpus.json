@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://github.com/cli/cli/pull/1",
+    "reason": "Tiny — the very first PR in cli/cli. Already IntegrationSmokeTests's default PR and used elsewhere in this suite (PlaceholderTests, GitHubIssueTrackerTests) as a captured pi/architecture-stage regression fixture, so its existence, merge state and shape are already exercised by this repo's own tests."
+  },
+  {
+    "url": "https://github.com/sharkdp/bat/pull/3877",
+    "reason": "Typical, small — closes a linked GitHub issue. Already used by this repo to capture MockAnalysisFixtures (see README.md and Sources/Contour/Pipeline/MockAnalysisFixtures.swift), so its existence, merge state and issue link are already verified by this repo's own tooling."
+  },
+  {
+    "url": "https://github.com/octocat/Hello-World/pull/1",
+    "reason": "Minimal edge case — GitHub's own canonical demo repository, whose PR #1 (\"Edited the README.md\") is the example used throughout GitHub's official REST/GraphQL API documentation for years. High confidence it exists and is merged; a single-file, near-trivial diff that stresses the pipeline's smallest-PR path differently from cli/cli#1."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/100",
+    "reason": "Candidate — a low, plausibly-merged PR number in the same actively maintained repo as the default smoke-test PR, included for variety past the repo's very first PR. Existence of the repo and its general PR/merge workflow is well established; this specific PR's diff shape (size, files touched) was not verified over the network, so treat this entry as a candidate until a run confirms it."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/1000",
+    "reason": "Candidate — a later, plausibly-merged PR number in the same repo, included for 'larger/more mature codebase' variety once the project had grown past its initial scaffolding. Not verified over the network; treat as a candidate until a run confirms it, and drop or replace it if it turns out to be unmerged, a draft, or doesn't exist."
+  }
+]
