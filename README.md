@@ -232,6 +232,13 @@ RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter In
 see its `README.md` for what came from where, including one fixture that is partly
 synthesized and why.
 
+`CorpusRunTests` runs the same pipeline against a small corpus of real, long-merged public
+PRs (`Fixtures/corpus.json`) instead of one, and records per-stage failure/retry rates,
+unverifiable citations and latency — a nightly workflow
+(`.github/workflows/nightly-corpus.yml`) runs it once a day so model-shaped instability
+shows up as a trend. Also gated behind `RUN_CONTOUR_INTEGRATION`; see
+`Tests/ContourTests/Fixtures/README.md` for running it and summarizing its results locally.
+
 ## Manual testing without waiting on a model
 
 ```sh

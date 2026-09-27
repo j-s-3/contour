@@ -1,5 +1,22 @@
 # Test fixtures
 
+## `corpus.json`
+The nightly real-PR corpus (issue #64): a list of `{url, reason}` entries, public and
+long-merged, chosen for variety (tiny, docs-only, a new package, a cross-package refactor, fork PRs,
+code moved between files, a large command rewrite). Every entry was checked against
+GitHub before it went in; each `reason` says what shape it covers. `CorpusRunTests` runs the full pipeline against every entry and
+records what happened, stage by stage. See "Running the corpus locally" below.
+
+## `sample-corpus-results.jsonl`
+A small, hand-written results file in the exact shape `CorpusRunTests` writes (one
+success, one PR with a failed stage and a malformed-JSON retry, one fatal checkout
+failure) — enough to exercise every code path in `scripts/summarize-corpus.py` without
+running the real corpus:
+
+```sh
+python3 scripts/summarize-corpus.py Tests/ContourTests/Fixtures/sample-corpus-results.jsonl
+```
+
 ## `architecture_response.json`
 A captured real analysis-stage response, used as a decoding regression fixture so the
 schema contract in `PromptBuilder`/`StageDecoding` stays honest without needing network.
@@ -28,6 +45,38 @@ Mixed provenance, deliberately:
 
 If you can run `pi` with working tools, re-capture this file and drop this caveat.
 
+## Running the corpus locally
+
+`CorpusRunTests` is gated behind `RUN_CONTOUR_INTEGRATION`, exactly like
+`IntegrationSmokeTests` — a plain `swift test` never touches it:
+
+```sh
+RUN_CONTOUR_INTEGRATION=1 swift test --filter CorpusRunTests
+```
+
+It runs the full pipeline once per PR in `corpus.json` (network + real model calls per
+PR — expect several minutes total), and appends one JSON line per PR to a results file as
+each one finishes, so a crash partway through still leaves every PR analyzed up to that
+point on disk. A PR that fails is a recorded result, not a stopped run: every entry in the
+corpus is always attempted. The results file's path defaults to somewhere under the test's
+temp directory and is printed at the start of the run; point it somewhere specific with:
+
+```sh
+CONTOUR_CORPUS_RESULTS=/tmp/corpus-results.jsonl \
+RUN_CONTOUR_INTEGRATION=1 swift test --filter CorpusRunTests
+```
+
+`CONTOUR_HARNESS` and `CONTOUR_GITHUB_ACCESS` work the same as for `IntegrationSmokeTests`
+(see the README's Tests section). Then summarize the results:
+
+```sh
+python3 scripts/summarize-corpus.py /tmp/corpus-results.jsonl
+```
+
+which prints, per stage, the failure rate, the malformed-JSON retry count, and the
+unverifiable-citation rate, plus p50/p95 latency per `AnalysisMetrics` milestone and the
+list of failed PRs with their messages. This is also what the nightly workflow
+(`.github/workflows/nightly-corpus.yml`) runs and uploads as an artifact.
 ## `fake-cli.sh`
 A fake CLI used by `ShellProcessTests` to inject faults `Shell.run`/`Shell.stream` have to
 survive — a hung process, a burst written right before exit, an invalid-UTF-8 line, and so
