@@ -35,8 +35,9 @@ struct ShellProcessTests {
     /// returns immediately, it doesn't wait for the child to actually exit.
     private func fakeCLIProcessesGone() async -> Bool {
         for _ in 0..<30 {
-            let stillThere = await isRunning("fake-cli.sh") || await isRunning("sleep 999999")
-            if !stillThere { return true }
+            let fixtureRunning = await isRunning("fake-cli.sh")
+            let sleepRunning = await isRunning("sleep 999999")
+            if !fixtureRunning && !sleepRunning { return true }
             try? await Task.sleep(for: .milliseconds(100))
         }
         return false
