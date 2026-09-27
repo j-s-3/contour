@@ -164,8 +164,13 @@ can follow it), and `claude` inlines the context file and reports the answer on 
 
 ## Conventions
 
-- `Package.swift` pins `.swiftLanguageMode(.v5)` on the app target to keep Observation
-  and async UI code compiling; don't switch it without a migration.
+- `Package.swift` pins `.swiftLanguageMode(.v6)` on the app target: full strict
+  concurrency checking. A closure crossing into a `nonisolated`/`@concurrent` call (e.g.
+  `AnalysisService.runStage`'s `onProgress`) needs `@Sendable` on its type, matching the
+  existing `onElement` parameter; a class that must cross isolation needs a real
+  `Sendable` conformance or the existing `NSLock`-boxed `@unchecked Sendable`/
+  `nonisolated(unsafe)` pattern (`ShellProcess.swift`, `AnalysisService.swift`,
+  `MainThreadWatchdog.swift`), not a new idiom.
 - User-facing failure text is written in the reviewer's terms ("Couldn't map the
   architecture."); raw model output and CLI stderr go to the technical log only.
 - The web site under `site/` is deployed as-is by `pages.yml`; the Homebrew formula in
