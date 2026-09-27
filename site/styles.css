@@ -218,6 +218,24 @@ code { font-family: var(--mono); font-size: .9em; }
 .spec-dot--open { border: 1.5px solid var(--muted); }
 .spec-dot--chosen { width: 14px; height: 14px; background: var(--amber); box-shadow: 0 0 0 5px var(--amber-dim), 0 0 22px rgba(255, 200, 87, .5); }
 
+/* ── Install ────────────────────────────────────── */
+.install { padding: 8px 0 clamp(40px, 6vw, 72px); }
+.install-grid {
+  display: grid; grid-template-columns: 5fr 7fr; gap: clamp(28px, 5vw, 64px); align-items: center;
+  max-width: 940px; padding-top: clamp(28px, 4vw, 44px); border-top: 1px solid var(--line);
+}
+.install-copy p { color: var(--text); font-size: 18px; margin-top: 14px; letter-spacing: -.01em; }
+.install-copy .small { color: var(--muted); font-size: 14px; margin-top: 12px; }
+.install-copy code { color: var(--text); font-size: .88em; white-space: nowrap; }
+.term--copy .code { font-size: 13px; }
+.file-bar { align-items: center; }
+.copy-btn {
+  font: 600 11.5px/1 var(--sans); color: var(--muted); background: none; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 9px; margin: -4px 0;
+}
+.copy-btn:hover { color: var(--text); border-color: rgba(255, 255, 255, .3); }
+.copy-btn.done { color: var(--green); border-color: rgba(111, 217, 154, .5); }
+
 /* ── Thesis ─────────────────────────────────────── */
 .thesis .giant { max-width: 15ch; }
 .thesis-grid { display: grid; grid-template-columns: 5fr 7fr; gap: clamp(40px, 7vw, 110px); margin-top: clamp(64px, 8vw, 110px); align-items: start; }
@@ -478,7 +496,7 @@ code { font-family: var(--mono); font-size: .9em; }
 /* ── Responsive ─────────────────────────────────── */
 @media (max-width: 900px) {
   .thesis-grid, .decision-layout, .attention-grid, .flows-grid, .evidence-grid, .chat-grid,
-  .altitude-grid, .arch-foot, .try-grid { grid-template-columns: 1fr; }
+  .altitude-grid, .arch-foot, .try-grid, .install-grid { grid-template-columns: 1fr; }
   .shot--offset { margin-right: auto; }
   .aside { margin-left: 0; }
   .altitude-grid .layers { max-width: 520px; width: 100%; margin: 0 auto; }

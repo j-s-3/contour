@@ -252,6 +252,19 @@
   }, { threshold: 0.6 });
   document.querySelectorAll("[data-typed]").forEach((e) => e.setAttribute("aria-label", e.dataset.typed));
 
+  // ── Copy install commands ─────────────────────────────────────────────────
+  document.querySelectorAll("[data-copy]").forEach((box) => {
+    const btn = box.querySelector("[data-copy-btn]");
+    // Copy only the commands, not the comment lines.
+    const text = box.querySelector("[data-copy-src]").textContent
+      .split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).join("\n");
+    btn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(text); } catch { return; }
+      btn.textContent = "Copied"; btn.classList.add("done");
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1600);
+    });
+  });
+
   // ── Decision verdict ──────────────────────────────────────────────────────
   const VERDICT = {
     good: "Accepted. The choice is now yours on the record, not the agent's.",
