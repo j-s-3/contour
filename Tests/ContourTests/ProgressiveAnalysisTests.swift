@@ -203,6 +203,47 @@ struct ProgressiveAnalysisTests {
         #expect(!PipelineStage.flows.checkoutFailureMessage.contains("fatal"))
     }
 
+    /// Every stage needs its own reviewer-facing headline and Details-rail short label —
+    /// only a handful of stages were exercised elsewhere (via specific failure/integration
+    /// tests), so a stage added without updating one of these switches would silently fall
+    /// through to nothing rather than failing to compile.
+    @Test func everyStageHasAHeadlineAndShortLabel() {
+        for stage in PipelineStage.allCases {
+            #expect(!stage.failureHeadline.isEmpty)
+            #expect(!stage.shortLabel.isEmpty)
+        }
+        #expect(PipelineStage.fetching.failureHeadline == "Couldn't fetch the PR")
+        #expect(PipelineStage.checkingOut.failureHeadline == "Couldn't check out the repository")
+        #expect(PipelineStage.cacheCheck.failureHeadline == "Couldn't read the saved analysis")
+        #expect(PipelineStage.ticket.failureHeadline == "Couldn't look up the linked issue")
+        #expect(PipelineStage.behaviorChange.failureHeadline == "Couldn't work out the behavior change")
+        #expect(PipelineStage.understanding.failureHeadline == "Couldn't work out what the change is for")
+    }
+
+    /// `failureReason` degrades unrecognized error types to a generic message rather than
+    /// leaking their description — `HarnessError` and any other `Error` both take this path.
+    @Test func failureReasonDegradesUnrecognizedErrorTypes() {
+        let harnessError = HarnessError.contextFileUnreadable("ctx.md", underlying: CancellationError())
+        #expect(PipelineStage.failureReason(harnessError) == "The PR's details couldn't be handed to the model.")
+        struct SomeOtherError: Error {}
+        #expect(PipelineStage.failureReason(SomeOtherError()) == "Something went wrong while it ran.")
+    }
+
+    /// Every review section needs its own title, present-tense working label, and stage
+    /// list — pinned so a section added without filling in one of these switches is caught
+    /// here instead of shipping a blank label.
+    @Test func everyReviewSectionHasATitleWorkingLabelAndStages() {
+        for section in ReviewSection.allCases {
+            #expect(!section.title.isEmpty)
+            #expect(!section.workingLabel.isEmpty)
+            #expect(!section.stages.isEmpty)
+        }
+        #expect(ReviewSection.context.stages == [.fetching, .checkingOut, .ticket])
+        #expect(ReviewSection.questions.stages == [.judgment])
+        #expect(ReviewSection.decisions.title == "Decisions")
+        #expect(ReviewSection.architecture.workingLabel == "Mapping system change…")
+    }
+
     // MARK: - Cache
 
     private func tempCache() -> AnalysisCache {
