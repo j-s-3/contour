@@ -175,6 +175,7 @@ behavior. Precedence is **environment > stored setting > what's detected on the 
 | `CONTOUR_MOCK_FAIL_STAGE` | a stage, e.g. `architecture` | With mock analysis, fail that stage once, to exercise its failure and Retry |
 | `CONTOUR_OPEN_PR_URL` | a PR URL | Open straight into that PR on launch |
 | `CONTOUR_DUMP_STAGES` | a directory | Write each stage's raw JSON there |
+| `CONTOUR_DISABLE_WATCHDOG` | `1` | Debug builds only: turn off the main-thread block watchdog (on by default; logs a block over 250ms) |
 
 ### Harness
 

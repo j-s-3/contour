@@ -23,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Push any stored per-tier model overrides into AnalysisTier before the first run
         // can read them.
         MainActor.assumeIsolated { Preferences.shared.applyModelOverrides() }
+        // Debug-only diagnostic: logs when the main thread stops responding for a while
+        // (§13/§14 scaling limits). Compiled out of release builds entirely; see
+        // `Support/MainThreadWatchdog.swift`.
+        #if DEBUG
+        MainThreadWatchdog.start()
+        #endif
     }
 }
 

@@ -111,7 +111,10 @@ struct RepoContextService {
         return (out, startLine, endLine)
     }
 
-    func readWholeFile(in checkout: RepoCheckout, path: String) throws -> String {
+    /// Async like `readLines` (nonisolated + `async` hops off the main actor on its own),
+    /// so a large file opened from `CodeViewerView`'s "Open whole file" never blocks the UI
+    /// thread the way a synchronous call from a `Task` on the main actor would.
+    func readWholeFile(in checkout: RepoCheckout, path: String) async throws -> String {
         try String(contentsOf: checkout.rootDir.appendingPathComponent(path), encoding: .utf8)
     }
 }

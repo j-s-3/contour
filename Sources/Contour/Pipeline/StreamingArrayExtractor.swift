@@ -24,6 +24,19 @@ struct StreamingArrayExtractor {
     private var inString = false
     private var escaped = false
     private var elementStart: Int?
+    /// How much of `buffer` has already been searched for the key, before it's found. Only
+    /// bytes at or after `keySearchOffset - keyPatternOverlap` are re-scanned on the next
+    /// `consume`, so the total work across every fragment stays linear in the stream's
+    /// length instead of re-decoding and re-searching the whole buffer on every call (which
+    /// was quadratic: O(fragments × buffer size)).
+    private var keySearchOffset = 0
+
+    /// Enough bytes to cover `"key": [`, with generous slack for whitespace (or
+    /// pretty-printed indentation/newlines) a model might put around the colon, so a match
+    /// spanning the last search's boundary is never missed. A larger constant here only
+    /// adds a fixed amount of re-scanned work per `consume` call, not a factor of the
+    /// stream's total length, so it stays cheap to be generous.
+    private var keyPatternOverlap: Int { key.utf8.count + 128 }
 
     init(key: String) {
         self.key = key
@@ -35,13 +48,17 @@ struct StreamingArrayExtractor {
         buffer.append(contentsOf: fragment.utf8)
 
         if !inArray {
-            // `"key"` then optional whitespace, a colon, optional whitespace, and `[`.
-            let text = String(decoding: buffer, as: UTF8.self)
+            // `"key"` then optional whitespace, a colon, optional whitespace, and `[`. Only
+            // the unsearched tail (plus a small overlap) is decoded and matched, not the
+            // whole buffer — see `keySearchOffset`.
+            let searchStart = max(0, keySearchOffset - keyPatternOverlap)
+            let text = String(decoding: buffer[searchStart...], as: UTF8.self)
             guard let range = text.range(of: #""\#(key)"\s*:\s*\["#, options: .regularExpression) else {
+                keySearchOffset = buffer.count
                 return []
             }
             inArray = true
-            cursor = text.utf8.distance(from: text.utf8.startIndex, to: range.upperBound)
+            cursor = searchStart + text.utf8.distance(from: text.utf8.startIndex, to: range.upperBound)
         }
 
         var out: [[String: Any]] = []
