@@ -218,17 +218,7 @@ code { font-family: var(--mono); font-size: .9em; }
 .spec-dot--open { border: 1.5px solid var(--muted); }
 .spec-dot--chosen { width: 14px; height: 14px; background: var(--amber); box-shadow: 0 0 0 5px var(--amber-dim), 0 0 22px rgba(255, 200, 87, .5); }
 
-/* ── Install ────────────────────────────────────── */
-.install { padding: 8px 0 clamp(40px, 6vw, 72px); }
-.install-grid {
-  display: grid; grid-template-columns: 5fr 7fr; gap: clamp(28px, 5vw, 64px); align-items: center;
-  max-width: 940px; padding-top: clamp(28px, 4vw, 44px); border-top: 1px solid var(--line);
-}
-.install-copy p { color: var(--text); font-size: 18px; margin-top: 14px; letter-spacing: -.01em; }
-.install-copy .small { color: var(--muted); font-size: 14px; margin-top: 12px; }
-.install-copy code { color: var(--text); font-size: .88em; white-space: nowrap; }
-.term--copy .code { font-size: 13px; }
-.file-bar { align-items: center; }
+/* ── Copy button ────────────────────────────────── */
 .copy-btn {
   font: 600 11.5px/1 var(--sans); color: var(--muted); background: none; cursor: pointer;
   border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 9px; margin: -4px 0;
@@ -416,7 +406,7 @@ code { font-family: var(--mono); font-size: .9em; }
 .js .ladder li { opacity: .25; }
 .js .ladder li.lit { opacity: 1; }
 .evidence-code { border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; background: #080e18; }
-.file-bar { display: flex; justify-content: space-between; padding: 11px 16px; font: 500 12.5px/1 var(--mono); border-bottom: 1px solid var(--line); background: rgba(17, 28, 46, .8); }
+.file-bar { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; font: 500 12.5px/1 var(--mono); border-bottom: 1px solid var(--line); background: rgba(17, 28, 46, .8); }
 .evidence-code .code { padding: 18px 0; overflow-x: auto; font-size: 13px; }
 .evidence-why { padding: 22px 22px 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: clamp(17px, 1.6vw, 20px); line-height: 1.45; }
 .evidence-why strong { color: var(--text); font-weight: 600; }
@@ -478,7 +468,7 @@ code { font-family: var(--mono); font-size: .9em; }
 .try { padding-top: 40px; }
 .try-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(30px, 6vw, 80px); align-items: center; border-top: 1px solid var(--line); padding-top: clamp(60px, 8vw, 100px); }
 .try p { color: var(--muted); max-width: 44ch; margin-bottom: 14px; }
-.try p code { color: var(--text); }
+.try p code { color: var(--text); white-space: nowrap; }
 .term { border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; background: #080e18; }
 .term .code { padding: 18px 20px; overflow-x: auto; color: var(--text); }
 
@@ -496,7 +486,7 @@ code { font-family: var(--mono); font-size: .9em; }
 /* ── Responsive ─────────────────────────────────── */
 @media (max-width: 900px) {
   .thesis-grid, .decision-layout, .attention-grid, .flows-grid, .evidence-grid, .chat-grid,
-  .altitude-grid, .arch-foot, .try-grid, .install-grid { grid-template-columns: 1fr; }
+  .altitude-grid, .arch-foot, .try-grid { grid-template-columns: 1fr; }
   .shot--offset { margin-right: auto; }
   .aside { margin-left: 0; }
   .altitude-grid .layers { max-width: 520px; width: 100%; margin: 0 auto; }
