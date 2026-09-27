@@ -993,6 +993,9 @@ struct PRSummary: Codable, Hashable, Sendable {
     /// produced before it existed still decode; `PRGraph.thingsToThinkAbout` falls back to
     /// `needsJudgment`/`uncertainties` for those.
     var considerations: [Consideration]?
+    /// CI, review and thread state for the Overview's facts line. Optional so graphs saved
+    /// before it existed still decode; `refreshMetadata` fills it in on the next open.
+    var glance: PRGlance?
 }
 
 /// The full knowledge graph for one PR. This is what the pipeline assembles (from
@@ -1018,6 +1021,14 @@ struct PRGraph: Codable, Hashable, Sendable {
     /// How much this PR changes the structure, in words. Nil on graphs from before the
     /// Architecture redesign; `pr.architectureImpact` still carries their prose.
     var architecture: ArchitectureAssessment?
+    /// How each stage's code refs fared against the checkout, keyed by `PipelineStage`
+    /// raw value (see `CodeRefVerifier`). Nil on graphs from before verification existed.
+    var refChecks: [String: RefCheck]?
+
+    /// Every stage's ref check added up, for "3 of 41 references couldn't be verified".
+    var refCheckTotal: RefCheck? {
+        refChecks.map { $0.values.reduce(RefCheck(), +) }
+    }
 
     func component(_ id: String?) -> ComponentNode? { components.first { $0.id == id } }
     func decision(_ id: String?) -> DecisionNode? { decisions.first { $0.id == id } }
@@ -1046,12 +1057,23 @@ struct PRGraph: Codable, Hashable, Sendable {
         return components.filter { $0.dependsOnIds.contains(systemComponentId) && $0.level >= .component }
     }
 
-    /// How many of the decisions to review — the ones Decisions shows by default — the
-    /// reviewer has consciously judged. Other decisions can still be marked, but they don't
-    /// count: this measures judgment, not coverage.
-    var reviewProgress: (reviewed: Int, total: Int) {
-        let judged = decisionsToReview
-        return (judged.filter { $0.reviewerState != .unreviewed }.count, judged.count)
+    /// The one measure of "am I done?": how many of the Overview's things to think about the
+    /// reviewer has resolved. The list is the checklist and Decisions is where a judgment is
+    /// recorded, so the Overview, its Decisions tile, the Decisions header and the sidebar all
+    /// show this same n of m. `discussed` is the questions talked through in a conversation.
+    func reviewProgress(discussed: Set<String> = []) -> (reviewed: Int, total: Int) {
+        let items = thingsToThinkAbout
+        return (items.filter { isResolved($0, discussed: discussed) }.count, items.count)
+    }
+
+    /// A thing to think about is resolved by judging the decision it's reviewed on. When
+    /// there's no decision to judge it on — none at all, or one outside Decisions to Review,
+    /// which has no judgment buttons — talking it through in a conversation resolves it.
+    func isResolved(_ item: Consideration, discussed: Set<String>) -> Bool {
+        let decision = decision(reviewDecisionId(for: item))
+        if let decision, decision.reviewerState != .unreviewed { return true }
+        let judgedOnDecision = decision.map(isToReview) ?? false
+        return !judgedOnDecision && discussed.contains(item.id)
     }
 
     /// The architecture edges to render. Prefers the rich labeled edges; when none were

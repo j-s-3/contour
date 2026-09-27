@@ -67,6 +67,7 @@ struct AnalysisIndicator: View {
     let state: AnalysisState
     let log: [PipelineProgressEntry]
     let metrics: AnalysisMetrics?
+    var refCheck: RefCheck?
     var onRetry: (PipelineStage) -> Void
 
     @State private var showDetails = false
@@ -80,7 +81,7 @@ struct AnalysisIndicator: View {
             .background(Color.secondary.opacity(settled ? 0 : 0.1), in: Capsule())
             .help("Analysis progress — click for details")
             .popover(isPresented: $showDetails, arrowEdge: .bottom) {
-                AnalysisDetailsView(state: state, log: log, metrics: metrics, onRetry: onRetry)
+                AnalysisDetailsView(state: state, log: log, metrics: metrics, refCheck: refCheck, onRetry: onRetry)
             }
             .task(id: state.isComplete) {
                 // Let the "complete" state be seen, then recede.
@@ -133,6 +134,7 @@ struct AnalysisDetailsView: View {
     let state: AnalysisState
     let log: [PipelineProgressEntry]
     let metrics: AnalysisMetrics?
+    var refCheck: RefCheck?
     var onRetry: (PipelineStage) -> Void
 
     @State private var showPipeline = false
@@ -159,6 +161,10 @@ struct AnalysisDetailsView: View {
                 ForEach(ReviewSection.allCases) { section in
                     sectionRow(section)
                 }
+            }
+
+            if let refCheck, refCheck.checked > 0 {
+                RefCheckView(check: refCheck)
             }
 
             Divider()
@@ -210,6 +216,56 @@ struct AnalysisDetailsView: View {
         case .stale: return "From the previous revision"
         case .pending: return "Waiting"
         case .done: return nil
+        }
+    }
+}
+
+/// Whether the code the analysis cites is really there (§18, `CodeRefVerifier`): "All 41
+/// references verified", or how many couldn't be and which. Those were dropped from the
+/// review, so this is the only place the reviewer learns the model cited code that isn't.
+struct RefCheckView: View {
+    let check: RefCheck
+
+    @State private var showUnresolved = false
+
+    var body: some View {
+        if check.unresolvedCount == 0 {
+            Label {
+                Text(verbatim: "All \(check.checked) code references verified")
+            } icon: {
+                Image(systemName: "checkmark.seal").foregroundStyle(.green)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            DisclosureGroup(isExpanded: $showUnresolved) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(check.unresolved, id: \.self) { ref in
+                        Text(ref)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if check.unresolvedCount > check.unresolved.count {
+                        Text(verbatim: "and \(check.unresolvedCount - check.unresolved.count) more")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text("These were left out of the review, and anything resting only on them is marked low confidence.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+                .padding(.top, 4)
+            } label: {
+                Label {
+                    Text(verbatim: "\(check.unresolvedCount) of \(check.checked) code references couldn't be verified")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+            }
+            .font(.caption)
         }
     }
 }
@@ -328,21 +384,25 @@ struct SectionPendingView: View {
     }
 }
 
-/// A section whose analysis failed: says so, and offers a retry and a conversation instead.
-/// The rest of the review is unaffected.
+/// A section whose analysis failed: says what didn't happen, and offers a retry and a
+/// conversation instead. The rest of the review is unaffected. `message` is the
+/// reviewer-facing line (`PipelineStage.failureMessage(for:)`); the raw response and stderr
+/// stay behind "Show log" in the analysis details, never here.
 struct SectionFailedView: View {
     let section: ReviewSection
     let message: String
     var onRetry: () -> Void
     var onAsk: (() -> Void)?
 
-    @State private var showMessage = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("\(section.title) analysis failed", systemImage: "exclamationmark.triangle.fill")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary, .orange)
+            Text(message)
+                .font(.callout)
+                .frame(maxWidth: 640, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Everything else in this review is still available.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -353,15 +413,11 @@ struct SectionFailedView: View {
                     Button("Ask about \(section.title.lowercased())…", action: onAsk)
                 }
             }
-            DisclosureGroup("What went wrong", isExpanded: $showMessage) {
-                Text(message)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: 640, alignment: .leading)
-                    .padding(.top, 4)
-            }
-            .font(.caption)
+            Text("The technical details are in the analysis log — click the analysis status in the toolbar, then Show log.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: 640, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

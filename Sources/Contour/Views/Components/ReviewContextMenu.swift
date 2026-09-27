@@ -118,6 +118,9 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
             if let target = resolved.detailTarget, resolved.kind != .tradeoff {
                 Button(resolved.kind == .code ? "Show in code" : "Open details") { actions.navigate(target) }
             }
+            if resolved.kind == .code, case .codeRef(let ref) = subject {
+                Button("Show in Diff") { actions.navigate(.diffLocation(ref)) }
+            }
             showInArchitecture(resolved, graph)
             relatedDecisions(resolved, graph)
             relatedFlows(resolved, graph)

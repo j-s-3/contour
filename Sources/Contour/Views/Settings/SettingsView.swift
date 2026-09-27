@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The Settings scene (⌘,). Every control here is one of the three pluggable choices, or
-/// a model override on top of the chosen harness.
+/// The Settings scene (⌘,). Every control here is one of the three pluggable choices, a
+/// model override on top of the chosen harness, or how the window opens.
 ///
 /// Options that can't work are shown disabled with the reason, rather than hidden: a user
 /// wondering why Jira isn't offered is better served by a greyed row saying "acli not
@@ -19,6 +19,8 @@ struct SettingsView: View {
                 .tabItem { Label("Harness", systemImage: "cpu") }
             sourcesTab
                 .tabItem { Label("Sources", systemImage: "arrow.triangle.branch") }
+            windowTab
+                .tabItem { Label("Window", systemImage: "macwindow") }
         }
         .frame(width: 520, height: 400)
         .task { await refresh() }
@@ -169,6 +171,23 @@ struct SettingsView: View {
 
     private var jiraLabel: String {
         preferences.jiraAvailable ? TrackerID.jira.displayName : "Jira — acli not found"
+    }
+
+    // MARK: - Window
+
+    private var windowTab: some View {
+        Form {
+            Section {
+                Toggle("Open in full screen", isOn: $preferences.opensInFullScreen)
+            } header: {
+                Text("Launch")
+            } footer: {
+                Text("When off, Contour reopens at its last size and position, beside whatever you opened the link from. When on, it takes over its own Space at launch. Applies the next time Contour opens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 
     // MARK: - Shared

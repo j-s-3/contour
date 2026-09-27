@@ -108,6 +108,18 @@ struct PreferencesTests {
 
         AnalysisTier.modelOverrides = [:]
     }
+
+    // MARK: - Window
+
+    /// Full screen is opt-in: a fresh install must open as an ordinary window.
+    @Test func fullScreenIsOptIn() {
+        let defaults = UserDefaults(suiteName: "contour.tests.\(UUID().uuidString)")!
+        let prefs = Preferences(defaults: defaults, environment: [:])
+        #expect(prefs.opensInFullScreen == false)
+
+        prefs.opensInFullScreen = true
+        #expect(Preferences(defaults: defaults, environment: [:]).opensInFullScreen)
+    }
 }
 
 /// Executable resolution. Contour shells out to CLIs by bare name, so which binary that

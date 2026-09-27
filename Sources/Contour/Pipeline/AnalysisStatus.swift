@@ -43,6 +43,45 @@ enum PipelineStage: String, CaseIterable, Codable, Sendable {
     }
 }
 
+extension PipelineStage {
+    /// What a failed stage didn't manage, in the reviewer's terms rather than the pipeline's.
+    var failureHeadline: String {
+        switch self {
+        case .fetching: return "Couldn't fetch the PR"
+        case .checkingOut: return "Couldn't check out the repository"
+        case .cacheCheck: return "Couldn't read the saved analysis"
+        case .ticket: return "Couldn't look up the linked issue"
+        case .behaviorChange: return "Couldn't work out the behavior change"
+        case .understanding: return "Couldn't work out what the change is for"
+        case .architecture: return "Couldn't map the architecture"
+        case .decisions: return "Couldn't identify the decisions"
+        case .flows: return "Couldn't trace the flows"
+        case .judgment: return "Couldn't find what needs judgment"
+        }
+    }
+
+    /// The reviewer-facing message for this stage failing with `error` — "Couldn't map the
+    /// architecture. The model's answer wasn't readable." Nothing here quotes the raw
+    /// response or stderr; those stay in the technical log.
+    func failureMessage(for error: Error) -> String {
+        "\(failureHeadline). \(Self.failureReason(error))"
+    }
+
+    static func failureReason(_ error: Error) -> String {
+        switch error {
+        case let error as AnalysisServiceError: return error.reviewerReason
+        case is StageDecodingError: return "The model's answer wasn't in the expected shape."
+        case is HarnessError: return "The PR's details couldn't be handed to the model."
+        default: return "Something went wrong while it ran."
+        }
+    }
+
+    /// For every analysis stage left without a result when the checkout itself failed.
+    var checkoutFailureMessage: String {
+        "\(failureHeadline). The repository couldn't be checked out, so there was nothing to analyze."
+    }
+}
+
 /// Where one stage is. `stale` is a slice carried over from an analysis of an earlier
 /// revision of the same PR: shown so the reviewer isn't staring at nothing, marked so it's
 /// never mistaken for a conclusion about the current code.

@@ -12,10 +12,11 @@ extension PRGraph {
             sections.append("**What changed:** \(changed)")
         }
 
-        let progress = reviewProgress
+        let toReview = decisionsToReview
         var decisionsSection = "### Decisions"
-        if progress.total > 0 {
-            decisionsSection += " (\(progress.reviewed) of \(progress.total) to review judged)"
+        if !toReview.isEmpty {
+            let judgedCount = toReview.filter { $0.reviewerState != .unreviewed }.count
+            decisionsSection += " (\(judgedCount) of \(toReview.count) to review judged)"
         }
         let judged = judgedDecisions
         if judged.isEmpty {

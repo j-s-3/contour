@@ -31,10 +31,14 @@ struct ContourApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        // The stable id is what SwiftUI keys the autosaved window frame on; without one
+        // the key is derived from the root view's type, so any change to ContentView's
+        // modifiers would silently forget where the user left the window.
+        WindowGroup(id: "review") {
             ContentView()
                 .frame(minWidth: 1080, minHeight: 720)
         }
+        .defaultSize(width: 1280, height: 820)
         .windowStyle(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
