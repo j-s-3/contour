@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Where a line `Shell.stream` can't just drop gets logged instead — currently only
-/// invalid-UTF-8 lines (see `Shell.stream`'s `yield`).
+/// invalid-UTF-8 lines (see `Shell.stream`'s `yieldLine`).
 private let shellLogger = Logger(subsystem: "Contour", category: "Shell")
 
 /// Errors surfaced from shelling out to `gh`, `git`, or `pi`.
@@ -76,15 +76,23 @@ enum Shell {
 
                 let outBox = DataBox()
                 let errBox = DataBox()
+                // One lock around every read of either pipe: the readability handlers and
+                // the termination-time drain below run on different queues, and two readers
+                // pulling from the same descriptor at once could append chunks out of order.
+                let ioLock = NSLock()
                 outPipe.fileHandleForReading.readabilityHandler = { handle in
-                    let d = handle.availableData
-                    if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil }
-                    else { outBox.append(d) }
+                    ioLock.withLock {
+                        let d = handle.availableData
+                        if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil }
+                        else { outBox.append(d) }
+                    }
                 }
                 errPipe.fileHandleForReading.readabilityHandler = { handle in
-                    let d = handle.availableData
-                    if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
-                    else { errBox.append(d) }
+                    ioLock.withLock {
+                        let d = handle.availableData
+                        if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
+                        else { errBox.append(d) }
+                    }
                 }
 
                 process.terminationHandler = { proc in
@@ -93,13 +101,15 @@ enum Shell {
                     // exits immediately can have this handler run before the last chunk was
                     // read. Clear the handlers and read whatever is left directly before
                     // snapshotting, rather than trust the handler already saw it.
-                    outPipe.fileHandleForReading.readabilityHandler = nil
-                    errPipe.fileHandleForReading.readabilityHandler = nil
-                    if let remaining = (try? outPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
-                        outBox.append(remaining)
-                    }
-                    if let remaining = (try? errPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
-                        errBox.append(remaining)
+                    ioLock.withLock {
+                        outPipe.fileHandleForReading.readabilityHandler = nil
+                        errPipe.fileHandleForReading.readabilityHandler = nil
+                        if let remaining = (try? outPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
+                            outBox.append(remaining)
+                        }
+                        if let remaining = (try? errPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
+                            errBox.append(remaining)
+                        }
                     }
                     let out = String(data: outBox.snapshot(), encoding: .utf8) ?? ""
                     let err = String(data: errBox.snapshot(), encoding: .utf8) ?? ""
@@ -159,6 +169,10 @@ enum Shell {
             let lineBuffer = DataBox()
             let errBox = DataBox()
             let activity = ActivityClock()
+            // One lock around every read of either pipe and the line extraction that
+            // follows it: the readability handlers and the termination-time drain run on
+            // different queues, and two readers on one descriptor could reorder lines.
+            let ioLock = NSLock()
 
             // Pulls complete lines out of `chunk` (appended after whatever partial line is
             // already buffered) and yields each one; leaves any partial line in `lineBuffer`
@@ -170,7 +184,7 @@ enum Shell {
                 while let newlineRange = remainder.range(of: Data([0x0A])) {
                     let lineData = remainder.subdata(in: remainder.startIndex..<newlineRange.lowerBound)
                     remainder.removeSubrange(remainder.startIndex..<newlineRange.upperBound)
-                    yield(lineData)
+                    yieldLine(lineData)
                 }
                 if !remainder.isEmpty { lineBuffer.append(remainder) }
             }
@@ -179,7 +193,7 @@ enum Shell {
             // decode it lossily (replacement characters for the bad bytes) instead, so a
             // malformed line is visible — to the log, and still handed to the caller — rather
             // than just vanishing from the stream.
-            func yield(_ lineData: Data) {
+            func yieldLine(_ lineData: Data) {
                 guard !lineData.isEmpty else { return }
                 if let line = String(data: lineData, encoding: .utf8) {
                     continuation.yield(line)
@@ -193,18 +207,22 @@ enum Shell {
             }
 
             outPipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                if chunk.isEmpty {
-                    outPipe.fileHandleForReading.readabilityHandler = nil
-                    return
+                ioLock.withLock {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty {
+                        outPipe.fileHandleForReading.readabilityHandler = nil
+                        return
+                    }
+                    activity.touch()
+                    extractLines(from: chunk)
                 }
-                activity.touch()
-                extractLines(from: chunk)
             }
             errPipe.fileHandleForReading.readabilityHandler = { handle in
-                let d = handle.availableData
-                if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
-                else { activity.touch(); errBox.append(d) }
+                ioLock.withLock {
+                    let d = handle.availableData
+                    if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
+                    else { activity.touch(); errBox.append(d) }
+                }
             }
 
             // Inactivity watchdog: polls rather than firing one timer, since any output
@@ -231,16 +249,18 @@ enum Shell {
                 // Same drain race as `run`: `terminationHandler` can fire before the
                 // readability handler drained the last chunk a process wrote right before
                 // exiting. Clear the handlers and read whatever is left directly.
-                outPipe.fileHandleForReading.readabilityHandler = nil
-                errPipe.fileHandleForReading.readabilityHandler = nil
-                if let remaining = (try? outPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
-                    extractLines(from: remaining)
+                ioLock.withLock {
+                    outPipe.fileHandleForReading.readabilityHandler = nil
+                    errPipe.fileHandleForReading.readabilityHandler = nil
+                    if let remaining = (try? outPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
+                        extractLines(from: remaining)
+                    }
+                    if let remaining = (try? errPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
+                        errBox.append(remaining)
+                    }
+                    let trailing = lineBuffer.snapshot()
+                    if !trailing.isEmpty { yieldLine(trailing) }
                 }
-                if let remaining = (try? errPipe.fileHandleForReading.readToEnd()) ?? nil, !remaining.isEmpty {
-                    errBox.append(remaining)
-                }
-                let trailing = lineBuffer.snapshot()
-                if !trailing.isEmpty { yield(trailing) }
                 if proc.terminationStatus == 0 {
                     continuation.finish()
                 } else {

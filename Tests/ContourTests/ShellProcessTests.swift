@@ -7,6 +7,10 @@ import Testing
 /// protects the happy path; these fixtures need a real process because the failure they
 /// exercise depends on *how and when* it writes and exits, not just what it writes — a
 /// hang, a burst right before exit, a line that isn't valid UTF-8.
+///
+/// Serialized: every test ends by checking that no `fake-cli.sh` process is left, and
+/// tests running side by side would see each other's.
+@Suite(.serialized)
 struct ShellProcessTests {
 
     private func fakeCLI(_ behavior: String) throws -> (executable: String, arguments: [String]) {
@@ -166,7 +170,7 @@ struct ShellProcessTests {
 
     /// A line that isn't valid UTF-8 used to vanish from the stream with no trace. It must
     /// now still reach the caller — lossily decoded — rather than being silently dropped;
-    /// see `Shell.stream`'s `yield` for where it's also logged.
+    /// see `Shell.stream`'s `yieldLine` for where it's also logged.
     @Test func invalidUTF8LineIsNotSilentlyDropped() async throws {
         let (lines, error) = try await collect("invalid-utf8-line")
         #expect(error == nil)
