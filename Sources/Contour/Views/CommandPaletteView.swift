@@ -75,6 +75,11 @@ struct CommandPaletteView: View {
             }
             commands.insert(contentsOf: modes, at: 0)
         }
+        // Appended, never first: Return on an empty query runs the first command.
+        if store.canStopAnalysis {
+            commands.append(.init(title: "Stop analysis", subtitle: "keeps what's already here; stopped sections can be retried",
+                                  symbol: "stop.circle") { store.stopAnalysis() })
+        }
         guard let graph = store.graph else { return commands }
         commands.append(.init(title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
                               symbol: "doc.on.clipboard") { store.copyReviewSummary() })

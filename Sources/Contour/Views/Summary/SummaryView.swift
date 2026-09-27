@@ -61,9 +61,13 @@ struct SummaryView: View {
                         .padding(.top, 26)
                 }
 
+                // A stopped judgment is settled, so it lands here with whatever it found.
                 if let items = graph.thingsToThinkAbout(during: analysis) {
                     if !items.isEmpty {
                         thingsToThinkAbout(items)
+                            .padding(.top, 36)
+                    } else if judgmentStatus == .stopped {
+                        retryLine("Stopped before weighing what needs judgment.", stage: .judgment)
                             .padding(.top, 36)
                     }
                 } else {
@@ -217,15 +221,18 @@ struct SummaryView: View {
             }
             if behaviorStatus.failure != nil {
                 retryLine("Couldn't build the before / after.", stage: .behaviorChange)
+            } else if behaviorStatus == .stopped {
+                retryLine("Stopped before the before / after was built.", stage: .behaviorChange)
             }
         }
         .animation(.easeInOut(duration: 0.35), value: graph.dominantBehaviorChange?.id)
         .animation(.easeInOut(duration: 0.35), value: graph.pr.howItWasSolved?.text)
     }
 
+    /// A failed or stopped stage's one line, with its Retry.
     private func retryLine(_ text: String, stage: PipelineStage) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            StageStatusGlyph(status: analysis.status(stage))
             Text(text).foregroundStyle(.secondary)
             Button("Retry") { onRetry(stage) }
                 .buttonStyle(.link)
@@ -393,6 +400,10 @@ struct SummaryView: View {
                 retryLine("Couldn't finish weighing what needs judgment.", stage: .judgment)
                     .padding(.leading, 58)
                     .padding(.top, 6)
+            } else if judgmentStatus == .stopped {
+                retryLine("Stopped before weighing what else needs judgment.", stage: .judgment)
+                    .padding(.leading, 58)
+                    .padding(.top, 6)
             }
         }
         .padding(.bottom, 10)
@@ -483,6 +494,7 @@ struct SummaryView: View {
         switch analysis.status(stage) {
         case .done, .stale: return ready
         case .failed: return "Couldn't be analyzed"
+        case .stopped: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s"), stopped" : "Stopped"
         case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
         case .pending: return "Waiting…"
         }

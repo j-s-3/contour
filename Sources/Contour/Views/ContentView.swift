@@ -140,7 +140,7 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if let head = store.analysis.revalidatingFrom {
-                    RevalidationBanner(head: head)
+                    RevalidationBanner(head: head, updating: store.analysis.canStop)
                 }
                 detailContent(graph)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -197,7 +197,7 @@ struct ContentView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
-                                  refCheck: graph.refCheckTotal) {
+                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }) {
                     store.retry($0)
                 }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
@@ -313,6 +313,7 @@ struct ContentView: View {
         case .running(let detail): return detail ?? section.workingLabel
         case .failed: return "Couldn't be generated"
         case .stale: return "Previous revision"
+        case .stopped: return "Stopped"
         case .pending: return "Waiting…"
         case .done: return nil
         }
@@ -385,13 +386,18 @@ struct ContentView: View {
                 .overlay(alignment: .bottom) {
                     if status.isRunning, let progress {
                         SectionProgressPill(text: progress)
+                    } else if status == .stopped {
+                        SectionStoppedPill { store.retry(stage) }
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: status.isRunning)
+                .animation(.easeInOut(duration: 0.3), value: status == .stopped)
         } else if let message = status.failure {
             SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
             }
+        } else if status == .stopped {
+            SectionStoppedView(section: section) { store.retry(stage) }
         } else if status == .done {
             content()
         } else {

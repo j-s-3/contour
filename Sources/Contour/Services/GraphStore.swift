@@ -99,7 +99,7 @@ final class GraphStore {
     /// state. Every caller is a view action, so this costs nothing.
     @MainActor
     func load(prURL: String, forceRefresh: Bool = false) {
-        stopAnalysis()
+        endAnalysis()
         phase = .opening
         progressLog = []
         graph = nil
@@ -168,20 +168,34 @@ final class GraphStore {
     /// prompt is pre-filled with `lastPRURL`, which survives the close.
     @MainActor
     func close() {
-        stopAnalysis()
+        endAnalysis()
         phase = .idle
     }
 
-    /// Re-runs one failed section. Without a checkout nothing can be re-run in place (the
-    /// failure was upstream of every stage), so the whole PR is reopened instead.
+    /// Re-runs one failed or stopped section. Without a checkout nothing can be re-run in
+    /// place (the failure or stop was upstream of every stage), so the whole PR is reopened
+    /// instead.
     @MainActor
     func retry(_ stage: PipelineStage) {
         guard let pipeline, checkout != nil else { return reopen() }
         Task { await pipeline.retry(stage) }
     }
 
+    /// Whether "Stop analysis" has anything to stop.
+    var canStopAnalysis: Bool { phase == .review && pipeline != nil && analysis.canStop }
+
+    /// "Stop analysis": the harness calls cost real tokens, so the reviewer can end them
+    /// without leaving the PR. Whatever has landed stays; every section still in progress
+    /// is marked stopped and can be resumed on its own with Retry.
     @MainActor
-    private func stopAnalysis() {
+    func stopAnalysis() {
+        guard canStopAnalysis, let pipeline else { return }
+        Task { await pipeline.stop() }
+    }
+
+    /// Tears the analysis down for good, when leaving the PR or reopening it.
+    @MainActor
+    private func endAnalysis() {
         saveMetrics()
         runTask?.cancel()
         runTask = nil
