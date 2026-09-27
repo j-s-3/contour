@@ -84,5 +84,21 @@ jobs:
         # regression past a deliberately generous threshold — see BenchTests.swift.
         run: swift test --filter BenchTests
 
+      - name: Test under Thread Sanitizer
+        # Same unit tests, instrumented for data races: the pipeline is an actor, `Shell`
+        # bridges GCD's readabilityHandler/terminationHandler callbacks into Swift
+        # Concurrency, and AnalysisService.modelOverrides is a lock-protected static var —
+        # exactly the shapes TSan is good at catching and Package.swift's Swift 5 language
+        # mode doesn't check at compile time. A separate `swift test` invocation (not
+        # `--enable-code-coverage`, and run after the coverage steps above) so it can't
+        # confuse their search for the coverage-instrumented test binary and profile under
+        # `.build`. continue-on-error for now, while the baseline is established; the goal
+        # is to make this a hard gate once it's clean.
+        continue-on-error: true
+        # The benchmark suites are skipped here: they exist to time large inputs, and
+        # under the sanitizer's slowdown they would only stretch the job without adding a
+        # race the ordinary suites don't already exercise.
+        run: swift test --sanitize=thread --skip BenchmarkTests --skip BenchTests
+
       - name: Build release
         run: swift build -c release
