@@ -48,18 +48,20 @@ struct BehaviorDiagramView: View {
     @State private var hoveredId: String?
 
     var body: some View {
-        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations)
         // The legend sits in its own strip under the canvas rather than floating over it, so
         // it can never cover a stage however short the window is.
         VStack(spacing: 0) {
-            canvas(layout)
+            canvas
             Divider()
             legend
         }
     }
 
-    private func canvas(_ layout: BehaviorDiagramLayout) -> some View {
+    /// Laid out inside the reader, since the layout spreads to the width it's given.
+    private var canvas: some View {
         GeometryReader { geo in
+            let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations,
+                                                            availableWidth: geo.size.width)
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(layout.boundaries) { boundaryBox($0) }
