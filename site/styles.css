@@ -458,7 +458,7 @@ code { font-family: var(--mono); font-size: .9em; }
   color: var(--muted); transition: color .6s var(--ease), opacity .6s var(--ease);
   transform: translate(-50%, -50%); white-space: nowrap;
 }
-.layer-list li span { padding: 5px 8px; border-radius: 6px; background: rgba(7, 11, 18, .85); }
+.layer-list li span { padding: 3px 8px; border-radius: 6px; background: rgba(7, 11, 18, .85); }
 .layer-list li.on { color: var(--text); }
 .layer-list li[data-layer-i="4"].on { color: var(--amber); }
 
