@@ -400,4 +400,96 @@ struct ContextualChatTests {
         onDecision.messages.append(ChatMessage(role: .user, text: "Why?"))
         #expect(store.discussedConsiderationIds == ["asked"])
     }
+
+    // MARK: - ConversationStore lifecycle
+
+    /// `close`/`remove`/`reset` are the only ways a thread leaves the store — each must
+    /// leave `activeId`/`isPresented` consistent, since a dangling `activeId` would make
+    /// `active` resolve to nothing while the sheet still thinks something is showing.
+    @Test func closeHidesTheSheetWithoutClearingThreads() {
+        let store = ConversationStore()
+        store.open(.decision("d1"))
+        store.close()
+        #expect(!store.isPresented)
+        #expect(store.conversations.count == 1)
+    }
+
+    @Test func removingTheActiveConversationFallsBackToAnotherOrNone() {
+        let store = ConversationStore()
+        let first = store.open(.decision("d1"))
+        let second = store.open(.decision("d2"))
+        #expect(store.activeId == second.id)
+
+        store.remove(first)
+        #expect(store.activeId == second.id, "removing a non-active thread leaves activeId alone")
+
+        store.remove(second)
+        #expect(store.activeId == nil)
+        #expect(!store.isPresented, "the sheet closes once the last thread is gone")
+    }
+
+    @Test func resetDropsEveryThreadAndClosesTheSheet() {
+        let store = ConversationStore()
+        store.open(.decision("d1"))
+        store.open(.decision("d2"))
+        store.reset()
+        #expect(store.conversations.isEmpty)
+        #expect(store.activeId == nil)
+        #expect(!store.isPresented)
+    }
+
+    /// Pinning is idempotent — clicking "pin" on a line that's already pinned must not
+    /// duplicate it or keep stealing focus.
+    @Test func pinningIsIdempotentAndBumpsFocusOnlyOnce() {
+        let store = ConversationStore()
+        let conversation = store.open(.decision("d1"))
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        store.pin(ref, in: conversation)
+        #expect(conversation.pinnedRefs == [ref])
+        let focusAfterFirstPin = store.focusRequest
+        store.pin(ref, in: conversation)
+        #expect(conversation.pinnedRefs == [ref], "pinning the same ref twice must not duplicate it")
+        #expect(store.focusRequest == focusAfterFirstPin, "a no-op pin must not steal focus again")
+    }
+
+    /// `cancel` on a thread with nothing in flight is a safe no-op — a reviewer can hit
+    /// "stop" on an idle thread without it crashing.
+    @Test func cancelingAnIdleConversationIsANoOp() {
+        let store = ConversationStore()
+        let conversation = store.open(.decision("d1"))
+        store.cancel(conversation)
+        #expect(!conversation.isResponding)
+    }
+
+    /// `send` never reaches the harness without a checkout, a chosen harness, and a subject
+    /// that still resolves against the graph — each failure records a reviewer-facing error
+    /// on the placeholder reply instead of silently doing nothing.
+    @Test @MainActor func sendRecordsAnErrorWhenPrerequisitesAreMissing() {
+        let store = ConversationStore()
+        let checkout = RepoCheckout(rootDir: URL(fileURLWithPath: "/tmp"), headSha: "a", baseSha: "b")
+
+        let noCheckout = store.open(.decision("index-on-publish"))
+        store.send("Why?", in: noCheckout, graph: graph, checkout: nil, harnessID: .pi)
+        #expect(noCheckout.messages.count == 2)
+        #expect(noCheckout.messages.last?.error == ConversationError.noCheckout.localizedDescription)
+        #expect(noCheckout.messages.last?.isStreaming == false)
+        #expect(!noCheckout.isResponding)
+
+        let noHarness = store.open(.component("index-queue"))
+        store.send("Why?", in: noHarness, graph: graph, checkout: checkout, harnessID: nil)
+        #expect(noHarness.messages.last?.error == "No AI harness selected. Pick one in Settings (⌘,).")
+
+        let unresolvable = store.open(.decision("nope"))
+        store.send("Why?", in: unresolvable, graph: graph, checkout: checkout, harnessID: .pi)
+        #expect(unresolvable.messages.last?.error == "No AI harness selected. Pick one in Settings (⌘,).")
+    }
+
+    /// A blank question (whitespace only) is rejected before anything is appended — an
+    /// accidental empty submit must not leave a dangling user/assistant pair in the thread.
+    @Test @MainActor func sendIgnoresABlankQuestion() {
+        let store = ConversationStore()
+        let conversation = store.open(.decision("index-on-publish"))
+        store.send("   \n  ", in: conversation, graph: graph, checkout: nil, harnessID: nil)
+        #expect(conversation.messages.isEmpty)
+    }
 }
