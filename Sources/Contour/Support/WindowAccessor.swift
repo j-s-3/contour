@@ -26,7 +26,10 @@ struct WindowAccessor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
-        DispatchQueue.main.async { [weak view] in
+        // `NSView` isn't `Sendable`, so it can't be captured (even weakly) in the `@Sendable`
+        // closure `DispatchQueue.main.async` requires; a `Task` needs no such capture check,
+        // since it inherits the isolation it was created under rather than crossing it.
+        Task { @MainActor [weak view] in
             guard let window = view?.window else { return }
             // Belt-and-suspenders: make sure this window is explicitly eligible for the
             // full-screen space even if something about running unbundled left the
@@ -38,7 +41,8 @@ struct WindowAccessor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         guard entersFullScreen, !context.coordinator.didEnterFullScreen else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak nsView] in
+        Task { @MainActor [weak nsView] in
+            try? await Task.sleep(for: .seconds(0.2))
             guard let window = nsView?.window, !window.styleMask.contains(.fullScreen) else { return }
             context.coordinator.didEnterFullScreen = true
             window.toggleFullScreen(nil)

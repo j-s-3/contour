@@ -74,9 +74,16 @@ struct OnboardingView: View {
                     // SwiftUI's own paste hook, independent of that plumbing.
                     .onPasteCommand(of: [.text, .url]) { providers in
                         guard let provider = providers.first else { return }
-                        _ = provider.loadObject(ofClass: String.self) { text, _ in
-                            guard let text else { return }
-                            DispatchQueue.main.async { urlText = PRLink.extract(from: text) ?? text }
+                        Task {
+                            // `loadObject`'s completion handler is `@Sendable`; bridging it
+                            // through a continuation keeps `urlText` (an `@State`, not
+                            // `Sendable`) out of that closure entirely.
+                            guard let text = await withCheckedContinuation({ continuation in
+                                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                                    continuation.resume(returning: text)
+                                }
+                            }) else { return }
+                            urlText = PRLink.extract(from: text) ?? text
                         }
                     }
                 // Fallback that never depends on keyboard-shortcut routing at all.

@@ -10,19 +10,24 @@ import AppKit
 /// appears regardless of launch context.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The Contour mark, bundled from `Assets/Logo/Contour.icns` by `scripts/build-icon.sh`.
-    static let appIcon: NSImage? = Bundle.module.url(forResource: "AppIcon", withExtension: "icns")
+    /// `@MainActor` because `NSImage` isn't `Sendable`, and a bare `static let` of a
+    /// non-`Sendable` type is exactly the shared-mutable-global-state Swift 6 rejects —
+    /// isolating it to the actor it's only ever read from is the fix, not a workaround.
+    @MainActor static let appIcon: NSImage? = Bundle.module.url(forResource: "AppIcon", withExtension: "icns")
         .flatMap(NSImage.init(contentsOf:))
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        // With no Info.plist there's no `CFBundleIconFile`, so the Dock shows the generic
-        // "exec" icon. Set it from the bundled resource — after the policy change, which
-        // creates the Dock tile.
-        if let icon = AppDelegate.appIcon { NSApp.applicationIconImage = icon }
+        MainActor.assumeIsolated {
+            // With no Info.plist there's no `CFBundleIconFile`, so the Dock shows the
+            // generic "exec" icon. Set it from the bundled resource — after the policy
+            // change, which creates the Dock tile.
+            if let icon = AppDelegate.appIcon { NSApp.applicationIconImage = icon }
+            // Push any stored per-tier model overrides into AnalysisTier before the first
+            // run can read them.
+            Preferences.shared.applyModelOverrides()
+        }
         NSApp.activate(ignoringOtherApps: true)
-        // Push any stored per-tier model overrides into AnalysisTier before the first run
-        // can read them.
-        MainActor.assumeIsolated { Preferences.shared.applyModelOverrides() }
     }
 }
 

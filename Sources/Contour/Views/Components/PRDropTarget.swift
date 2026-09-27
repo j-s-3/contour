@@ -18,8 +18,8 @@ private struct PRDropTarget: ViewModifier {
         content
             .onDrop(of: [.url, .plainText], isTargeted: $isTargeted) { providers in
                 guard let provider = providers.first else { return false }
-                Self.loadPullRequest(from: provider) { url in
-                    if let url { DispatchQueue.main.async { open(url) } }
+                Task {
+                    if let url = await Self.loadPullRequest(from: provider) { open(url) }
                 }
                 return true
             }
@@ -38,17 +38,25 @@ private struct PRDropTarget: ViewModifier {
 
     /// A browser drag carries a URL; a text drag carries the surrounding words too, so it
     /// is searched rather than taken whole.
-    private static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
+    ///
+    /// Bridged through a continuation rather than a plain completion handler: `loadObject`'s
+    /// own completion handler is `@Sendable`, and a plain `(String?) -> Void` closure isn't,
+    /// so handing it straight to `loadObject` is what Swift 6's strict concurrency checking
+    /// is (correctly) unhappy about. The continuation only ever captures itself, which is.
+    private static func loadPullRequest(from provider: NSItemProvider) async -> String? {
         if provider.canLoadObject(ofClass: URL.self) {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                completion(url.flatMap(PRLink.pullRequestURL(from:)))
+            return await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url.flatMap(PRLink.pullRequestURL(from:)))
+                }
             }
         } else if provider.canLoadObject(ofClass: String.self) {
-            _ = provider.loadObject(ofClass: String.self) { text, _ in
-                completion(text.flatMap(PRLink.extract(from:)))
+            return await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    continuation.resume(returning: text.flatMap(PRLink.extract(from:)))
+                }
             }
-        } else {
-            completion(nil)
         }
+        return nil
     }
 }
