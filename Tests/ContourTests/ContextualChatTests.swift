@@ -96,6 +96,67 @@ struct ContextualChatTests {
         #expect(prompt.hasSuffix("Reviewer's question: What other process?"))
     }
 
+    /// `ConversationError` messages are shown to the reviewer verbatim — pinning the exact
+    /// text catches an edit that made one vague or leaked an internal detail.
+    @Test func conversationErrorMessagesAreReviewerFacing() {
+        #expect(ConversationError.noCheckout.errorDescription
+                == "There's no local checkout for this PR, so there's nothing to ask about yet.")
+        #expect(ConversationError.emptyResponse(harness: "pi").errorDescription == "pi finished without an answer.")
+    }
+
+    /// The chat system prompt carries the same trust-boundary and linking rules every
+    /// harness invocation depends on. It's a `static let`, lazily initialized on first
+    /// access, so referencing it here is also what makes the property itself count as
+    /// exercised rather than dead code nothing ever touches.
+    @Test func systemPromptCarriesTheUntrustedContentAndLinkingRules() {
+        #expect(ConversationService.systemPrompt.contains("UNTRUSTED_PR_CONTENT"))
+        #expect(ConversationService.systemPrompt.contains("[[kind:id]]"))
+    }
+
+    /// Mock mode (`CONTOUR_MOCK_ANALYSIS=1`) streams a synthetic answer word by word so the
+    /// chat surface can be exercised without a model: activity first, then only deltas,
+    /// then the final answer — which must name the selected object and surface a code
+    /// citation straight from the context document.
+    @Test func mockResponseStreamsActivityThenDeltasThenFinal() async throws {
+        let doc = """
+        ## Where the reviewer is
+        - **Index Queue** ← selected (Architecture)
+
+        ## Code references for this context
+        - `src/main/java/queue/IndexQueue.java:1-30`
+        """
+        var events: [ConversationEvent] = []
+        for try await event in ConversationService.mockResponse(contextDocument: doc, question: "Why queued?") {
+            events.append(event)
+        }
+        guard case .activity = events.first else { Issue.record("expected activity first"); return }
+        guard case .final(let final) = events.last else { Issue.record("expected final last"); return }
+        #expect(events.dropFirst().dropLast().allSatisfy {
+            if case .delta = $0 { return true } else { return false }
+        })
+        #expect(final.contains("Index Queue"))
+        #expect(final.contains("src/main/java/queue/IndexQueue.java:1-30"))
+        #expect(final.contains("Why queued?"))
+    }
+
+    /// `respond` itself is just a dispatcher: under `CONTOUR_MOCK_ANALYSIS=1` it forwards
+    /// straight to `mockResponse` without touching the checkout or a real harness. Pinned so
+    /// a refactor that breaks that short-circuit — accidentally requiring a real `pi`/`claude`
+    /// install to answer in mock mode — is caught here rather than by a reviewer.
+    @Test func respondShortCircuitsToMockResponseUnderMockAnalysis() async throws {
+        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
+        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
+        let service = ConversationService(
+            harness: PiHarness(),
+            checkout: RepoCheckout(rootDir: URL(fileURLWithPath: "/nonexistent"), headSha: "a", baseSha: "b")
+        )
+        var sawFinal = false
+        for try await event in service.respond(conversationId: UUID(), contextDocument: "doc", history: [], question: "Q?") {
+            if case .final = event { sawFinal = true }
+        }
+        #expect(sawFinal)
+    }
+
     // MARK: - Suggestions and link tokens across every subject kind
 
     private func stub(
