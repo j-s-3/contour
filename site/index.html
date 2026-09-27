@@ -57,6 +57,7 @@
         <p class="hero-sub">Code review was designed for a world where humans wrote the code.<br class="br-lg"> That world changed.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="#how">See how it works <span aria-hidden="true">↓</span></a>
+          <a class="btn btn-ghost" href="#install">Install with Homebrew <span aria-hidden="true">↓</span></a>
           <a class="btn btn-ghost" href="https://github.com/j-s-3/contour">View on GitHub <span aria-hidden="true">↗</span></a>
         </div>
       </div>
@@ -114,24 +115,6 @@
         </div>
         <figcaption id="stage-cap" class="stage-cap">A diff gives you points. <strong>Contour shows you the shape.</strong></figcaption>
       </figure>
-    </section>
-
-    <!-- ───────────────────── Install ───────────────────── -->
-    <section class="install" id="install" aria-labelledby="install-title">
-      <div class="wrap install-grid">
-        <div class="install-copy">
-          <h2 id="install-title" class="label label-amber">Install with Homebrew</h2>
-          <p>A native macOS app. Point it at any GitHub pull request.</p>
-          <p class="small">Builds the latest <code>main</code> from source, so it needs Xcode 27. You also need <code>git</code> and an AI CLI you’re signed in to (Claude Code or pi). <code>brew upgrade --fetch-HEAD contour</code> pulls newer commits.</p>
-        </div>
-        <div class="term term--copy" data-copy>
-          <div class="file-bar"><span>zsh</span><button type="button" class="copy-btn" data-copy-btn aria-label="Copy install commands">Copy</button></div>
-<pre class="code"><code data-copy-src><span class="c"># the repo is its own tap</span>
-brew tap j-s-3/contour https://github.com/j-s-3/contour
-brew install --HEAD j-s-3/contour/contour
-contour</code></pre>
-        </div>
-      </div>
     </section>
 
     <!-- ───────────────────── The wrong abstraction ───────────────────── -->
@@ -486,19 +469,19 @@ contour</code></pre>
     </section>
 
     <!-- ───────────────────── Try ───────────────────── -->
-    <section class="sec try" id="try" aria-labelledby="try-title">
+    <section class="sec try" id="install" aria-labelledby="try-title">
       <div class="wrap try-grid">
         <div>
           <h2 id="try-title" class="h-md reveal">Try Contour</h2>
           <p class="reveal">A native SwiftUI app for macOS 15+, installed with Homebrew or built from source. It drives an AI CLI you’re already signed in to (Claude Code or pi) and needs nothing else but <code>git</code>. Public PRs don’t even need <code>gh</code>.</p>
-          <p class="small reveal">Early and experimental. Expect rough edges.</p>
+          <p class="small reveal">Homebrew builds the latest <code>main</code> from source, so it needs Xcode 27. <code>brew upgrade --fetch-HEAD contour</code> pulls newer commits. Early and experimental; expect rough edges.</p>
         </div>
-        <div class="term reveal" aria-label="Install and run commands">
-          <div class="file-bar"><span>zsh</span></div>
+        <div class="term reveal" aria-label="Install and run commands" data-copy>
+          <div class="file-bar"><span>zsh</span><button type="button" class="copy-btn" data-copy-btn aria-label="Copy the Homebrew install commands">Copy</button></div>
 <pre class="code"><code><span class="c"># the repo is its own tap</span>
-brew tap j-s-3/contour https://github.com/j-s-3/contour
+<span data-copy-src>brew tap j-s-3/contour https://github.com/j-s-3/contour
 brew install --HEAD j-s-3/contour/contour
-contour
+contour</span>
 
 <span class="c"># or build it yourself</span>
 git clone https://github.com/j-s-3/contour
