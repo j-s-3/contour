@@ -175,6 +175,7 @@ behavior. Precedence is **environment > stored setting > what's detected on the 
 | `CONTOUR_MOCK_FAIL_STAGE` | a stage, e.g. `architecture` | With mock analysis, fail that stage once, to exercise its failure and Retry |
 | `CONTOUR_OPEN_PR_URL` | a PR URL | Open straight into that PR on launch |
 | `CONTOUR_DUMP_STAGES` | a directory | Write each stage's raw JSON there |
+| `CONTOUR_DISABLE_WATCHDOG` | `1` | Debug builds only: turn off the main-thread block watchdog (on by default; logs a block over 250ms) |
 
 ### Harness
 
@@ -231,6 +232,20 @@ RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter In
 `Tests/ContourTests/Fixtures/` holds captured real output used as regression fixtures —
 see its `README.md` for what came from where, including one fixture that is partly
 synthesized and why.
+
+`swift test --filter BenchTests` measures Contour's own latency — diff parsing, graph
+assembly, verification, linking — against a deterministic fixture corpus of small,
+medium and large PRs, run through `CONTOUR_MOCK_ANALYSIS` so no model or network is
+involved. It prints a per-milestone table (see `LatencyMilestone`) and fails on a
+large-multiple regression; CI runs it on every build. `scripts/summarize-metrics.py`
+reports the same p50/p95 breakdown from a real `metrics.jsonl` collected over normal use.
+
+`CorpusRunTests` runs the same pipeline against a small corpus of real, long-merged public
+PRs (`Fixtures/corpus.json`) instead of one, and records per-stage failure/retry rates,
+unverifiable citations and latency — a nightly workflow
+(`.github/workflows/nightly-corpus.yml`) runs it once a day so model-shaped instability
+shows up as a trend. Also gated behind `RUN_CONTOUR_INTEGRATION`; see
+`Tests/ContourTests/Fixtures/README.md` for running it and summarizing its results locally.
 
 ## Manual testing without waiting on a model
 

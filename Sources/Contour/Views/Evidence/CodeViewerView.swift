@@ -132,7 +132,7 @@ struct CodeViewerView: View {
     private func loadWholeFile() async {
         guard let checkout else { return }
         do {
-            wholeFile = try repoContext.readWholeFile(in: checkout, path: ref.path)
+            wholeFile = try await repoContext.readWholeFile(in: checkout, path: ref.path)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

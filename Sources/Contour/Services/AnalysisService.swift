@@ -87,8 +87,36 @@ enum AnalysisTier: Hashable {
 struct AnalysisService {
     let harness: any Harness
 
-    init(harness: any Harness) {
+    /// How mock mode behaves: normally read from the environment (`CONTOUR_MOCK_ANALYSIS`,
+    /// `CONTOUR_MOCK_LATENCY`, `CONTOUR_MOCK_FAIL_STAGE`, see README), but a test can pass
+    /// one explicitly so it never has to mutate process-wide environment variables that
+    /// other suites, running in parallel, read too — `AnalysisCache` bails out entirely
+    /// under `CONTOUR_MOCK_ANALYSIS=1`, so a suite that set it for seconds at a time would
+    /// break every cache test that happened to overlap with it.
+    struct MockOptions: Sendable {
+        /// Multiplier on a realistic per-stage duration; nil returns each stage at once.
+        var latencyScale: Double? = nil
+        /// A stage to fail the first time it runs in this process, to exercise Retry.
+        var failStage: PipelineStage? = nil
+
+        /// The environment's settings, or nil when mock mode is off.
+        static var fromEnvironment: MockOptions? {
+            guard MockAnalysisFixtures.isEnabled else { return nil }
+            let env = ProcessInfo.processInfo.environment
+            let scale = env["CONTOUR_MOCK_LATENCY"].flatMap { Double($0) }.flatMap { $0 > 0 ? $0 : nil }
+            let failStage = env["CONTOUR_MOCK_FAIL_STAGE"].flatMap { raw in
+                PipelineStage.allCases.first { "\($0)" == raw }
+            }
+            return MockOptions(latencyScale: scale, failStage: failStage)
+        }
+    }
+
+    /// Set only by tests; nil means "consult the environment on every call", as before.
+    private let mockOverride: MockOptions?
+
+    init(harness: any Harness, mock: MockOptions? = nil) {
         self.harness = harness
+        self.mockOverride = mock
     }
 
     /// Runs one analysis stage and returns its parsed JSON result plus a stream of
@@ -137,14 +165,15 @@ struct AnalysisService {
         // invocation entirely and return a canned response for this stage. The checkout
         // still happened for real above this call, so the code viewer/Evidence lens keeps
         // working — only the slow AI call is short-circuited.
-        if MockAnalysisFixtures.isEnabled {
+        if let mock = mockOverride ?? MockOptions.fromEnvironment {
             onProgress(AnalysisProgress(stageName: "", detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
             let response = MockAnalysisFixtures.response(for: stage)
-            try await Self.simulateLatency(of: stage, response: response, streaming: streaming, onElement: onElement)
+            try await Self.simulateLatency(of: stage, scale: mock.latencyScale, response: response,
+                                           streaming: streaming, onElement: onElement)
             // CONTOUR_MOCK_FAIL_STAGE=<stage> (e.g. "architecture") makes that one stage fail
             // the first time it runs, to exercise a section's failure and a successful Retry
             // without a real broken model call.
-            if ProcessInfo.processInfo.environment["CONTOUR_MOCK_FAIL_STAGE"] == "\(stage)",
+            if mock.failStage == stage,
                Self.mockFailures.withLock({ $0.insert(stage).inserted }) {
                 throw AnalysisServiceError.emptyResponse(harness: "mock (CONTOUR_MOCK_FAIL_STAGE)")
             }
@@ -199,11 +228,10 @@ struct AnalysisService {
     private static let mockFailures = OSAllocatedUnfairLock<Set<PipelineStage>>(initialState: [])
 
     private static func simulateLatency(
-        of stage: PipelineStage, response: [String: Any], streaming: String?,
+        of stage: PipelineStage, scale: Double?, response: [String: Any], streaming: String?,
         onElement: @Sendable ([String: Any]) -> Void
     ) async throws {
-        guard let raw = ProcessInfo.processInfo.environment["CONTOUR_MOCK_LATENCY"],
-              let scale = Double(raw), scale > 0 else { return }
+        guard let scale, scale > 0 else { return }
         let seconds: Double
         switch stage {
         case .understanding: seconds = 3

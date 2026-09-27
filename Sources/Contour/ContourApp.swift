@@ -28,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Preferences.shared.applyModelOverrides()
         }
         NSApp.activate(ignoringOtherApps: true)
+        // Debug-only diagnostic: logs when the main thread stops responding for a while
+        // (§13/§14 scaling limits). Compiled out of release builds entirely; see
+        // `Support/MainThreadWatchdog.swift`.
+        #if DEBUG
+        MainThreadWatchdog.start()
+        #endif
     }
 }
 

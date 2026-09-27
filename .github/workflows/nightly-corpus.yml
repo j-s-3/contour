@@ -1,0 +1,131 @@
+name: Nightly PR corpus
+
+# Runs CorpusRunTests (issue #64) — the full pipeline against a small corpus of real,
+# long-merged public PRs (Tests/ContourTests/Fixtures/corpus.json) — once a day, and
+# uploads the raw results plus a summary as artifacts. This is what turns model-shaped
+# instability (malformed JSON, unverifiable citations, a stage that only fails on a
+# certain PR shape) into a visible trend instead of something nobody notices until a
+# reviewer hits it. build.yml never runs this: it's gated behind RUN_CONTOUR_INTEGRATION,
+# same as IntegrationSmokeTests, and costs real model tokens per run.
+#
+# This needs two things build.yml doesn't: a working AI harness CLI, and credentials for
+# it. Both are opt-in per repo, via secrets:
+#   - CONTOUR_NIGHTLY_ENABLED — set to "true" to turn this workflow on at all. Off by
+#     default so a fork or mirror doesn't silently start spending tokens on a schedule.
+#   - ANTHROPIC_API_KEY — read natively by the `claude` CLI (CONTOUR_HARNESS below) for
+#     non-interactive authentication. Without it there's nothing for the harness to run
+#     with.
+# Neither secret is required to exist. The first step checks for both and skips the rest
+# of the run cleanly, with a message in the job log, when either is missing — nothing
+# here is hardcoded in a way that would otherwise fail.
+on:
+  schedule:
+    # 06:17 UTC daily — off the hour/half-hour on purpose, since most schedules land
+    # there and queue behind GitHub's own scheduler congestion.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      harness:
+        # Only "claude" is installed by this workflow (see "Install claude" below).
+        # Choosing "pi" only works if this runner already has a working `pi` install —
+        # there's no equivalent bootstrap step for it here.
+        description: "Which AI harness to drive (claude is installed here; pi must already be on the runner)"
+        required: false
+        default: claude
+        type: choice
+        options: [claude, pi]
+
+concurrency:
+  # No cancel-in-progress: a run already spending tokens against real PRs shouldn't be
+  # killed by the next scheduled tick: the next run just waits its turn.
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: Run corpus & summarize
+    # Package.swift needs swift-tools-version 6.4, which ships with Xcode 27 — same
+    # runner as build.yml.
+    runs-on: xcode-27
+    timeout-minutes: 180
+    steps:
+      - name: Check the nightly corpus is enabled
+        id: gate
+        env:
+          CONTOUR_NIGHTLY_ENABLED: ${{ secrets.CONTOUR_NIGHTLY_ENABLED }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Only set on workflow_dispatch; empty on a schedule trigger, which is exactly
+          # when we want the "claude" default below.
+          HARNESS_INPUT: ${{ github.event.inputs.harness }}
+        run: |
+          if [ "$CONTOUR_NIGHTLY_ENABLED" != "true" ]; then
+            echo "::notice::CONTOUR_NIGHTLY_ENABLED is not set to 'true' for this repo — the nightly corpus run is opt-in. Skipping cleanly."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not set — the claude harness has no credentials to authenticate with. Skipping cleanly."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "harness=${HARNESS_INPUT:-claude}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Select Xcode 27
+        if: steps.gate.outputs.enabled == 'true'
+        run: sudo xcode-select -s /Applications/Xcode_27.app
+
+      - name: Toolchain versions
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install claude (Claude Code CLI)
+        if: steps.gate.outputs.enabled == 'true' && steps.gate.outputs.harness == 'claude'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Build
+        if: steps.gate.outputs.enabled == 'true'
+        run: swift build
+
+      - name: Run corpus
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          RUN_CONTOUR_INTEGRATION: "1"
+          CONTOUR_HARNESS: ${{ steps.gate.outputs.harness }}
+          # Deliberately exercises the bare-machine path (§ README "GitHub access")
+          # rather than relying on a `gh` login being set up on the runner.
+          CONTOUR_GITHUB_ACCESS: anonymous
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CONTOUR_CORPUS_RESULTS: ${{ github.workspace }}/corpus-results.jsonl
+        run: swift test --filter CorpusRunTests
+
+      - name: Summarize
+        # Runs even if the step above failed outright (e.g. a build/setup problem), so
+        # whatever the results file does hold is never lost; summarize-corpus.py handles
+        # a missing or empty file on its own.
+        if: steps.gate.outputs.enabled == 'true' && always()
+        run: |
+          if [ -f corpus-results.jsonl ]; then
+            python3 scripts/summarize-corpus.py corpus-results.jsonl | tee corpus-summary.txt
+          else
+            echo "no corpus-results.jsonl was produced" | tee corpus-summary.txt
+          fi
+
+      - name: Upload results
+        if: steps.gate.outputs.enabled == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-results-${{ github.run_id }}
+          path: |
+            corpus-results.jsonl
+            corpus-summary.txt
+          if-no-files-found: warn
+          retention-days: 90

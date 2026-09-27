@@ -43,7 +43,7 @@ struct AnalysisCache {
     /// How many PRs the recent index remembers; the start screen shows fewer.
     static let recentCapacity = 20
 
-    struct Entry {
+    struct Entry: Sendable {
         var graph: PRGraph
         var diff: String
         /// The analysis stages this entry's graph holds output for.
