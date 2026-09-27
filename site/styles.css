@@ -9,7 +9,7 @@
   --line-2: rgba(160, 190, 230, 0.18);
   --text: #e8eef6;
   --muted: #8d9bb0;
-  --faint: #56647a;
+  --faint: #7584a0; /* ≥ 4.5:1 on every surface it sits on */
   --teal: #3fc1c9;
   --teal-dim: rgba(63, 193, 201, 0.14);
   --amber: #ffc857;
