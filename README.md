@@ -264,42 +264,6 @@ stage — keyed by (repo, PR number, headSha, baseSha, pipeline version). Reopen
 *same* PR is instant, an interrupted run resumes, and a PR with new commits opens on its
 previous revision's analysis while the new one runs.
 
-## Project layout
-
-```
-Sources/Contour/
-  Models/GraphModels.swift           PR knowledge graph data model (§11)
-  Models/PRContext.swift             raw PR material, before analysis
-  Support/ShellProcess.swift         Process wrapper + executable resolution
-  Harness/Harness.swift              the AI-CLI seam: argv in, events out
-  Harness/PiHarness.swift            pi conformer
-  Harness/ClaudeHarness.swift        claude conformer
-  Services/PRSource.swift            the GitHub seam + access-mode selection
-  Services/GHCLISource.swift         gh-backed source (public and private)
-  Services/AnonymousAPISource.swift  anonymous REST source (public only)
-  Services/RepoContextService.swift  local checkout + code reads
-  Services/AnalysisService.swift     harness-independent stage execution
-  Services/EnvironmentProbe.swift    what's installed and usable
-  Services/Preferences.swift         settings + resolution precedence
-  Services/GraphStore.swift          @Observable session state + semantic nav stack
-  Chat/                              contextual chat: subject resolution, context, links
-  Tracker/IssueTracker.swift         the issue-tracker seam
-  Tracker/GitHubIssueTracker.swift   default tracker, needs nothing installed
-  Tracker/JiraTracker.swift          opt-in tracker via acli
-  Pipeline/PromptBuilder.swift       per-stage prompts + JSON schema contracts
-  Pipeline/AnalysisPipeline.swift    runs the stages as a dependency graph, streaming events
-  Pipeline/AnalysisStatus.swift      per-stage status and the review sections they feed
-  Pipeline/GraphAssembly.swift       the PR shell and per-stage graph slices
-  Pipeline/GraphLinker.swift         cross-links decisions/parts/flows by the code they cite
-  Pipeline/StreamingArrayExtractor.swift  pulls finished elements out of streaming JSON
-  Pipeline/StageDecoding.swift       lenient decoding of AI JSON into graph nodes
-  Views/                             SwiftUI lenses (Summary, Architecture, Decisions, …)
-  Views/Settings/                    Settings scene + first-run wizard
-Assets/Logo/                         app icon and logo (from scripts/generate-logo.py)
-Assets/Screenshots/                  README screenshots (Contour reviewing its own PR #10)
-Formula/contour.rb                   Homebrew formula; the repo is its own tap
-```
-
 ## License
 
 Apache License 2.0; see [`LICENSE`](LICENSE).
