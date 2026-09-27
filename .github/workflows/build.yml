@@ -36,7 +36,16 @@ jobs:
 
       - name: Test
         # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
+        # This already includes BenchTests below; it's run again on its own so the
+        # per-milestone numbers land in a clearly labeled step of the log rather than
+        # being buried in the full suite's output.
         run: swift test
+
+      - name: Bench (Contour's own latency, offline, issue #60)
+        # No real model, no network: measures Contour's own share of "time to a useful
+        # Overview" (DESIGN.md §13) against a fixed fixture corpus and fails the job on a
+        # regression past a deliberately generous threshold — see BenchTests.swift.
+        run: swift test --filter Bench
 
       - name: Build release
         run: swift build -c release
