@@ -232,12 +232,17 @@ enum Shell {
                 while !Task.isCancelled {
                     let idle = activity.idle()
                     if idle >= inactivityTimeout {
-                        if process.isRunning { process.terminate() }
+                        // Finish first, then kill: once the process is terminated its
+                        // `terminationHandler` finishes the stream too, with a plain
+                        // nonzero-exit error and an empty stderr, and whichever finish lands
+                        // first is the one the consumer sees. Finishing here first makes the
+                        // handler's a no-op, so the error always says it was the watchdog.
                         continuation.finish(throwing: ProcessError(
                             command: "\(executable) \(arguments.joined(separator: " "))",
                             exitCode: -1,
                             stderr: "killed after \(inactivityTimeout) with no output (inactivity watchdog)"
                         ))
+                        if process.isRunning { process.terminate() }
                         return
                     }
                     try? await Task.sleep(for: max(inactivityTimeout - idle, .milliseconds(50)))
