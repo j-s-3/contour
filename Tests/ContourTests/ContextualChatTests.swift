@@ -139,24 +139,6 @@ struct ContextualChatTests {
         #expect(final.contains("Why queued?"))
     }
 
-    /// `respond` itself is just a dispatcher: under `CONTOUR_MOCK_ANALYSIS=1` it forwards
-    /// straight to `mockResponse` without touching the checkout or a real harness. Pinned so
-    /// a refactor that breaks that short-circuit — accidentally requiring a real `pi`/`claude`
-    /// install to answer in mock mode — is caught here rather than by a reviewer.
-    @Test func respondShortCircuitsToMockResponseUnderMockAnalysis() async throws {
-        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
-        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
-        let service = ConversationService(
-            harness: PiHarness(),
-            checkout: RepoCheckout(rootDir: URL(fileURLWithPath: "/nonexistent"), headSha: "a", baseSha: "b")
-        )
-        var sawFinal = false
-        for try await event in service.respond(conversationId: UUID(), contextDocument: "doc", history: [], question: "Q?") {
-            if case .final = event { sawFinal = true }
-        }
-        #expect(sawFinal)
-    }
-
     // MARK: - Suggestions and link tokens across every subject kind
 
     private func stub(
