@@ -6,6 +6,7 @@ import AppKit
 struct ContentView: View {
     @State private var store = GraphStore()
     @State private var showPalette = false
+    @State private var confirmApprove = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
     /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
@@ -209,6 +210,7 @@ struct ContentView: View {
                 Button { store.openOnGitHub() } label: { Image(systemName: "arrow.up.forward.square") }
                     .help("Open on GitHub (⌘⇧O)")
                     .disabled(store.pullRequestWebURL == nil)
+                approveButton(graph)
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         if store.conversations.isPresented {
@@ -224,6 +226,43 @@ struct ContentView: View {
                 }
                 .help("Conversations — ask about what you're looking at (⌘⇧A)")
             }
+        }
+    }
+
+    /// GitHub's +1: submits an approving review as the reviewer, after a confirmation —
+    /// it's public and can't be taken back from here.
+    private func approveButton(_ graph: PRGraph) -> some View {
+        Button { confirmApprove = true } label: {
+            switch store.approval {
+            case .approving:
+                ProgressView().controlSize(.small)
+            case .approved:
+                Image(systemName: "hand.thumbsup.fill").foregroundStyle(.green)
+            case .idle, .failed:
+                Image(systemName: "hand.thumbsup")
+            }
+        }
+        .help(store.approveUnavailableReason ?? "Approve this pull request on GitHub")
+        .disabled(!store.canApprove)
+        .confirmationDialog(
+            Text(verbatim: "Approve \(graph.pr.repo) #\(graph.pr.number)?"),
+            isPresented: $confirmApprove
+        ) {
+            Button("Approve") { store.approvePullRequest() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This submits an approving review on GitHub as you, through gh.")
+        }
+        .alert(
+            "Couldn't approve the pull request",
+            isPresented: Binding(
+                get: { if case .failed = store.approval { true } else { false } },
+                set: { if !$0 { store.dismissApprovalFailure() } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if case .failed(let message) = store.approval { Text(message) }
         }
     }
 

@@ -79,6 +79,9 @@ final class GraphStore {
 
     private(set) var lastPRURL: String?
 
+    /// Whether the reviewer has approved this PR from Contour, and how that went.
+    private(set) var approval: PRApproval.State = .idle
+
     /// The harness this PR was analyzed with. Contextual chat reuses it so a conversation
     /// never talks to a different model than the one that built the review.
     private(set) var harnessID: HarnessID?
@@ -112,6 +115,7 @@ final class GraphStore {
         path = [.summary]
         forwardStack = []
         lastPRURL = prURL
+        approval = .idle
         conversations.reset()
         focusedSubject = nil
         diagramMode = .delta
@@ -170,6 +174,28 @@ final class GraphStore {
     func close() {
         endAnalysis()
         phase = .idle
+    }
+
+    /// Submits an approving review as the reviewer, through `gh`.
+    @MainActor
+    func approvePullRequest() {
+        guard canApprove, let url = pullRequestWebURL else { return }
+        approval = .approving
+        Task { @MainActor in
+            do {
+                try await PRApproval.approve(prURL: url.absoluteString)
+                // A different PR may have opened while the review was in flight.
+                guard pullRequestWebURL == url else { return }
+                approval = .approved
+            } catch {
+                guard pullRequestWebURL == url else { return }
+                approval = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func dismissApprovalFailure() {
+        if case .failed = approval { approval = .idle }
     }
 
     /// Re-runs one failed or stopped section. Without a checkout nothing can be re-run in
