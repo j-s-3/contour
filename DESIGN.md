@@ -129,7 +129,11 @@ since the icon's pale amber disappears on a light window.
 
 - **Welcome.** Mark, "Contour", then the proposition ("Understand the change, not just
   the diff.") and the URL field. The mark stays still. Idle motion would pull the eye
-  away from the one thing to do on this screen.
+  away from the one thing to do on this screen. Under the field, so a review session
+  can start here rather than with a hunt for a URL: PRs awaiting the user's review
+  (`gh search prs --review-requested=@me --state=open`, shown only when `gh` can
+  answer) and the PRs opened most recently, with repo and when each was last opened.
+  Recent PRs reopen instantly from the analysis cache. The URL field covers the rest.
 - **Opening.** The same mark carries over from the welcome screen and starts to
   resolve while the PR is fetched: first the peak, then the rings from the summit
   outward. Each stage owns a slice of the mark sized by its typical cost, and within a
@@ -660,7 +664,9 @@ independent stages in parallel (§10).
 - **Analysis cache** (`Services/AnalysisCache.swift`), keyed by (repo, PR, headSha,
   baseSha, pipeline version). Written as each stage lands, recording which stages it
   holds, so an interrupted run resumes with only the missing stages. Reopening the same
-  commit shows everything at once.
+  commit shows everything at once. Beside the entries, a small `recent-prs.json` index
+  of the last PRs opened (URL, repo, title, when) feeds the welcome screen's recent list
+  without decoding every cached graph.
 - **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
   head is shown straight away, marked "from previous revision" (banner, stage status),
   and replaced slice by slice as the current revision's stages land. A stale slice is
