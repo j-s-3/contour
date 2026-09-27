@@ -77,6 +77,24 @@ which prints, per stage, the failure rate, the malformed-JSON retry count, and t
 unverifiable-citation rate, plus p50/p95 latency per `AnalysisMetrics` milestone and the
 list of failed PRs with their messages. This is also what the nightly workflow
 (`.github/workflows/nightly-corpus.yml`) runs and uploads as an artifact.
+## `fake-cli.sh`
+A fake CLI used by `ShellProcessTests` to inject faults `Shell.run`/`Shell.stream` have to
+survive — a hung process, a burst written right before exit, an invalid-UTF-8 line, and so
+on — none of which a captured fixture (a fixed, finite JSONL file) can produce, since they
+depend on how and when a real process writes and exits.
+
+It picks a behavior from its first argument (`hang`, `exit-mid-stream`,
+`nonzero-with-stdout`, `partial-last-line`, `huge-line`, `invalid-utf8-line`,
+`burst-then-exit`, `unknown-events`, `rate-limit-events` — see the comment above each
+`case` in the script for what it does and which fault it exercises). Behaviors that emit
+JSONL emit the shape `ClaudeHarness.interpret`/`PiHarness.interpret` parse, so a test can
+also replay the output through a harness, not just through `Shell.stream` directly.
+
+Tests invoke it as `/bin/sh <path to fake-cli.sh> <behavior>` rather than running the
+script directly — `Bundle.module`'s copy of a test resource isn't guaranteed to keep the
+executable bit SwiftPM copied it with, and `/bin/sh` sidesteps that entirely. Kept to
+`/bin/sh` builtins (`printf`, `head -c`, `tr`) rather than bash-isms, so it runs the same
+under whatever `/bin/sh` actually is.
 
 ### A note on the `system` events in `claude-stream.jsonl`
 
