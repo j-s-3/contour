@@ -59,17 +59,20 @@ extension GraphStore {
     /// Read once: `gh` appearing mid-session is rare enough to need a relaunch.
     static let ghAvailable = Shell.which("gh") != nil
 
-    var canApprove: Bool {
-        guard let graph, pullRequestWebURL != nil, approval != .approving, approval != .approved else { return false }
-        return PRApproval.canApprove(prState: graph.pr.state, ghAvailable: Self.ghAvailable)
+    /// One review at a time, and not the same verdict twice. The other verdict stays open:
+    /// on GitHub a reviewer's latest review stands, so they can change their mind.
+    func canSubmitReview(_ verdict: PRReview.Verdict) -> Bool {
+        guard let graph, pullRequestWebURL != nil, review != .submitted(verdict) else { return false }
+        if case .submitting = review { return false }
+        return PRReview.canReview(prState: graph.pr.state, ghAvailable: Self.ghAvailable)
     }
 
-    /// Why Approve is unavailable, for its help text; nil when it's available.
-    var approveUnavailableReason: String? {
-        if approval == .approved { return "Approved" }
+    /// Why a verdict is unavailable, for its button's help text; nil when it's available.
+    func reviewUnavailableReason(_ verdict: PRReview.Verdict) -> String? {
+        if review == .submitted(verdict) { return verdict == .approve ? "Approved" : "Changes requested" }
         guard let graph else { return "No pull request is open" }
-        if !Self.ghAvailable { return "Approving needs the GitHub CLI — install gh and run `gh auth login`" }
-        if graph.pr.state.uppercased() != "OPEN" { return "Only an open pull request can be approved" }
+        if !Self.ghAvailable { return "Reviewing needs the GitHub CLI — install gh and run `gh auth login`" }
+        if graph.pr.state.uppercased() != "OPEN" { return "Only an open pull request can be reviewed" }
         return nil
     }
 }

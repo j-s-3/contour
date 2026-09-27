@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var store = GraphStore()
     @State private var showPalette = false
     @State private var confirmApprove = false
+    @State private var composingChangeRequest = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
     /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
@@ -211,6 +212,7 @@ struct ContentView: View {
                     .help("Open on GitHub (⌘⇧O)")
                     .disabled(store.pullRequestWebURL == nil)
                 approveButton(graph)
+                requestChangesButton(graph)
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         if store.conversations.isPresented {
@@ -233,37 +235,64 @@ struct ContentView: View {
     /// it's public and can't be taken back from here.
     private func approveButton(_ graph: PRGraph) -> some View {
         Button { confirmApprove = true } label: {
-            switch store.approval {
-            case .approving:
-                ProgressView().controlSize(.small)
-            case .approved:
-                Image(systemName: "hand.thumbsup.fill").foregroundStyle(.green)
-            case .idle, .failed:
-                Image(systemName: "hand.thumbsup")
-            }
+            reviewButtonLabel(.approve, symbol: "hand.thumbsup", submittedColor: .green)
         }
-        .help(store.approveUnavailableReason ?? "Approve this pull request on GitHub")
-        .disabled(!store.canApprove)
+        .help(store.reviewUnavailableReason(.approve) ?? "Approve this pull request on GitHub")
+        .disabled(!store.canSubmitReview(.approve))
         .confirmationDialog(
             Text(verbatim: "Approve \(graph.pr.repo) #\(graph.pr.number)?"),
             isPresented: $confirmApprove
         ) {
-            Button("Approve") { store.approvePullRequest() }
+            Button("Approve") { store.submitReview(.approve) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This submits an approving review on GitHub as you, through gh.")
         }
+        // One alert for both verdicts: only one review is ever in flight.
         .alert(
-            "Couldn't approve the pull request",
+            reviewFailureTitle,
             isPresented: Binding(
-                get: { if case .failed = store.approval { true } else { false } },
-                set: { if !$0 { store.dismissApprovalFailure() } }
+                get: { if case .failed = store.review { true } else { false } },
+                set: { if !$0 { store.dismissReviewFailure() } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            if case .failed(let message) = store.approval { Text(message) }
+            if case .failed(_, let message) = store.review { Text(message) }
         }
+    }
+
+    /// Approve's counterpart: GitHub needs the reviewer to say what to change, so this asks
+    /// for a comment rather than a bare confirmation.
+    private func requestChangesButton(_ graph: PRGraph) -> some View {
+        Button { composingChangeRequest = true } label: {
+            reviewButtonLabel(.requestChanges, symbol: "hand.thumbsdown", submittedColor: .red)
+        }
+        .help(store.reviewUnavailableReason(.requestChanges) ?? "Request changes on GitHub")
+        .disabled(!store.canSubmitReview(.requestChanges))
+        .sheet(isPresented: $composingChangeRequest) {
+            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { comment in
+                store.submitReview(.requestChanges, comment: comment)
+            }
+        }
+    }
+
+    /// A spinner while this verdict is in flight, filled once it's submitted.
+    @ViewBuilder
+    private func reviewButtonLabel(_ verdict: PRReview.Verdict, symbol: String, submittedColor: Color) -> some View {
+        switch store.review {
+        case .submitting(verdict):
+            ProgressView().controlSize(.small)
+        case .submitted(verdict):
+            Image(systemName: symbol + ".fill").foregroundStyle(submittedColor)
+        default:
+            Image(systemName: symbol)
+        }
+    }
+
+    private var reviewFailureTitle: String {
+        if case .failed(.requestChanges, _) = store.review { return "Couldn't request changes" }
+        return "Couldn't approve the pull request"
     }
 
     /// Every destination is always open, whatever its analysis state; the row just says how
