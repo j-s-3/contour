@@ -45,6 +45,65 @@ struct ContextualChatTests {
         #expect(graph.resolve(.flowStep(flowId: "publish-index-flow", stepId: "nope")) == nil)
     }
 
+    /// Every `ReviewSubject` case that addresses a decision's option, a tradeoff, a
+    /// story-level flow step, a behavior-diagram node, or a behavior change's consequence
+    /// must resolve to the right kind and title — each is reachable from the UI (option
+    /// chips, story mode, the behavior diagram) but had no direct resolution test. An
+    /// out-of-range index or a dangling id must fail closed rather than crash.
+    @Test func resolvesOptionsTradeoffsStoryStepsFlowNodesAndConsequences() throws {
+        let option = try #require(graph.resolve(.decisionOption(decisionId: "index-on-publish", index: 1)))
+        #expect(option.kind == .option)
+        #expect(option.title == "fresh results")
+
+        let tradeoff = try #require(graph.resolve(.tradeoff(decisionId: "index-on-publish", index: 0)))
+        #expect(tradeoff.kind == .tradeoff)
+        #expect(tradeoff.title == "fast publish vs. fresh results")
+
+        let story = try #require(graph.resolve(.storyStep(flowId: "publish-index-flow", index: 0)))
+        #expect(story.kind == .flowStep)
+        #expect(story.title == "Publish page")
+
+        let node = try #require(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "queue")))
+        #expect(node.kind == .flowStep)
+        #expect(node.title == "Queue reindex job")
+
+        let consequence = try #require(graph.resolve(.behaviorConsequence(changeId: "immediate-reindex")))
+        #expect(consequence.kind == .statement)
+        #expect(consequence.title.hasPrefix("Consequence:"))
+
+        #expect(graph.resolve(.decisionOption(decisionId: "index-on-publish", index: 99)) == nil)
+        #expect(graph.resolve(.tradeoff(decisionId: "index-on-publish", index: 99)) == nil)
+        #expect(graph.resolve(.storyStep(flowId: "publish-index-flow", index: 99)) == nil)
+        #expect(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "nope")) == nil)
+    }
+
+    /// The small label/describe helpers are pure formatting functions the harness-facing
+    /// documents depend on throughout this file — pinned directly so a wording change is
+    /// visible in a diff instead of buried inside a large generated document.
+    @Test func describeAndLabelHelpersFormatConsistently() {
+        #expect(PRGraph.flowChangeLabel(.new) == "New in this PR")
+        #expect(PRGraph.flowChangeLabel(.changed) == "Changed by this PR")
+        #expect(PRGraph.flowChangeLabel(.existing) == "Unchanged")
+        #expect(PRGraph.flowChangeLabel(.removed) == "Removed by this PR")
+
+        #expect(PRGraph.edgeChangeLabel(.new) == "new in this PR")
+        #expect(PRGraph.edgeChangeLabel(.changed) == "changed by this PR")
+        #expect(PRGraph.edgeChangeLabel(.existing) == "existing")
+        #expect(PRGraph.edgeChangeLabel(.removed) == "removed by this PR")
+
+        #expect(PRGraph.provenanceLabel(.fact, nil) == "observed fact")
+        #expect(PRGraph.provenanceLabel(.claim, nil) == "author's claim")
+        #expect(PRGraph.provenanceLabel(.interpretation, .high) == "AI inference, high confidence")
+        #expect(PRGraph.provenanceLabel(.interpretation, nil) == "AI inference")
+
+        #expect(PRGraph.oneLine("first\nsecond") == "first")
+        #expect(PRGraph.oneLine("   \n") == nil)
+        #expect(PRGraph.oneLine("") == nil)
+
+        let statement = Statement(text: "Stale results were reported.", provenance: .claim, source: "PR description")
+        #expect(PRGraph.describe(statement) == "Stale results were reported. (author's claim) [source: PR description]")
+    }
+
     // MARK: - Context document
 
     @Test func documentIsFocusedByDefaultAndWidensOnRequest() throws {
