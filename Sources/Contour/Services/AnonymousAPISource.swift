@@ -3,7 +3,8 @@ import Foundation
 /// Reads public PRs straight from GitHub's REST API with no credentials at all, so
 /// Contour works on a machine that has nothing but `git` installed.
 ///
-/// Anonymous requests are limited to 60/hour per IP; one PR costs about five. A 404 or a
+/// Anonymous requests are limited to 60/hour per IP; one PR costs about seven, two of
+/// them for the head commit's checks. A 404 or a
 /// non-rate-limit 403 means the repository isn't publicly readable, which is reported as
 /// "this is private, use gh" rather than as a bare HTTP error.
 struct AnonymousAPISource: PRSource {
@@ -77,12 +78,28 @@ struct AnonymousAPISource: PRSource {
             return "\(who): \(b)"
         }
 
-        let reviews: [String] = try await getJSONArray("\(base)/reviews", owner: owner, repo: repo, paginated: true)
+        let rawReviews = try await getJSONArray("\(base)/reviews", owner: owner, repo: repo, paginated: true)
+        let reviews: [String] = rawReviews
             .compactMap { r in
                 guard let b = r["body"] as? String, !b.isEmpty else { return nil }
                 let who = (r["user"] as? [String: Any])?["login"] as? String ?? "someone"
                 return "\(who): \(b)"
             }
+
+        let tally = PRGlance.tallyReviews(rawReviews.compactMap { r in
+            guard let who = (r["user"] as? [String: Any])?["login"] as? String,
+                  let state = r["state"] as? String else { return nil }
+            return (who, state)
+        })
+        let glance = PRGlance(
+            checks: await checks(owner: owner, repo: repo, sha: headSha),
+            approvals: tally.approvals,
+            changesRequested: tally.changesRequested,
+            // The REST API has no thread-resolution state; that takes GraphQL, which
+            // requires authentication. The facts line leaves it out.
+            unresolvedThreads: nil,
+            createdAt: PRGlance.date(iso8601: pr["created_at"] as? String)
+        )
 
         return RawPRContext(
             url: (pr["html_url"] as? String) ?? prURL,
@@ -94,8 +111,27 @@ struct AnonymousAPISource: PRSource {
             additions: (pr["additions"] as? Int) ?? 0,
             deletions: (pr["deletions"] as? Int) ?? 0,
             changedFiles: (pr["changed_files"] as? Int) ?? 0,
-            files: files, commits: commits, comments: comments, reviews: reviews, diff: diff
+            files: files, commits: commits, comments: comments, reviews: reviews, diff: diff,
+            glance: glance
         )
+    }
+
+    /// CI on the head commit. GitHub reports it two ways — check runs (Actions and most
+    /// modern CI) and commit statuses (older integrations) — and a PR's rollup is both.
+    /// Best effort: an error, including running out of quota, costs the facts line its CI
+    /// item rather than failing a fetch that otherwise succeeded.
+    private func checks(owner: String, repo: String, sha: String) async -> PRGlance.Checks? {
+        let commit = "/repos/\(owner)/\(repo)/commits/\(sha)"
+        let runs = (try? await getJSONObject("\(commit)/check-runs?per_page=100", owner: owner, repo: repo))?["check_runs"]
+            as? [[String: Any]] ?? []
+        let statuses = (try? await getJSONObject("\(commit)/status", owner: owner, repo: repo))?["statuses"]
+            as? [[String: Any]] ?? []
+        let outcomes = runs.map {
+            PRGlance.checkOutcome(status: $0["status"] as? String, conclusion: $0["conclusion"] as? String, state: nil)
+        } + statuses.map {
+            PRGlance.checkOutcome(status: nil, conclusion: nil, state: $0["state"] as? String)
+        }
+        return PRGlance.rollUp(outcomes)
     }
 
     func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {

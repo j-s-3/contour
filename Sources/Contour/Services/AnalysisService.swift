@@ -9,10 +9,23 @@ struct AnalysisProgress: Sendable {
     var detail: String
 }
 
+/// `errorDescription` is the technical account — raw response, stderr — and goes only to the
+/// technical log. What the reviewer sees is `reviewerReason`, via
+/// `PipelineStage.failureMessage(for:)`: they can't act on a model's half-written JSON, only
+/// on knowing which section failed and that Retry is there.
 enum AnalysisServiceError: LocalizedError {
     case emptyResponse(harness: String)
     case notJSON(harness: String, raw: String)
     case processFailed(harness: String, Error)
+
+    var reviewerReason: String {
+        switch self {
+        case .emptyResponse: return "The model didn't return an answer."
+        case .notJSON: return "The model's answer wasn't readable."
+        case .processFailed(let h, _): return "\(h) stopped with an error."
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .emptyResponse(let h): return "\(h) produced no final response for this stage"

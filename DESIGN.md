@@ -98,6 +98,10 @@ Flows) / Review (Decisions, with review progress) / Code (Raw diff), and a main
 pane driven entirely by `GraphStore.current: NavigationTarget`. See
 `Sources/Contour/Views/ContentView.swift`.
 
+The window opens as an ordinary window at its last size and position, not in full screen:
+a reviewer usually arrives from a link in Slack or a browser, and taking over a Space loses
+the window they came from. Full screen at launch is an opt-in in Settings › Window.
+
 **Opening a PR is progressive.** There is no full-screen analysis wait: "Opening the pull
 request…" lasts only as long as the GitHub fetch, then the window shell appears with the title,
 metadata and raw diff, and the analysis fills it in. Every destination is always open.
@@ -125,7 +129,11 @@ since the icon's pale amber disappears on a light window.
 
 - **Welcome.** Mark, "Contour", then the proposition ("Understand the change, not just
   the diff.") and the URL field. The mark stays still. Idle motion would pull the eye
-  away from the one thing to do on this screen.
+  away from the one thing to do on this screen. Under the field, so a review session
+  can start here rather than with a hunt for a URL: PRs awaiting the user's review
+  (`gh search prs --review-requested=@me --state=open`, shown only when `gh` can
+  answer) and the PRs opened most recently, with repo and when each was last opened.
+  Recent PRs reopen instantly from the analysis cache. The URL field covers the rest.
 - **Opening.** The same mark carries over from the welcome screen and starts to
   resolve while the PR is fetched: first the peak, then the rings from the summit
   outward. Each stage owns a slice of the mark sized by its typical cost, and within a
@@ -148,7 +156,9 @@ Keep the mark rare. It appears in these places, not as decoration on empty state
 ### 4.2 Overview (landing page)
 
 A thirty-second briefing from a staff engineer, not a dashboard: one centered column
-(max ~1240pt) that reads top to bottom — title and metadata; **What changed**, the
+(max ~1240pt) that reads top to bottom — title and metadata, with one quiet facts line
+(`12 files · +148 −37 · CI passing · 2 approvals · 3 unresolved threads · opened 2 days
+ago`, `PRGlance`) that omits whatever the source couldn't tell; **What changed**, the
 before/after stage diagram as the hero (3–6 short stages per side, green for a step this PR
 adds, dashed for a step that no longer happens, an optional success/failure outcome on the
 last stage); **Why** and **Consequence** at one or two lines each; **Things to think
@@ -156,7 +166,12 @@ about**, 1–5 question-shaped items (a question plus one sentence) that merge w
 be separate needs-judgment and uncertainty lists, distinguished only by a subtle badge;
 **Other behavior changes**, one line each, expanding inline; and **Explore the change**,
 three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
-with a tooltip rather than a colored badge. Review progress lives in the sidebar. Longer
+with a tooltip rather than a colored badge. The things to think about are the review
+checklist: there is one measure of review progress, "n of m things to think about
+resolved", and the list's header, its checked-off badges, the Decisions tile, the Decisions
+header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An item is
+resolved by judging the decision it's reviewed on; when it has no decision to be judged on
+(none, or one outside Decisions to Review), by talking it through in a conversation. Longer
 reasoning, evidence, and file locations are drill-down only — an expansion, a click, or
 right-click → Ask about this…. The judgment stage writes `considerations` to these budgets;
 older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
@@ -261,11 +276,13 @@ proposes the review surface and the reviewer controls it. **Add to review** prom
 decision, and **Not worth reviewing** on a card demotes one. Both are stored as
 `reviewerPlacement`, and moving a decision back to where the analysis put it clears the
 override. Nothing is promoted to fill the list: when nothing stands out, the screen says so.
-Only decisions to review count toward review progress, which means "n of the
-consequential decisions consciously judged" and sits on the sidebar's Decisions row.
-They are also the only decisions marked on the Architecture drawing and in Flows. An
-Overview question's "Review →" opens its first related decision, highlights it briefly,
-and shows the question there as "Question from Overview". The lens is keyboard-driven
+Decisions is where a judgment is recorded, not a second checklist: review progress counts
+the Overview's things to think about (§4.2), and judging a decision resolves every question
+reviewed on it. The header shows the same n of m as the sidebar's Decisions row, one dot
+per question. Decisions to review are the only ones with judgment buttons, and the only
+decisions marked on the Architecture drawing and in Flows. An Overview question's
+"Review →" opens its first related decision and highlights it briefly; the card names its
+questions as one more line, "Overview asks", rather than re-quoting them as a block. The lens is keyboard-driven
 (J/K or ↑/↓ move, A/Q/C judge, M more). A "One at a time" mode reads like a design review.
 Graphs without `question`/`options`/`why` are condensed by `PRGraph.brief(for:)`. See
 `Views/Decisions/DecisionsView.swift` and `Models/DecisionBriefing.swift`.
@@ -276,7 +293,7 @@ Not a screen, a node, or a review item. A tradeoff exists because a decision was
 it lives on `DecisionNode.tradeoffs` and is judged with that decision: two qualities being
 traded, where the choice landed, and whether it's the decision's primary tension or a
 secondary one — never a verdict. A decision may have none; the analysis is told not to
-manufacture one. Review progress counts decisions only.
+manufacture one. Review progress counts the things to think about, never tradeoffs.
 
 ### 4.6 Flows
 
@@ -380,17 +397,27 @@ lines, expand-context, and whole-file. Base-side references (`RefSide.base`) rea
 pre-PR blob via `git show <baseSha>:<path>` rather than the working tree. Jump-to-
 definition/LSP-grade navigation is explicitly deferred (§17).
 
+The raw diff is parsed into files and hunks (`Models/UnifiedDiff.swift`) rather than shown as
+one string: a file list with +/− counts to jump from, collapsible file sections, old and new
+line numbers side by side, and each hunk badged with the decisions and flow stages whose
+`CodeRef`s fall inside it, so the diff links back up the ladder. "Show in diff" (in the code
+viewer and on any code reference's context menu) lands on the reference's file and hunk
+with the cited lines highlighted.
+
 ## 8. GitHub integration
 
 Contour reads GitHub through one of two interchangeable `PRSource` implementations
 (`Services/PRSource.swift` picks between them), and holds no GitHub credential either way.
 
 - `GHCLISource` shells out to `gh` — `gh pr view --json ...` for
-  metadata/commits/comments/reviews, `gh pr diff` for the raw diff, `gh issue view` for a
+  metadata/commits/comments/reviews and CI (`statusCheckRollup`), `gh pr diff` for the raw
+  diff, one `gh api graphql` query for unresolved review threads, `gh issue view` for a
   linked issue. It inherits whatever `gh auth` is configured, including GitHub Enterprise,
   and it is the only path that can read private repositories.
 - `AnonymousAPISource` uses GitHub's public REST API with no credentials at all, so a
-  public pull request can be reviewed on a machine that has nothing but `git`.
+  public pull request can be reviewed on a machine that has nothing but `git`. It reads
+  CI from the head commit's check runs and statuses, but can't see thread resolution,
+  which is GraphQL-only and needs authentication.
 
 Selection is a user setting (`auto` / `gh` / `anonymous`) defaulting to `auto`: use `gh`
 when it is installed and authenticated — private repos, and 5000 requests/hour — and
@@ -409,7 +436,13 @@ The checkout uses plain `git clone`, not `gh repo clone`. Git's credential helpe
 code path serves both cases and the checkout depends on `gh` not at all.
 
 Posting reviews back to GitHub is designed (one line-anchored comment per reviewer-marked
-decision via the REST reviews API) but deferred past MVP.
+decision via the REST reviews API) but deferred past MVP. Until then the review still has a
+way out: **Open on GitHub** (toolbar, File menu, ⌘⇧O) and **Copy Review Summary** (toolbar,
+File menu, ⌘K), which puts the reviewer's judgment on the pasteboard as Markdown for a review
+comment — what changed in one line, each judged decision with its state and note, and the
+Overview questions no "Looks good" has settled. That Markdown
+(`PRGraph.reviewSummaryMarkdown`, `Models/ReviewSummary.swift`) is the payload the deferred
+posting will send.
 
 One real-world robustness detail worth calling out because it surfaced during
 development: PR base branches are frequently deleted after merge. Fetching the head ref
@@ -545,7 +578,10 @@ it lands, so nothing can arrive after and duplicate it.
 Every analysis stage **fails on its own**. Its slice stays empty, the section says so and
 offers Retry (and a conversation instead), and every other section carries on; Judgment
 runs with whatever exists. Only fetching and checking out the PR are fatal — and a
-checkout failure after the review has opened still leaves the raw diff on screen.
+checkout failure after the review has opened still leaves the raw diff on screen. The
+section says what failed in the reviewer's terms ("Couldn't map the architecture. The
+model's answer wasn't readable."); the model's raw response and the CLI's stderr go only
+to the technical log behind "Show log".
 
 Every stage's system prompt instructs the harness to treat anything inside
 `<UNTRUSTED_PR_CONTENT>` as data, never instructions — the mitigation for prompt
@@ -630,7 +666,9 @@ independent stages in parallel (§10).
 - **Analysis cache** (`Services/AnalysisCache.swift`), keyed by (repo, PR, headSha,
   baseSha, pipeline version). Written as each stage lands, recording which stages it
   holds, so an interrupted run resumes with only the missing stages. Reopening the same
-  commit shows everything at once.
+  commit shows everything at once. Beside the entries, a small `recent-prs.json` index
+  of the last PRs opened (URL, repo, title, when) feeds the welcome screen's recent list
+  without decoding every cached graph.
 - **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
   head is shown straight away, marked "from previous revision" (banner, stage status),
   and replaced slice by slice as the current revision's stages land. A stale slice is
@@ -661,10 +699,20 @@ Three classes, enforced by `Statement`'s `Provenance` and rendered identically e
 via `ProvenanceBadge`/`StatementView` (`Views/Components/Badges.swift`): fact (observed
 directly), claim (author-stated, quoted/paraphrased), interpretation (AI-derived, always
 carries a `Confidence` and is required by every stage's system prompt to use hedged
-language). The grounding gate is enforced by instruction ("every field you emit must be
-backed by a CodeRef your tools actually resolved") rather than a separate mechanical
-verification pass in this MVP — mechanical CodeRef verification against the checkout is
-a near-term hardening item, not yet wired in.
+language). The grounding gate is asked for by instruction ("every field you emit must be
+backed by a CodeRef your tools actually resolved") and then checked mechanically:
+`CodeRefVerifier` (`Pipeline/CodeRefVerifier.swift`) resolves every stage's refs against
+the checkout as the stage lands, before it reaches the screen or `GraphLinker`. A `head`
+ref must name a file in the working tree whose range starts inside it; a `base` ref must
+resolve via `git cat-file blob <baseSha>:<path>`. A range running past the end is trimmed
+to it, and a `head` ref to a file the PR deleted is moved to `base` (the model omits
+`side` more often than not). Refs that still don't resolve are dropped, and a statement
+whose refs *all* failed keeps its text but loses its standing: a fact becomes a
+low-confidence interpretation, an interpretation drops to low confidence, a decision's
+own confidence drops to low; an author's claim stays a claim. Each stage's tally is kept
+on the graph (`PRGraph.refChecks`) and the analysis details say "3 of 41 code references
+couldn't be verified", listing them. File line counts are cached per run, and all of it
+runs off the main actor.
 
 ## 16. Security considerations
 
@@ -707,13 +755,15 @@ ephemeral, and session-less, so nothing a PR contains can persist into a later a
 **Explicitly deferred:** posting reviews back to GitHub, LSP-grade jump-to-
 definition/call-graph navigation, sequence-diagram rendering as an alternate flow view,
 sharded analysis for oversized PRs, per-stage result caching, a Settings screen for
-per-tier model overrides, mechanical CodeRef verification against the checkout.
+per-tier model overrides, mechanical CodeRef verification against the checkout (since
+done, §15).
 
 ## 18. Later enhancements
 
 In priority order given what MVP validated: (1) per-stage analysis caching keyed by
-head/base SHA, since re-opening the same PR should be instant; (2) mechanical CodeRef
+head/base SHA, since re-opening the same PR should be instant; (2) ~~mechanical CodeRef
 verification, since it closes the one remaining gap between "the AI was told to ground
-every claim" and "the app proved it did"; (3) posting reviewer marks back to GitHub as a
+every claim" and "the app proved it did"~~ — done: `CodeRefVerifier` drops refs that don't
+resolve against the checkout and demotes statements resting only on them (§15); (3) posting reviewer marks back to GitHub as a
 real review; (4) sharded analysis for large PRs; (5) LSP-backed code navigation; (6) a
 Settings screen exposing per-tier model overrides for users running multiple providers.

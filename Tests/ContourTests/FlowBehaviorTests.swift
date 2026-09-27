@@ -104,6 +104,19 @@ struct FlowBehaviorTests {
         #expect(graph.scenarioTitle(for: modern) == "Open a file")
     }
 
+    @Test func bracketKeysStepThroughScenariosAndWrap() throws {
+        let graph = try fixtureGraph()
+        let ids = graph.flows.map(\.id)
+        try #require(ids.count > 1)
+        #expect(graph.scenario(1, from: ids[0])?.id == ids[1])
+        #expect(graph.scenario(-1, from: ids[0])?.id == ids.last)
+        #expect(graph.scenario(1, from: ids.last)?.id == ids[0])
+        #expect(graph.scenario(1, from: "missing")?.id == ids[1])
+        var empty = graph
+        empty.flows = []
+        #expect(empty.scenario(1, from: nil) == nil)
+    }
+
     @Test func olderFlowsCondenseToATriggerAndTheirStorySteps() throws {
         let graph = try fixtureGraph()
         let file = try fileFlow(graph)

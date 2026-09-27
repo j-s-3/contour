@@ -3,15 +3,41 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// The core workflow's entry point (§2): "the user pastes a GitHub pull request URL."
-/// Nothing else — no repo picker, no auth flow, since `gh` is already authenticated.
+/// No repo picker, no auth flow, since `gh` is already authenticated.
+///
+/// Under the URL field, the PRs a review session most often starts from, so the reviewer
+/// doesn't have to go and find a URL first: PRs awaiting their review (when `gh` can say)
+/// and the ones they opened recently (instant to reopen, from the analysis cache). The URL
+/// field stays for everything else.
 ///
 /// The raw Contour mark, not the app icon: the rounded-square tile belongs to the Dock
 /// and Finder. Inside the app the mark is the brand, and the same mark resolves while a
 /// PR is analyzed, so it is matched across the two screens.
 struct OnboardingView: View {
-    @State private var urlText: String = ""
+    @State private var urlText: String
+    /// A pull request link waiting on the clipboard, offered inline so the reviewer
+    /// doesn't have to paste it (see `ClipboardOffer`).
+    @State private var clipboardOffer: ClipboardOffer?
+    /// The clipboard contents the reviewer already declined, by change count, so the same
+    /// link isn't offered again every time the window is activated.
+    @State private var declinedChangeCount: Int?
+    @State private var recents: [AnalysisCache.RecentPR] = []
+    /// Nil until `gh` has answered, or when it can't be asked.
+    @State private var reviewRequests: [ReviewRequest]?
     var markNamespace: Namespace.ID
     var onSubmit: (String) -> Void
+
+    /// Rows per list: enough to cover a working week's PRs without pushing the welcome
+    /// off-centre.
+    static let rowsShown = 5
+
+    /// `initialURL` pre-fills the field — the PR the reviewer last tried, when they come
+    /// back here from a failure — so a corrected or repeated attempt needs no re-paste.
+    init(initialURL: String? = nil, markNamespace: Namespace.ID, onSubmit: @escaping (String) -> Void) {
+        _urlText = State(initialValue: initialURL ?? "")
+        self.markNamespace = markNamespace
+        self.onSubmit = onSubmit
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,12 +70,14 @@ struct OnboardingView: View {
                         guard let provider = providers.first else { return }
                         _ = provider.loadObject(ofClass: String.self) { text, _ in
                             guard let text else { return }
-                            DispatchQueue.main.async { urlText = text }
+                            DispatchQueue.main.async { urlText = PRLink.extract(from: text) ?? text }
                         }
                     }
                 // Fallback that never depends on keyboard-shortcut routing at all.
                 Button {
-                    if let clip = NSPasteboard.general.string(forType: .string) { urlText = clip }
+                    if let clip = NSPasteboard.general.string(forType: .string) {
+                        urlText = PRLink.extract(from: clip) ?? clip
+                    }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
                 }
@@ -59,6 +87,12 @@ struct OnboardingView: View {
                     .disabled(GitHubService.normalize(urlText) == nil)
             }
             .padding(.top, 28)
+
+            if let offer = clipboardOffer {
+                clipboardOfferRow(offer)
+                    .padding(.top, 14)
+                    .transition(.opacity)
+            }
 
             // Mock mode only: the canned analysis matches exactly one PR, so offer it
             // directly rather than making the tester remember its URL.
@@ -71,16 +105,210 @@ struct OnboardingView: View {
                 .help(MockAnalysisFixtures.sourcePRURL)
                 .padding(.top, 16)
             }
+
+            pullRequestLists
+                .padding(.top, 32)
             Spacer()
             // The optical centre sits a little above the geometric one.
             Spacer().frame(height: 60)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.2), value: clipboardOffer)
+        // Re-read on every appearance, so closing a PR lists it at the top straight away.
+        .task {
+            recents = AnalysisCache().recentPRs(limit: Self.rowsShown)
+            await checkClipboard()
+            let requests = await ReviewRequests.fetch(access: Preferences.shared.resolvedGitHubAccess)
+            // `gh search` takes a second or two; fade the list in rather than jolting the layout.
+            withAnimation(.easeInOut(duration: 0.25)) { reviewRequests = requests }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await checkClipboard() }
+        }
+    }
+
+    /// Side by side rather than stacked, so both lists fit under the field without pushing
+    /// the mark off the top of a default-sized window.
+    @ViewBuilder
+    private var pullRequestLists: some View {
+        let requests = Array((reviewRequests ?? []).prefix(Self.rowsShown))
+        if !requests.isEmpty || !recents.isEmpty {
+            HStack(alignment: .top, spacing: 28) {
+                if !requests.isEmpty {
+                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
+                        ForEach(requests) { request in
+                            PullRequestRow(
+                                title: request.title, repo: request.repo, number: request.number,
+                                detail: request.isDraft ? "\(request.author) · draft" : request.author,
+                                date: request.updatedAt, dateVerb: "updated", url: request.url, onOpen: onSubmit
+                            )
+                        }
+                    }
+                }
+                if !recents.isEmpty {
+                    PullRequestList(title: "Recently opened", systemImage: "clock.arrow.circlepath") {
+                        ForEach(recents) { recent in
+                            PullRequestRow(
+                                title: recent.title, repo: recent.repo, number: recent.number,
+                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onSubmit
+                            )
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 24)
+            .transition(.opacity)
+        }
     }
 
     private func submit() {
         guard GitHubService.normalize(urlText) != nil else { return }
         onSubmit(urlText)
+    }
+
+    private func clipboardOfferRow(_ offer: ClipboardOffer) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard")
+                .foregroundStyle(.secondary)
+            switch offer {
+            case .pullRequest(let url):
+                Button {
+                    onSubmit(url)
+                } label: {
+                    Text(verbatim: "Open \(PRLink.label(for: url) ?? url) from clipboard?")
+                }
+                .buttonStyle(.link)
+                .help(url)
+            case .unreadLink(let changeCount):
+                Button("Open the link on your clipboard?") { openUnreadClipboard(changeCount) }
+                    .buttonStyle(.link)
+            }
+            Button {
+                declinedChangeCount = NSPasteboard.general.changeCount
+                clipboardOffer = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .help("Dismiss")
+        }
+        .font(.callout)
+    }
+
+    /// Looks for a PR link on the clipboard without tripping macOS's paste-access alert:
+    /// pattern detection never reads the contents, and the contents are only read up
+    /// front once the reviewer has let Contour read the clipboard. Otherwise the offer is
+    /// generic and the read waits for their click.
+    private func checkClipboard() async {
+        let pasteboard = NSPasteboard.general
+        let changeCount = pasteboard.changeCount
+        guard changeCount != declinedChangeCount else {
+            clipboardOffer = nil
+            return
+        }
+        // Before 15.4 there is no alert, so the clipboard can simply be read.
+        if #available(macOS 15.4, *), pasteboard.accessBehavior != .alwaysAllow {
+            let patterns = pasteboard.accessBehavior == .alwaysDeny ? []
+                : (try? await pasteboard.detectedPatterns(for: [\.probableWebURL])) ?? []
+            clipboardOffer = patterns.contains(\.probableWebURL) ? .unreadLink(changeCount: changeCount) : nil
+            return
+        }
+        clipboardOffer = pasteboard.string(forType: .string)
+            .flatMap(PRLink.extract(from:))
+            .map(ClipboardOffer.pullRequest)
+    }
+
+    /// The reviewer asked for the clipboard, so read it now. A link that isn't a PR goes
+    /// into the field rather than vanishing, so they can see why it didn't open.
+    private func openUnreadClipboard(_ changeCount: Int) {
+        clipboardOffer = nil
+        declinedChangeCount = changeCount
+        guard let clip = NSPasteboard.general.string(forType: .string) else { return }
+        if let url = PRLink.extract(from: clip) {
+            onSubmit(url)
+        } else {
+            urlText = clip
+        }
+    }
+}
+
+/// What the start screen can offer from the clipboard.
+enum ClipboardOffer: Equatable {
+    /// A PR link, read and recognized.
+    case pullRequest(String)
+    /// A web link that hasn't been read yet, because reading it would ask the reviewer for
+    /// clipboard access before they've asked for anything.
+    case unreadLink(changeCount: Int)
+}
+
+/// One of the start screen's PR lists: a quiet heading over its rows.
+private struct PullRequestList<Rows: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder var rows: Rows
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+            rows
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+}
+
+/// A PR the reviewer can open with one click: its title, then where it lives and when.
+private struct PullRequestRow: View {
+    let title: String
+    let repo: String
+    let number: Int
+    /// Anything else worth a glance, such as who opened it.
+    let detail: String?
+    let date: Date?
+    /// What `date` records: "updated" for a review request, "opened" for a recent PR.
+    let dateVerb: String
+    let url: String
+    var onOpen: (String) -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button { onOpen(url) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(hovering ? 0.07 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(url)
+    }
+
+    private var subtitle: String {
+        var parts = ["\(repo) #\(number)"]
+        if let detail { parts.append(detail) }
+        if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -195,9 +423,12 @@ struct AnalyzingView: View {
     }
 }
 
+/// Opening the PR failed. "Try again" retries the same URL; the start screen (pre-filled
+/// with that URL) is a separate, secondary way out, for when the URL itself was wrong.
 struct FailedView: View {
     let message: String
     var onRetry: () -> Void
+    var onOpenDifferent: () -> Void
     var body: some View {
         ContentUnavailableView {
             Label("Couldn't open this PR", systemImage: "exclamationmark.triangle")
@@ -205,6 +436,8 @@ struct FailedView: View {
             Text(message)
         } actions: {
             Button("Try again", action: onRetry)
+                .keyboardShortcut(.defaultAction)
+            Button("Open a different PR", action: onOpenDifferent)
         }
     }
 }

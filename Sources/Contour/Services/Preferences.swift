@@ -93,6 +93,7 @@ final class Preferences {
         static let fastModel = "fastModelOverride"
         static let strongModel = "strongModelOverride"
         static let onboarded = "hasCompletedOnboarding"
+        static let fullScreen = "opensInFullScreen"
     }
 
     var storedHarness: HarnessID? {
@@ -123,6 +124,14 @@ final class Preferences {
     var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Key.onboarded) }
         set { defaults.set(newValue, forKey: Key.onboarded) }
+    }
+
+    /// Off by default: a reviewer usually arrives from a link in Slack or a browser, and
+    /// taking over a whole Space loses the window they came from. The window reopens at
+    /// its last frame instead.
+    var opensInFullScreen: Bool {
+        get { defaults.bool(forKey: Key.fullScreen) }
+        set { defaults.set(newValue, forKey: Key.fullScreen) }
     }
 
     // MARK: - Resolved values

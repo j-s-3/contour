@@ -34,7 +34,7 @@ extension PRGraph {
     // MARK: - Where the reviewer's attention goes
 
     /// The decisions worth the reviewer's conscious judgment, most significant first — shown
-    /// by default and counted by review progress. Significance decides this, never abstraction
+    /// by default, with judgment buttons. Significance decides this, never abstraction
     /// level: an implementation choice about failure semantics belongs here, a
     /// component-ownership choice with no behavioral consequence doesn't. The reviewer's own
     /// placement overrides the analysis; decisions they added come last.
