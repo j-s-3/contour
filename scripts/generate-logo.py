@@ -8,7 +8,8 @@ real contours crowd toward a summit.
 
 Writes into Assets/Logo/:
   contour-icon.svg    macOS app icon (1024x1024, Big Sur squircle grid)
-  contour-logo.svg    horizontal lockup: mark + "Contour" wordmark
+  contour-logo.svg        horizontal lockup: mark + "Contour" wordmark, for light backgrounds
+  contour-logo-dark.svg   the same lockup with a light wordmark, for dark backgrounds
 
 The app draws the raw mark itself from a Swift port of `mark()`
 (Sources/Contour/Views/Brand/ContourMark.swift); ContourMarkTests fails if the two drift,
@@ -26,6 +27,8 @@ OUT = Path(__file__).resolve().parent.parent / "Assets" / "Logo"
 INK_TOP, INK_BOTTOM = "#16263D", "#0B1422"
 LINE_OUTER, LINE_INNER = (0x3F, 0xC1, 0xC9), (0xFF, 0xC8, 0x57)
 PEAK = "#FFC857"
+# Wordmark on a dark page (e.g. GitHub's dark theme), where INK_TOP would vanish.
+WORDMARK_ON_DARK = "#E6EDF3"
 
 RINGS = 7
 
@@ -131,7 +134,7 @@ def icon_svg():
 """
 
 
-def logo_svg():
+def logo_svg(wordmark=INK_TOP):
     # Tile scaled so its 824pt body becomes 280px, vertically centred in a 360px-tall lockup.
     k = 280 / BODY_S
     tx, ty = 40 - BODY_X * k, 40 - BODY_X * k
@@ -140,7 +143,7 @@ def logo_svg():
   {tile(shadow=False)}
   </g>
   <text x="370" y="238" font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
-        font-size="176" font-weight="600" letter-spacing="-4" fill="{INK_TOP}">Contour</text>
+        font-size="176" font-weight="600" letter-spacing="-4" fill="{wordmark}">Contour</text>
 </svg>
 """
 
@@ -149,6 +152,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "contour-icon.svg").write_text(icon_svg())
     (OUT / "contour-logo.svg").write_text(logo_svg())
+    (OUT / "contour-logo-dark.svg").write_text(logo_svg(wordmark=WORDMARK_ON_DARK))
     print(f"wrote {OUT}")
 
 

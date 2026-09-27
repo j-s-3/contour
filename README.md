@@ -1,4 +1,9 @@
-<p align="center"><img src="Assets/Logo/contour-logo.svg" alt="Contour" width="360"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Assets/Logo/contour-logo-dark.svg">
+    <img src="Assets/Logo/contour-logo.svg" alt="Contour" width="360">
+  </picture>
+</p>
 
 # Contour
 
