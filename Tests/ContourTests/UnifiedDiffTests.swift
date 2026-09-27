@@ -183,6 +183,64 @@ struct UnifiedDiffTests {
         #expect(UnifiedDiff.parse("").isEmpty)
     }
 
+    /// git quotes a `diff --git` header's paths when they contain characters like tabs or
+    /// newlines; that's a different code path from the ambiguous-unquoted-path split used
+    /// for every other test here.
+    @Test func gitHeaderPathsHandlesQuotedPaths() throws {
+        let files = UnifiedDiff.parse(lines("""
+        diff --git "a/weird name.rs" "b/weird name.rs"
+        --- "a/weird name.rs"
+        +++ "b/weird name.rs"
+        @@ -1 +1 @@
+        -a
+        +b
+        """))
+        let file = try #require(files.first)
+        #expect(file.oldPath == "weird name.rs" && file.newPath == "weird name.rs")
+    }
+
+    /// `copy from`/`copy to` mark a copied file, same as rename does for a moved one — no
+    /// existing test exercised this status at all.
+    @Test func copyFromAndToMarkACopiedFile() throws {
+        let files = UnifiedDiff.parse(lines("""
+        diff --git a/orig.rs b/copy.rs
+        similarity index 100%
+        copy from orig.rs
+        copy to copy.rs
+        """))
+        let file = try #require(files.first)
+        #expect(file.status == .copied)
+        #expect(file.oldPath == "orig.rs" && file.newPath == "copy.rs")
+    }
+
+    /// A quoted `rename from`/`rename to` path must come back unquoted — same `unquote`
+    /// helper the `---`/`+++` markers use, but no test exercised it on a rename line.
+    @Test func quotedRenamePathsAreUnquoted() throws {
+        let files = UnifiedDiff.parse(lines("""
+        diff --git a/old.txt b/new.txt
+        similarity index 100%
+        rename from "old file.txt"
+        rename to "new file.txt"
+        """))
+        let file = try #require(files.first)
+        #expect(file.oldPath == "old file.txt" && file.newPath == "new file.txt")
+    }
+
+    /// A `@@` line that doesn't parse as a hunk header (no diff tool writes one, but the
+    /// raw diff is "evidence of last resort" and must not crash on garbage) is ignored
+    /// entirely, along with the body lines that would have belonged to it.
+    @Test func aMalformedHunkHeaderIsIgnoredEntirely() throws {
+        let files = UnifiedDiff.parse(lines("""
+        diff --git a/a.txt b/a.txt
+        --- a/a.txt
+        +++ a/a.txt
+        @@ garbage @@
+         this line has nowhere to go
+        """))
+        let file = try #require(files.first)
+        #expect(file.hunks.isEmpty)
+    }
+
     // MARK: - Landing and citations
 
     private let sample = UnifiedDiff.parse("""
