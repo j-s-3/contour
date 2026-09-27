@@ -39,11 +39,12 @@
     return d + "Z";
   }
 
-  function rings(count, scale = 100) {
+  // `spread` > .75 spaces the inner rings more evenly (used where each ring carries a label).
+  function rings(count, scale = 100, spread = 0.75) {
     const peak = [scale * 0.24, -scale * 0.2], out = [];
     for (let k = 0; k < count; k++) {
       const level = k / (count - 1);
-      const radius = scale * lerp(1.0, 0.17, level ** 0.75);
+      const radius = scale * lerp(1.0, 0.17, level ** spread);
       const t = level ** 0.45;
       out.push({ level, pts: ringPoints(lerp(0, peak[0], t), lerp(0, peak[1], t), radius, level) });
     }
@@ -265,6 +266,14 @@
     });
   });
 
+  // ── Hint at code that scrolls sideways ─────────────────────────────────────
+  document.querySelectorAll(".term .code, .evidence-code .code").forEach((pre) => {
+    const update = () => pre.classList.toggle("more-r", pre.scrollLeft + pre.clientWidth < pre.scrollWidth - 2);
+    update();
+    pre.addEventListener("scroll", update, { passive: true });
+    addEventListener("resize", update);
+  });
+
   // ── Decision verdict ──────────────────────────────────────────────────────
   const VERDICT = {
     good: "Accepted. The choice is now yours on the record, not the agent's.",
@@ -290,7 +299,7 @@
   if (layers) {
     const svg = layers.querySelector("[data-layer-rings]");
     const labels = [...layers.querySelectorAll("[data-layer-i]")];
-    const { peak, rings: rs } = rings(5, 190);
+    const { peak, rings: rs } = rings(5, 190, 1.15);
     const paths = rs.map(({ level, pts }) => el("path", {
       d: smoothPath(pts), fill: "none", stroke: mix(level ** 1.2), "stroke-width": "1.4", opacity: "0.15",
     }, svg));
