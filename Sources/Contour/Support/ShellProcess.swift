@@ -177,7 +177,7 @@ enum Shell {
             // Pulls complete lines out of `chunk` (appended after whatever partial line is
             // already buffered) and yields each one; leaves any partial line in `lineBuffer`
             // for the next chunk, or for the termination-time drain below.
-            func extractLines(from chunk: Data) {
+            @Sendable func extractLines(from chunk: Data) {
                 guard !chunk.isEmpty else { return }
                 lineBuffer.append(chunk)
                 var remainder = lineBuffer.drain()
@@ -193,7 +193,7 @@ enum Shell {
             // decode it lossily (replacement characters for the bad bytes) instead, so a
             // malformed line is visible — to the log, and still handed to the caller — rather
             // than just vanishing from the stream.
-            func yieldLine(_ lineData: Data) {
+            @Sendable func yieldLine(_ lineData: Data) {
                 guard !lineData.isEmpty else { return }
                 if let line = String(data: lineData, encoding: .utf8) {
                     continuation.yield(line)
