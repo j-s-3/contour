@@ -2,8 +2,9 @@
 
 ## `corpus.json`
 The nightly real-PR corpus (issue #64): a list of `{url, reason}` entries, public and
-long-merged, chosen for variety (tiny, typical, larger, a minimal single-file demo PR,
-mid-history candidates). `CorpusRunTests` runs the full pipeline against every entry and
+long-merged, chosen for variety (tiny, docs-only, a new package, a cross-package refactor, fork PRs,
+code moved between files, a large command rewrite). Every entry was checked against
+GitHub before it went in; each `reason` says what shape it covers. `CorpusRunTests` runs the full pipeline against every entry and
 records what happened, stage by stage. See "Running the corpus locally" below.
 
 ## `sample-corpus-results.jsonl`
