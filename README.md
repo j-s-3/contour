@@ -4,44 +4,135 @@
 
 [![Build](https://github.com/j-s-3/contour/actions/workflows/build.yml/badge.svg)](https://github.com/j-s-3/contour/actions/workflows/build.yml)
 
-A macOS-native PR review app built around the thesis that human review should validate
-engineering decisions, not re-read every line an AI generated. See `DESIGN.md` for the
-full product and technical design.
+**Review the decisions, not the diff.**
 
-The AI harness (`pi` or Claude Code), the issue tracker (GitHub issues or Jira), and the
-way it reaches GitHub (`gh` or the anonymous API) are all pluggable. The only hard
-requirements are `git` and one AI CLI you're already signed in to.
+Most of the code in a pull request is now written by a machine. Reading it line by line
+is the wrong job for the one human in the loop. Contour is a native macOS app that turns a
+GitHub pull request into a briefing: what changed, what the code now does, which
+engineering decisions it made, what each one traded away, and where your judgment is
+actually needed. Every claim carries a link to the lines behind it.
+
+<p align="center"><img src="Assets/Screenshots/summary.png" alt="Contour's Overview of a pull request: a before/after chain of the behavior change, why it was made, and five things to think about" width="900"></p>
 
 > **Status:** early and experimental. Expect rough edges and breaking changes.
 
-## What's implemented
+## Install
 
-- Paste a GitHub PR URL → PR metadata/diff/commits/comments are fetched → the repo is
-  checked out locally at the PR's head SHA → a staged pipeline of AI calls builds a
-  knowledge graph (components, decisions with their tradeoffs, flows, questions) →
-  native SwiftUI views render it.
-- Progressive opening: the review appears as soon as the PR is fetched and fills in while
-  you work. Independent stages run in parallel, decisions and flows stream in one at a
-  time, each section fails and retries on its own, and a previously analyzed revision is
-  shown (marked as such) while the new one is analyzed.
-- An Overview that reads as a briefing: the before/after behavior change, why it was
-  made, and a short list of "things to think about".
-- Every AI-produced statement is tagged fact / author-claim / AI-interpretation, with
-  confidence on interpretations, visible everywhere via `ProvenanceBadge`.
-- Native architecture diagram (SwiftUI `Canvas`, layered layout, no web view).
-- Full decision records (Decision / Rationale / Alternatives / Consequences / Confidence /
-  Evidence) with accept / question / discuss reviewer state.
-- Each decision shows what it traded and why it landed on that side, without a verdict;
-  interactive flow step lists.
-- Contextual chat: right-click any element and choose "Ask about this…" (⌘⇧A). The model
-  gets that element plus its lineage and neighbors, and cites code and review objects as
-  clickable links.
-- Focused code viewer reading the real local checkout, with expand-context / whole-file /
-  a guaranteed path back to wherever the reviewer was in the conceptual review.
-- Command palette (⌘K) jumping to any lens or any named node in the graph.
+With [Homebrew](https://brew.sh). The repo is its own tap:
 
-Deferred (see `DESIGN.md` §17/§18): posting reviews back to GitHub, LSP-grade
-jump-to-definition, sequence-diagram rendering, sharded analysis for very large PRs.
+```sh
+brew tap j-s-3/contour https://github.com/j-s-3/contour
+brew install --HEAD j-s-3/contour/contour
+contour
+```
+
+There are no tagged releases yet, so this builds the latest `main` from source. It needs
+Xcode 27 (Swift 6.4). `brew upgrade --fetch-HEAD contour` pulls newer commits.
+
+Or build it yourself:
+
+```sh
+swift build
+swift run Contour
+```
+
+Either way, you also need `git` and one AI CLI you're already signed in to (`pi` or
+Claude Code). See [Requirements](#requirements) below. A setup wizard on first launch
+checks what you have.
+
+## A tour, on Contour's own code
+
+Every screenshot below is Contour reviewing one of its own pull requests,
+[#10](https://github.com/j-s-3/contour/pull/10), *"Decide which decisions to review by
+significance, not abstraction"*. It touches 14 files (+706 −136). These are real outputs
+of a normal run with Claude Code as the harness, not mockups.
+
+### Start with a briefing, not a file list
+
+The **Overview** reads like a colleague's handoff. It says in one line what the PR
+changes, shows the behavior before and after as a chain of steps, and says *why* the
+change was made. It also lists a few concrete **things to think about**. Size, CI status,
+approvals and age sit in the header. Each "Review →" takes you to the decision the
+question is about.
+
+### Judge the decisions that matter
+
+<p align="center"><img src="Assets/Screenshots/decisions.png" alt="Decisions to Review: each decision drawn as a choice between alternatives, with what it traded and why it landed there" width="900"></p>
+
+Contour pulls out every meaningful choice the implementation made. It then asks which of
+them a strong senior engineer would want to stop and consciously agree with. Here it
+found 10 decisions and put 5 in front of you. Each is drawn as a choice between real
+alternatives, with **what it traded**, **why it landed on that side** (quoting the author
+where it can), the questions raised about it, and every flow it appears in. You judge
+each one: *Looks good*, *Question*, or *Discuss*. You can also move a decision in or out
+of the list. The AI briefs you and never gives a verdict. That call stays yours.
+
+### See the shape of the change
+
+<p align="center"><img src="Assets/Screenshots/architecture.png" alt="Architecture: a whiteboard drawing of the parts the PR touches, with changed contracts struck through and replaced" width="900"></p>
+
+**Architecture** is a whiteboard sketch of the parts the PR touches, not a class diagram.
+Changed contracts appear as struck-through old versions beside the new ones. Decisions and
+open questions are pinned to the parts they concern. You can flip between *Before this
+PR*, *After this PR* and *What changed*.
+
+### Follow what actually happens at runtime
+
+<p align="center"><img src="Assets/Screenshots/flows.png" alt="Flows: a behavior diagram of what happens when the reviewer opens Decisions, with new and changed steps highlighted" width="900"></p>
+
+**Flows** traces the behavior the PR changes as a series of scenarios ("what happens
+when…"). New and changed steps are marked, each with its before and after. The decisions
+and review questions that apply are attached to the exact step where they take effect.
+
+### Ask about anything, get answers that cite code
+
+<p align="center"><img src="Assets/Screenshots/chat.png" alt="Contextual chat about a decision, answering with clickable file-and-line citations into the checkout" width="900"></p>
+
+Right-click any decision, part, flow step or piece of code and choose **Ask about this…** (⌘⇧A).
+The conversation starts from that element and knows everything connected to it. The model
+reads the real checkout and answers with clickable `path:line` citations. Each citation
+opens the code and keeps your place in the review.
+
+### And the diff is still one click away
+
+<p align="center"><img src="Assets/Screenshots/diff.png" alt="Raw diff with a file list, hunks, line numbers, and links back to the review" width="900"></p>
+
+The **raw diff** has a file list, hunks and line numbers. Hunks link back to the flows
+and decisions they implement, so reading code never loses the thread.
+
+### No waiting for the whole analysis
+
+<p align="center"><img src="Assets/Screenshots/progressive.png" alt="A review opening progressively: the Overview is ready while Flows and Decisions are still being analyzed" width="900"></p>
+
+The review opens as soon as the PR is fetched and fills in while you read. Independent
+stages run in parallel, and decisions and flows stream in one at a time. Each section
+fails and retries on its own, and you can stop a run and resume it section by section.
+Reopening a PR you've analyzed before is instant. If it has new commits, you see the
+previous analysis, clearly marked, while the new one runs.
+
+## Why trust it
+
+- **Provenance on every statement.** Everything the app says is tagged as an observed
+  fact, an author claim, or an AI interpretation, and interpretations carry a confidence.
+  Contour never presents an inference as a fact.
+- **Everything links back to code.** Each part, decision, tradeoff and flow step cites
+  `path:startLine-endLine` in the real checkout. Citations that don't resolve are caught,
+  and the statements resting on them are demoted.
+- **Safe on untrusted PRs.** Every model call is single-shot and read-only. It refuses
+  to load any `CLAUDE.md`, `AGENTS.md`, skill, hook or plugin *from the pull request*,
+  because on a PR from the internet those files are attacker-controlled.
+- **No lock-in, no credentials.** Contour drives an AI CLI you already use (`pi` or
+  Claude Code), reads GitHub through `gh` or the anonymous API, and looks up the
+  originating issue in GitHub Issues or Jira. It stores no provider keys.
+
+Also: a command palette (⌘K) that jumps to any lens or node, a focused code viewer with
+a guaranteed way back, *Open on GitHub* and *Copy review summary* to take your review
+elsewhere, and opening a PR from the clipboard, a dropped link, or your recent and
+awaiting-review PRs on the start screen.
+
+Not yet: posting reviews back to GitHub, LSP-grade jump-to-definition, and sharded
+analysis for very large PRs (see `DESIGN.md` §17/§18). `DESIGN.md` has the full product
+and technical design.
 
 ## Requirements
 
@@ -60,13 +151,6 @@ That's the whole list. Everything below is optional:
 
 On first launch a setup wizard probes for all of these and tells you what it found, what
 each one buys you, and what (if anything) is actually missing.
-
-## Build & run
-
-```sh
-swift build
-swift run Contour
-```
 
 ## Configuration
 
@@ -207,6 +291,8 @@ Sources/Contour/
   Views/                             SwiftUI lenses (Summary, Architecture, Decisions, …)
   Views/Settings/                    Settings scene + first-run wizard
 Assets/Logo/                         app icon and logo (from scripts/generate-logo.py)
+Assets/Screenshots/                  README screenshots (Contour reviewing its own PR #10)
+Formula/contour.rb                   Homebrew formula; the repo is its own tap
 ```
 
 ## License
