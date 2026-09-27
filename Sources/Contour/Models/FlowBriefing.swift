@@ -49,6 +49,15 @@ extension PRGraph {
         return story.isEmpty ? scenarioTitle(for: flow) : "\(scenarioTitle(for: flow)): \(story)"
     }
 
+    /// The scenario `offset` tabs away from `flowId`, wrapping at either end — what [ and ]
+    /// step to. An unknown id counts as the first scenario.
+    func scenario(_ offset: Int, from flowId: String?) -> FlowNode? {
+        guard !flows.isEmpty else { return nil }
+        let current = flows.firstIndex { $0.id == flowId } ?? 0
+        let count = flows.count
+        return flows[((current + offset) % count + count) % count]
+    }
+
     // MARK: - Behavior
 
     /// The behavior diagram for a flow: the analysis's own model when it has one, else one

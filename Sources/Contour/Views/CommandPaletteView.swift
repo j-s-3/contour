@@ -62,7 +62,7 @@ struct CommandPaletteView: View {
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
             .init(title: "Go to Flows", subtitle: nil, symbol: "arrow.triangle.branch") { store.navigate(to: .flows) },
             .init(title: "Go to Raw diff", subtitle: nil, symbol: "doc.text") { store.navigate(to: .diff) },
-            .init(title: "Open a different PR…", subtitle: nil, symbol: "arrow.uturn.left") { store.close() },
+            .init(title: "Open a different PR…", subtitle: "File ▸ Open Pull Request… (⌘O)", symbol: "arrow.uturn.left") { store.close() },
             .init(title: "Re-analyze (ignore cache)", subtitle: "re-runs all analysis stages for this PR", symbol: "arrow.clockwise") {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }
@@ -76,6 +76,9 @@ struct CommandPaletteView: View {
             commands.insert(contentsOf: modes, at: 0)
         }
         guard let graph = store.graph else { return commands }
+        commands.append(.init(title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
+                              symbol: "doc.on.clipboard") { store.copyReviewSummary() })
+        commands.append(.init(title: "Open on GitHub", subtitle: nil, symbol: "arrow.up.forward.square") { store.openOnGitHub() })
         for d in graph.decisions {
             commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {
                 store.navigate(to: .decisionDetail(d.id))

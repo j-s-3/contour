@@ -111,4 +111,53 @@ struct OverviewBriefingTests {
         )
         #expect(behavior.behaviorChanges.first?.after.last?.outcome != nil)
     }
+
+    // MARK: - While the analysis runs
+
+    /// Regression: the behavior change's question used to show first and then vanish when
+    /// judgment landed with its own list. Replaying the stages in pipeline order, every
+    /// list the Overview shows must keep the previous one as its prefix.
+    @Test func thingsToThinkAboutOnlyGrowWhileStagesLand() throws {
+        func fixture<T: Decodable>(_ type: T.Type, _ stage: PipelineStage) throws -> T {
+            try StageDecoding.decode(type, from: MockAnalysisFixtures.response(for: stage))
+        }
+        let stages: [(PipelineStage, StageResult)] = [
+            (.behaviorChange, .behaviorChange(try fixture(StageDecoding.BehaviorChangeResult.self, .behaviorChange))),
+            (.understanding, .understanding(try fixture(StageDecoding.UnderstandingResult.self, .understanding))),
+            (.decisions, .decisions(try fixture(StageDecoding.DecisionsResult.self, .decisions).decisions)),
+            (.architecture, .architecture(try fixture(StageDecoding.ArchitectureResult.self, .architecture))),
+            (.flows, .flows(try fixture(StageDecoding.FlowsResult.self, .flows))),
+            (.judgment, .judgment(try fixture(StageDecoding.JudgmentResult.self, .judgment))),
+        ]
+
+        var graph = ContourSampleData.publishTriggeredReindex
+        for stage in PipelineStage.analysis { graph.clear(stage) }
+        var analysis = AnalysisState()
+        var shown: [String] = []
+        for (stage, result) in stages {
+            analysis.stages[stage] = .running(detail: nil)
+            graph.apply(result)
+            analysis.stages[stage] = .done
+            let items = graph.linked().thingsToThinkAbout(during: analysis)?.map(\.id)
+            if stage != .judgment {
+                #expect(items == nil, "placeholder until judgment, not \(items ?? []) after \(stage)")
+            }
+            if let items {
+                #expect(Array(items.prefix(shown.count)) == shown, "\(stage) removed or reordered \(shown)")
+                shown = items
+            }
+        }
+        #expect(!shown.isEmpty)
+        #expect(shown == graph.pr.considerations?.map(\.id))
+    }
+
+    /// A finished analysis, and an earlier revision's list while it is revalidated, show
+    /// what they have at once; only a list still to come holds the placeholder.
+    @Test func thingsToThinkAboutShowAtOnceWhenNothingMoreIsComing() {
+        let graph = ContourSampleData.publishTriggeredReindex
+        #expect(graph.thingsToThinkAbout(during: AnalysisState(isComplete: true))?.isEmpty == false)
+        #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .stale])) == graph.thingsToThinkAbout)
+        #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .failed("boom")])) == graph.thingsToThinkAbout)
+        #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .running(detail: nil)])) == nil)
+    }
 }

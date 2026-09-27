@@ -5,9 +5,10 @@ import SwiftUI
 /// outcomes, and the boundaries it crosses — with what this PR changed emphasized and the
 /// decisions and review questions pinned where they matter.
 ///
-/// The diagram owns the screen. Scenarios are tabs across the top; an inspector opens beside
-/// the diagram only once a stage is selected, and walks down the abstraction ladder —
-/// behavior, steps, implementation, code — rather than leading with the call trace.
+/// The diagram owns the screen. Scenarios are tabs across the top ([ and ] step through
+/// them); an inspector opens beside the diagram only once a stage is selected, and walks down
+/// the abstraction ladder — behavior, steps, implementation, code — rather than leading with
+/// the call trace.
 struct FlowsView: View {
     let graph: PRGraph
     /// A flow, and optionally a stage in it, that navigation asked for.
@@ -63,6 +64,7 @@ struct FlowsView: View {
             .focusEffectDisabled()
             .focused($keyboardFocused)
             .diagramModeKeys($mode)
+            .onKeyPress(phases: .down) { press in handleKey(press) }
             .onAppear {
                 keyboardFocused = true
                 apply(focus)
@@ -97,11 +99,28 @@ struct FlowsView: View {
         guard graph.flow(id) != nil else { return }
         selectedFlowId = id
         selectedNodeId = nil
+        keyboardFocused = true
     }
 
     private func select(_ node: FlowBehaviorNode?) {
         if node?.id != selectedNodeId { level = .behavior }
         selectedNodeId = node?.id
+        keyboardFocused = true
+    }
+
+    /// [ and ] cycle scenarios, like the Decisions lens's J and K. Shortcuts with a modifier
+    /// aren't ours.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard graph.flows.count > 1,
+              press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+        let offset: Int
+        switch press.characters {
+        case "[": offset = -1
+        case "]": offset = 1
+        default: return .ignored
+        }
+        if let next = graph.scenario(offset, from: currentFlow?.id) { openFlow(next.id) }
+        return .handled
     }
 
     /// Double-click: step one rung down the ladder.
@@ -135,7 +154,17 @@ struct FlowsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if graph.flows.count > 1 { scenarioTabs }
+            HStack(alignment: .bottom, spacing: 12) {
+                if graph.flows.count > 1 { scenarioTabs } else { Spacer(minLength: 0) }
+                Spacer(minLength: 12)
+                if let flow = currentFlow {
+                    Button { actions.ask(.flow(flow.id)) } label: {
+                        Label("Ask", systemImage: "sparkles").font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Ask about this flow… (⌘⇧A)")
+                }
+            }
             if let flow = currentFlow, let behavior = currentBehavior {
                 story(flow, behavior)
             }
@@ -148,51 +177,67 @@ struct FlowsView: View {
         .padding(.bottom, 12)
     }
 
-    /// Which scenarios can I explore?
+    /// Which scenarios can I explore? A labeled row of tabs, the selected one underlined.
+    /// Whether the PR changes a scenario is part of its name ("· changed"), not a dot that
+    /// reads as selection.
     private var scenarioTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(graph.flows) { flow in
-                    let selected = flow.id == currentFlow?.id
-                    let changed = graph.behavior(for: flow).hasChange
-                    Button { openFlow(flow.id) } label: {
-                        HStack(spacing: 5) {
-                            if changed { Circle().fill(Color.blue).frame(width: 6, height: 6) }
-                            Text(graph.scenarioTitle(for: flow)).lineLimit(1)
-                        }
-                        .font(.callout.weight(selected ? .semibold : .regular))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(selected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08), in: Capsule())
-                        .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1))
-                        .contentShape(Capsule())
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("What happens when… · \(graph.flows.count) scenarios")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("[ ] to switch")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 18) {
+                    ForEach(graph.flows) { flow in
+                        scenarioTab(flow, selected: flow.id == currentFlow?.id)
                     }
-                    .buttonStyle(.plain)
-                    .help(changed ? "This PR changes this flow" : "Unchanged by this PR — shown for context")
-                    .reviewContextMenu(.flow(flow.id))
                 }
             }
         }
     }
 
-    /// The ten-second version: what happens, and what this PR changed about it.
+    private func scenarioTab(_ flow: FlowNode, selected: Bool) -> some View {
+        let changed = graph.behavior(for: flow).hasChange
+        return Button { openFlow(flow.id) } label: {
+            (Text(graph.scenarioTitle(for: flow))
+                .foregroundStyle(selected ? Color.primary : Color.secondary)
+                .font(.system(size: 15, weight: selected ? .semibold : .regular))
+             + Text(changed ? " · changed" : "")
+                .font(.callout)
+                .foregroundStyle(Color.blue))
+                .lineLimit(1)
+                .padding(.vertical, 6)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(selected ? Color.accentColor : .clear)
+                        .frame(height: 2)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .help(changed ? "This PR changes this flow" : "Unchanged by this PR — shown for context")
+        .reviewContextMenu(.flow(flow.id))
+    }
+
+    /// The ten-second version: what happens, and what this PR changed about it. With several
+    /// scenarios the selected tab already names the flow, so the story leads instead.
     @ViewBuilder
     private func story(_ flow: FlowNode, _ behavior: FlowBehavior) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if graph.flows.count <= 1 {
                 Text(graph.scenarioTitle(for: flow))
                     .font(.system(size: 22, weight: .semibold))
                     .reviewContextMenu(.flow(flow.id))
-                Button { actions.ask(.flow(flow.id)) } label: {
-                    Label("Ask", systemImage: "sparkles").font(.caption)
-                }
-                .buttonStyle(.borderless)
-                .help("Ask about this flow… (⌘⇧A)")
-                Spacer(minLength: 0)
             }
             if let summary = behavior.summary {
                 Text(summary)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    .font(graph.flows.count > 1 ? .title3 : .body)
+                    .foregroundStyle(graph.flows.count > 1 ? .primary : .secondary)
                     .lineLimit(3)
                     .frame(maxWidth: 760, alignment: .leading)
             }

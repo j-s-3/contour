@@ -67,6 +67,12 @@ struct CodeViewerView: View {
             .buttonStyle(.plain)
             .help("Ask about this code… (⌘⇧A)")
 
+            Button { actions.navigate(.diffLocation(ref)) } label: {
+                Label("Show in diff", systemImage: "plusminus")
+            }
+            .buttonStyle(.plain)
+            .help("See these lines in the raw diff")
+
             Button {
                 contextLines += 8
                 Task { await load() }
