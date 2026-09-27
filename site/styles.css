@@ -218,6 +218,13 @@ code { font-family: var(--mono); font-size: .9em; }
 .spec-dot--open { border: 1.5px solid var(--muted); }
 .spec-dot--chosen { width: 14px; height: 14px; background: var(--amber); box-shadow: 0 0 0 5px var(--amber-dim), 0 0 22px rgba(255, 200, 87, .5); }
 
+/* Horizontally scrolling code: fade the right edge while more text is hidden there,
+   since macOS and iOS hide the scrollbar until you scroll. */
+.code.more-r {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+}
+
 /* ── Copy button ────────────────────────────────── */
 .copy-btn {
   font: 600 11.5px/1 var(--sans); color: var(--muted); background: none; cursor: pointer;

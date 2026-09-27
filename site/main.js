@@ -265,6 +265,14 @@
     });
   });
 
+  // ── Hint at code that scrolls sideways ─────────────────────────────────────
+  document.querySelectorAll(".term .code, .evidence-code .code").forEach((pre) => {
+    const update = () => pre.classList.toggle("more-r", pre.scrollLeft + pre.clientWidth < pre.scrollWidth - 2);
+    update();
+    pre.addEventListener("scroll", update, { passive: true });
+    addEventListener("resize", update);
+  });
+
   // ── Decision verdict ──────────────────────────────────────────────────────
   const VERDICT = {
     good: "Accepted. The choice is now yours on the record, not the agent's.",
