@@ -1,0 +1,54 @@
+[
+  {
+    "url": "https://github.com/cli/cli/pull/1",
+    "reason": "Tiny. The first PR in cli/cli and IntegrationSmokeTests's default, so its shape is already exercised by this suite."
+  },
+  {
+    "url": "https://github.com/octocat/Hello-World/pull/1",
+    "reason": "Minimal. GitHub's demo repository; one README edit. Closed without merging, but the head ref is permanent, so it is a stable smallest-possible target."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/32",
+    "reason": "Docs only. One README file changed, merged 2019. Exercises a PR with no code for the model to reason about."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/8",
+    "reason": "New package. Pulls a GraphQL API layer into an early cli/cli, merged 2019. Same-repo branch."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/34",
+    "reason": "Cross-package refactor. Eliminates package-level global state across git, context, commands and api, merged 2019. Six commits, several files, no new feature."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/3822",
+    "reason": "Cross-repo fork PR. Adds gpg-key list and add subcommands from owenvoke's fork, merged 2021. Exercises the refs/pull/N/head path for a fork whose branch may be gone."
+  },
+  {
+    "url": "https://github.com/cli/cli/pull/4578",
+    "reason": "Large rewrite. Rewrites gh repo create with new and deprecated flags and changed defaults, merged 2021. Many decisions with real tradeoffs."
+  },
+  {
+    "url": "https://github.com/sharkdp/bat/pull/3877",
+    "reason": "Typical, small, closes a linked issue. Source of MockAnalysisFixtures, so its existence and shape are already verified by this repo's tooling."
+  },
+  {
+    "url": "https://github.com/sharkdp/bat/pull/86",
+    "reason": "Code moved between files. Splits diffing and asset code into their own modules, from BrainMaestro's fork, merged 2018. Stresses architecture mapping when files are split rather than edited."
+  },
+  {
+    "url": "https://github.com/sharkdp/bat/pull/102",
+    "reason": "Feature across several files plus snapshot test files. Adds text wrapping from eth-p's fork, merged 2018 after a long review with performance discussion."
+  },
+  {
+    "url": "https://github.com/BurntSushi/ripgrep/pull/28",
+    "reason": "One-line change from a fork. Adds VB to the default type list, merged 2016."
+  },
+  {
+    "url": "https://github.com/BurntSushi/ripgrep/pull/42",
+    "reason": "Feature with a behavior change in two search modes. Adds --files-with-matches with early termination in mmap and standard search, from a fork, merged 2016."
+  },
+  {
+    "url": "https://github.com/BurntSushi/ripgrep/pull/111",
+    "reason": "Flag plus docs plus tests. Adds --maxdepth touching args, the man page and the test suite, from a fork, merged 2016."
+  }
+]

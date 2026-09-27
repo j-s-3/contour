@@ -239,6 +239,13 @@ involved. It prints a per-milestone table (see `LatencyMilestone`) and fails on 
 large-multiple regression; CI runs it on every build. `scripts/summarize-metrics.py`
 reports the same p50/p95 breakdown from a real `metrics.jsonl` collected over normal use.
 
+`CorpusRunTests` runs the same pipeline against a small corpus of real, long-merged public
+PRs (`Fixtures/corpus.json`) instead of one, and records per-stage failure/retry rates,
+unverifiable citations and latency — a nightly workflow
+(`.github/workflows/nightly-corpus.yml`) runs it once a day so model-shaped instability
+shows up as a trend. Also gated behind `RUN_CONTOUR_INTEGRATION`; see
+`Tests/ContourTests/Fixtures/README.md` for running it and summarizing its results locally.
+
 ## Manual testing without waiting on a model
 
 ```sh
