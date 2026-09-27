@@ -252,6 +252,75 @@ struct ContextualChatTests {
         #expect(linkify(once) == once)
     }
 
+    /// `url(for:)` round-trips every `CodeRef` field, including the base side — a link that
+    /// silently dropped `side` would send the reviewer to the wrong half of the diff.
+    @Test func urlForCodeRefRoundTripsEveryField() throws {
+        let ref = CodeRef(path: "a/B.java", startLine: 3, endLine: 9, side: .base)
+        let url = try #require(ChatLinks.url(for: ref))
+        #expect(ChatLinks.target(for: url) == .code(ref))
+    }
+
+    /// `url(kind:id:)` is the other half of the node link round trip exercised through
+    /// `linkify` above — pinned directly so a change to its query-item names is caught here.
+    @Test func urlForNodeRoundTripsKindAndId() throws {
+        let url = try #require(ChatLinks.url(kind: "decision", id: "abc"))
+        #expect(ChatLinks.target(for: url) == .node(.decision("abc")))
+    }
+
+    /// `target(for:)` must decline rather than crash on a foreign scheme, an unknown host,
+    /// or a query missing the fields its case needs — each is a link the app didn't write
+    /// itself (a pasted URL, a future format) and must fail closed.
+    @Test func targetDeclinesUnrecognizedOrIncompleteURLs() throws {
+        #expect(ChatLinks.target(for: try #require(URL(string: "https://example.com"))) == nil)
+        #expect(ChatLinks.target(for: try #require(URL(string: "contour://other"))) == nil)
+        #expect(ChatLinks.target(for: try #require(URL(string: "contour://code?path=a.swift"))) == nil)
+        #expect(ChatLinks.target(for: try #require(URL(string: "contour://node?kind=bogus&id=x"))) == nil)
+    }
+
+    /// `subject(kind:id:)` is the single mapping every link and every deep link into the
+    /// review model goes through — a kind string not covered here silently produces a dead
+    /// link instead of a compile-time signal.
+    @Test func subjectMapsEveryKnownKindCaseInsensitivelyAndRejectsUnknown() {
+        #expect(ChatLinks.subject(kind: "component", id: "c") == .component("c"))
+        #expect(ChatLinks.subject(kind: "relationship", id: "r") == .relationship("r"))
+        #expect(ChatLinks.subject(kind: "edge", id: "r") == .relationship("r"))
+        #expect(ChatLinks.subject(kind: "decision", id: "d") == .decision("d"))
+        #expect(ChatLinks.subject(kind: "flow", id: "f") == .flow("f"))
+        #expect(ChatLinks.subject(kind: "entry", id: "e") == .entryPoint("e"))
+        #expect(ChatLinks.subject(kind: "entrypoint", id: "e") == .entryPoint("e"))
+        #expect(ChatLinks.subject(kind: "COMPONENT", id: "c") == .component("c"))
+        #expect(ChatLinks.subject(kind: "nonsense", id: "x") == nil)
+    }
+
+    /// A review-model title can contain markdown-special characters (a decision's title
+    /// quoting brackets) — `linkify` must escape them so the link text doesn't break the
+    /// markdown structure around it.
+    @Test func linkifyEscapesBracketsInTitles() {
+        let out = ChatLinks.linkify(
+            "See [[decision:x]].",
+            resolve: { _ in nil },
+            title: { _ in "Use [fast path]" }
+        )
+        #expect(out == "See [Use \\[fast path\\]](contour://node?kind=decision&id=x).")
+    }
+
+    /// `citedPaths` pools refs from every source the review model can cite from — a source
+    /// left out here means a model's bare-filename citation from that source can never
+    /// resolve to a real path.
+    @Test func citedPathsPoolsRefsFromEverySource() {
+        let paths = graph.citedPaths
+        #expect(paths.contains("src/main/java/publishing/PagePublisher.java"))
+        #expect(paths.contains("src/main/java/queue/IndexQueue.java"))
+        #expect(paths.contains("src/main/java/rest/PageResource.java"))
+    }
+
+    /// `linkTitle` special-cases relationships (naming both endpoints) rather than falling
+    /// through to `resolve(subject)?.title` — and must still return nil for a dangling id.
+    @Test func linkTitleNamesBothEndpointsOfARelationship() {
+        #expect(graph.linkTitle(.relationship("publish-queues")) == "Page Publishing → Index Queue")
+        #expect(graph.linkTitle(.relationship("nope")) == nil)
+    }
+
     // MARK: - Markdown blocks
 
     @Test func markdownBlocksSplitAsExpected() {
