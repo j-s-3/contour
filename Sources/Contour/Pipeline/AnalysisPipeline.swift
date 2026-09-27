@@ -82,12 +82,30 @@ actor AnalysisPipeline {
     /// Retries run outside `runTask`, so stopping has to reach them separately.
     private var retryTasks: [PipelineStage: Task<Void, Never>] = [:]
 
+    /// Test-only seams (`Tests/ContourTests/PipelineConcurrencyTests.swift`). All three stay
+    /// nil in production, where `run()` behaves exactly as before: a real `GitHubService`
+    /// fetch, a real `RepoContextService` checkout, and a real `AnalysisCache.latestRevision`
+    /// lookup. Tests use them to drive this actor's real scheduling, cancellation and
+    /// cache-restoration logic against the mock harness, with no network and no git checkout
+    /// — `AnalysisCache` is itself bypassed entirely under `CONTOUR_MOCK_ANALYSIS=1` (see its
+    /// doc comment), so `previousRevisionOverride` is the only way to exercise
+    /// stale-while-revalidate under the mock harness.
+    private let prSourceOverride: (any PRSource)?
+    private let checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)?
+    private let previousRevisionOverride: AnalysisCache.Entry?
+
     init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
-         cache: AnalysisCache = AnalysisCache()) {
+         cache: AnalysisCache = AnalysisCache(),
+         prSourceOverride: (any PRSource)? = nil,
+         checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)? = nil,
+         previousRevisionOverride: AnalysisCache.Entry? = nil) {
         self.harnessID = harnessID
         self.trackerID = trackerID
         self.github = GitHubService(mode: githubAccess)
         self.cache = cache
+        self.prSourceOverride = prSourceOverride
+        self.checkoutOverride = checkoutOverride
+        self.previousRevisionOverride = previousRevisionOverride
         (events, continuation) = AsyncStream.makeStream(of: PipelineEvent.self)
     }
 
@@ -127,6 +145,12 @@ actor AnalysisPipeline {
     /// Re-runs one failed or stopped stage — the per-section Retry.
     func retry(_ stage: PipelineStage) {
         guard analysis != nil, PipelineStage.analysis.contains(stage), statuses[stage]?.canRetry == true else { return }
+        // A previous retry of this same stage can still be in flight (Retry clicked more than
+        // once before the first attempt had a chance to flip the stage's status away from
+        // failed/stopped): cancel it before starting a fresh one, so at most one run of a
+        // stage is ever active and the newest call wins rather than racing the graph both
+        // would otherwise write into.
+        retryTasks[stage]?.cancel()
         retryTasks[stage] = Task {
             if stage == .understanding { await lookUpTicket() }
             await execute(stage)
@@ -147,7 +171,7 @@ actor AnalysisPipeline {
     private func run(prURL: String, forceRefresh: Bool) async {
         do {
             setStatus(.fetching, .running(detail: nil))
-            let source = try github.source()
+            let source = try prSourceOverride ?? github.source()
             log(.fetching, "via \(source.describesItself)")
             let ctx = try await source.fetchContext(prURL: prURL)
             self.ctx = ctx
@@ -159,7 +183,12 @@ actor AnalysisPipeline {
 
             setStatus(.checkingOut, .running(detail: nil))
             log(.checkingOut, "\(ctx.owner)/\(ctx.repo) @ \(ctx.headSha.prefix(8))")
-            let checkout = try await repoContext.checkout(ctx)
+            let checkout: RepoCheckout
+            if let checkoutOverride {
+                checkout = try await checkoutOverride(ctx)
+            } else {
+                checkout = try await repoContext.checkout(ctx)
+            }
             self.checkout = checkout
             verifier = CodeRefVerifier(checkout: checkout)
             continuation.yield(.checkout(checkout))
@@ -218,8 +247,8 @@ actor AnalysisPipeline {
             return toRun
         }
 
-        if let previous = cache.latestRevision(owner: ctx.owner, repo: ctx.repo, number: ctx.number,
-                                               excludingHead: ctx.headSha, pipelineVersion: Self.pipelineVersion) {
+        if let previous = previousRevisionOverride ?? cache.latestRevision(owner: ctx.owner, repo: ctx.repo, number: ctx.number,
+                                                                            excludingHead: ctx.headSha, pipelineVersion: Self.pipelineVersion) {
             var restored = previous.graph
             restored.refreshMetadata(from: ctx)
             for stage in PipelineStage.analysis where !previous.completedStages.contains(stage) {
@@ -390,17 +419,27 @@ actor AnalysisPipeline {
     ) async throws -> [String: Any] where Element.ID == String {
         let (elements, sink) = AsyncStream.makeStream(of: Element.self)
         let applier = Task { for await element in elements { self.appendStreamed(element, to: stage) } }
-        defer { sink.finish() }
-        let raw = try await analysis.runStage(
-            prompt: prompt, cwd: cwd, tier: tier, stage: stage, streaming: key,
-            onElement: { object in
-                if let element = try? StageDecoding.decode(Element.self, from: object) { sink.yield(element) }
-            },
-            onProgress: progress
-        )
-        sink.finish()
-        await applier.value
-        return raw
+        do {
+            let raw = try await analysis.runStage(
+                prompt: prompt, cwd: cwd, tier: tier, stage: stage, streaming: key,
+                onElement: { object in
+                    if let element = try? StageDecoding.decode(Element.self, from: object) { sink.yield(element) }
+                },
+                onProgress: progress
+            )
+            sink.finish()
+            await applier.value
+            return raw
+        } catch {
+            // Every element already queued lands (or is dropped by `appendStreamed`'s own
+            // `isRunning` guard) before this call returns on failure exactly as on success —
+            // otherwise `applier` outlives this call and can append a stale element from an
+            // aborted attempt into a later retry of the same stage, once its own status is
+            // `.running` again.
+            sink.finish()
+            await applier.value
+            throw error
+        }
     }
 
     /// Appends one streamed element to its slice — unless the slice on screen is from an
