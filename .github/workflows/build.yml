@@ -39,7 +39,13 @@ jobs:
         # This already includes BenchTests below; it's run again on its own so the
         # per-milestone numbers land in a clearly labeled step of the log rather than
         # being buried in the full suite's output.
-        run: swift test --enable-code-coverage
+        #
+        # --no-parallel: diagnosing a `swiftpm-testing-helper` crash (signal 5) that only
+        # reproduces under the default parallel scheduler, at a different point in the run
+        # each time — consistent with a real concurrency race rather than one bad test.
+        # TODO(#swift6-migration): re-enable once the race is root-caused; this trades CI
+        # time for a green build in the interim.
+        run: swift test --enable-code-coverage --no-parallel
 
       - name: Code coverage report
         run: |
