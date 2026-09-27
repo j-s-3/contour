@@ -36,6 +36,9 @@ jobs:
 
       - name: Test
         # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
+        # This already includes BenchTests below; it's run again on its own so the
+        # per-milestone numbers land in a clearly labeled step of the log rather than
+        # being buried in the full suite's output.
         run: swift test --enable-code-coverage
 
       - name: Code coverage report
@@ -75,6 +78,12 @@ jobs:
           name: coverage-report
           path: coverage.lcov
 
+      - name: Bench (Contour's own latency, offline, issue #60)
+        # No real model, no network: measures Contour's own share of "time to a useful
+        # Overview" (DESIGN.md §13) against a fixed fixture corpus and fails the job on a
+        # regression past a deliberately generous threshold — see BenchTests.swift.
+        run: swift test --filter BenchTests
+
       - name: Test under Thread Sanitizer
         # Same unit tests, instrumented for data races: the pipeline is an actor, `Shell`
         # bridges GCD's readabilityHandler/terminationHandler callbacks into Swift
@@ -86,7 +95,10 @@ jobs:
         # `.build`. continue-on-error for now, while the baseline is established; the goal
         # is to make this a hard gate once it's clean.
         continue-on-error: true
-        run: swift test --sanitize=thread
+        # The benchmark suites are skipped here: they exist to time large inputs, and
+        # under the sanitizer's slowdown they would only stretch the job without adding a
+        # race the ordinary suites don't already exercise.
+        run: swift test --sanitize=thread --skip BenchmarkTests --skip BenchTests
 
       - name: Build release
         run: swift build -c release
