@@ -7,24 +7,23 @@ import Testing
 /// second `start()` racing the first, cancelling during checkout, and stale-while-revalidate
 /// clearing rather than mixing when the fresh stage fails.
 ///
-/// Driven with the mock harness and its existing latency/failure hooks
-/// (`CONTOUR_MOCK_ANALYSIS`, `CONTOUR_MOCK_LATENCY`, `CONTOUR_MOCK_FAIL_STAGE` — see
-/// `StopAnalysisTests` and `ProgressiveAnalysisTests`), plus three test-only seams on
-/// `AnalysisPipeline` (`prSourceOverride`, `checkoutOverride`, `previousRevisionOverride`)
-/// that stand in for the network fetch, the git checkout, and the cache's "previous
-/// revision" lookup — the last of which `AnalysisCache` itself bypasses entirely under
-/// `CONTOUR_MOCK_ANALYSIS=1` (see its doc comment), so there's no other way to exercise
-/// stale-while-revalidate without a real model. Every seam stays nil in production.
+/// Driven with the mock harness through `AnalysisService.MockOptions` passed to the
+/// pipeline — never the process-wide `CONTOUR_MOCK_*` environment variables, which other
+/// suites running in parallel read too (`AnalysisCache` bails out entirely under
+/// `CONTOUR_MOCK_ANALYSIS=1`, so setting it here for seconds at a time broke the cache
+/// tests that happened to overlap). Plus three more test-only seams on `AnalysisPipeline`
+/// (`prSourceOverride`, `checkoutOverride`, `previousRevisionOverride`) that stand in for
+/// the network fetch, the git checkout, and the cache's "previous revision" lookup. Every
+/// seam stays nil in production.
 ///
 /// Every test reacts to the pipeline's own events (a status change, a graph snapshot,
 /// `.complete`) rather than sleeping for a fixed duration, so ordering is deterministic even
-/// though `CONTOUR_MOCK_LATENCY` uses real `Task.sleep` under the hood to pace streamed
-/// stages enough to be caught mid-flight.
+/// though the mock latency uses real `Task.sleep` under the hood to pace streamed stages
+/// enough to be caught mid-flight.
 ///
-/// `.serialized`: every test here toggles the process-wide `CONTOUR_MOCK_*` environment
-/// variables that `AnalysisService` reads on every call, so two of these tests must never
-/// run at once. No other file in the suite touches those same variables from a `@Test` (only
-/// from `XCTestCase`s, which don't run concurrently with Swift Testing's own tests).
+/// `.serialized`: the mock's fail-once bookkeeping is a process-wide singleton, and the
+/// paced tests are timing-sensitive enough that running them side by side on a loaded CI
+/// runner would only add noise.
 @Suite(.serialized)
 struct PipelineConcurrencyTests {
 
@@ -63,7 +62,8 @@ struct PipelineConcurrencyTests {
     /// analysis never reads real files, and `CodeRefVerifier` simply leaves refs it can't
     /// resolve unverified rather than failing, so the checkout's contents never matter here.
     private func makePipeline(source: FakePRSource, cache: AnalysisCache,
-                              previousRevision: AnalysisCache.Entry? = nil) -> AnalysisPipeline {
+                              previousRevision: AnalysisCache.Entry? = nil,
+                              mock: AnalysisService.MockOptions = AnalysisService.MockOptions()) -> AnalysisPipeline {
         AnalysisPipeline(
             harnessID: .claude, trackerID: .none, cache: cache,
             prSourceOverride: source,
@@ -73,27 +73,19 @@ struct PipelineConcurrencyTests {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return RepoCheckout(rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
             },
-            previousRevisionOverride: previousRevision
+            previousRevisionOverride: previousRevision,
+            mockOverride: mock
         )
     }
 
-    /// `CONTOUR_MOCK_ANALYSIS=1`, with just enough `CONTOUR_MOCK_LATENCY` (when given) that a
-    /// streamed stage's elements land one at a time instead of all at once — the signal a
-    /// test reacts to instead of a blind sleep. `failStage`, when given, fails that stage
-    /// exactly once: `AnalysisService`'s own fail-once bookkeeping is a process-wide
-    /// singleton, so each stage here is used to trigger a failure by at most one test in this
-    /// file (`.decisions`, in `staleWhileRevalidateClearsWithoutMixingWhenTheFreshStageFails`).
-    private func withMockAnalysis<T>(latency: String? = nil, failStage: PipelineStage? = nil,
-                                     _ body: () async throws -> T) async throws -> T {
-        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
-        if let latency { setenv("CONTOUR_MOCK_LATENCY", latency, 1) } else { unsetenv("CONTOUR_MOCK_LATENCY") }
-        if let failStage { setenv("CONTOUR_MOCK_FAIL_STAGE", "\(failStage)", 1) } else { unsetenv("CONTOUR_MOCK_FAIL_STAGE") }
-        defer {
-            unsetenv("CONTOUR_MOCK_ANALYSIS")
-            unsetenv("CONTOUR_MOCK_LATENCY")
-            unsetenv("CONTOUR_MOCK_FAIL_STAGE")
-        }
-        return try await body()
+    /// Just enough mock latency that a streamed stage's elements land one at a time instead
+    /// of all at once — the signal a test reacts to instead of a blind sleep.
+    private let paced = AnalysisService.MockOptions(latencyScale: 0.05)
+
+    /// Runs `body` as one scenario. Kept as a wrapper so each test reads as a single block;
+    /// nothing process-wide is touched any more.
+    private func withMockAnalysis<T>(_ body: () async throws -> T) async throws -> T {
+        try await body()
     }
 
     private func decisionsFixture() throws -> [DecisionNode] {
@@ -108,10 +100,10 @@ struct PipelineConcurrencyTests {
     @Test func stoppingMidStreamLeavesNoTornOrDuplicateDecisions() async throws {
         let ctx = context(number: 101, head: "head1")
         let cache = try tempCache()
-        let pipeline = makePipeline(source: FakePRSource(ctx), cache: cache)
+        let pipeline = makePipeline(source: FakePRSource(ctx), cache: cache, mock: paced)
         let fixtureCount = try decisionsFixture().count
 
-        try await withMockAnalysis(latency: "0.05") {
+        try await withMockAnalysis {
             await pipeline.start(prURL: ctx.url)
 
             var lastGraph: PRGraph?
@@ -151,10 +143,10 @@ struct PipelineConcurrencyTests {
     @Test func retryingRepeatedlySettlesOnceWithNoDuplicateDecisions() async throws {
         let ctx = context(number: 102, head: "head1")
         let cache = try tempCache()
-        let pipeline = makePipeline(source: FakePRSource(ctx), cache: cache)
+        let pipeline = makePipeline(source: FakePRSource(ctx), cache: cache, mock: paced)
         let fixtureCount = try decisionsFixture().count
 
-        try await withMockAnalysis(latency: "0.05") {
+        try await withMockAnalysis {
             await pipeline.start(prURL: ctx.url)
 
             // Stop as soon as decisions starts streaming, before it can finish — `retry`
@@ -179,13 +171,19 @@ struct PipelineConcurrencyTests {
                 for _ in 0..<5 { group.addTask { await pipeline.retry(.decisions) } }
             }
 
+            // The stop above settled every stage, so its own `.complete` is still queued
+            // behind the `.stopped` status the loop above broke on. Only a `.complete` that
+            // follows the retry actually running is the one to settle on.
             var lastGraph: PRGraph?
             var finalStatus: StageStatus = .pending
+            var sawRetryRunning = false
             settling: for await event in pipeline.events {
                 switch event {
                 case .graph(let g): lastGraph = g
-                case .status(.decisions, let status): finalStatus = status
-                case .complete: break settling
+                case .status(.decisions, let status):
+                    finalStatus = status
+                    if status.isRunning { sawRetryRunning = true }
+                case .complete: if sawRetryRunning { break settling }
                 default: break
                 }
             }
@@ -205,9 +203,9 @@ struct PipelineConcurrencyTests {
         let ctxA = context(number: 201, head: "headA")
         let ctxB = context(number: 202, head: "headB")
         let cache = try tempCache()
-        let pipeline = makePipeline(source: FakePRSource([ctxA, ctxB]), cache: cache)
+        let pipeline = makePipeline(source: FakePRSource([ctxA, ctxB]), cache: cache, mock: paced)
 
-        try await withMockAnalysis(latency: "0.05") {
+        try await withMockAnalysis {
             await pipeline.start(prURL: ctxA.url)
 
             // Let A genuinely get into analysis — not just fetched — before switching.
@@ -254,7 +252,8 @@ struct PipelineConcurrencyTests {
                     .appendingPathComponent("contour-checkout-\(fetchedCtx.number)-\(UUID().uuidString)", isDirectory: true)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return RepoCheckout(rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
-            }
+            },
+            mockOverride: AnalysisService.MockOptions()
         )
 
         try await withMockAnalysis {
@@ -269,13 +268,17 @@ struct PipelineConcurrencyTests {
                 }
             }
 
+            // Whatever was already queued when cancel() ran (the checkout's own log line, for
+            // one) still drains; the loop ending at all is what proves the stream closed.
             var afterCancel: [PipelineEvent] = []
             for await event in pipeline.events { afterCancel.append(event) }
 
-            #expect(afterCancel.isEmpty, "cancel() closes the stream for good; nothing more should ever arrive")
-            #expect(!events.contains { if case .checkout = $0 { return true }; return false },
+            let all = events + afterCancel
+            #expect(!all.contains { if case .checkout = $0 { return true }; return false },
                     "checkout never completed, so no .checkout event should have been published")
-            #expect(!events.contains {
+            #expect(!afterCancel.contains { if case .graph = $0 { return true }; return false },
+                    "no graph snapshot is published after cancel()")
+            #expect(!all.contains {
                         if case .status(let stage, let status) = $0 { return status.isRunning && PipelineStage.analysis.contains(stage) }
                         return false
                     }, "cancelling during checkout must mean no analysis stage ever started")
@@ -296,9 +299,10 @@ struct PipelineConcurrencyTests {
         previousGraph.decisions = try decisionsFixture()
         let previousEntry = AnalysisCache.Entry(graph: previousGraph, diff: oldCtx.diff, completedStages: [.decisions])
 
-        let pipeline = makePipeline(source: FakePRSource(newCtx), cache: cache, previousRevision: previousEntry)
+        let pipeline = makePipeline(source: FakePRSource(newCtx), cache: cache, previousRevision: previousEntry,
+                                    mock: AnalysisService.MockOptions(failStage: .decisions))
 
-        try await withMockAnalysis(failStage: .decisions) {
+        try await withMockAnalysis {
             await pipeline.start(prURL: newCtx.url)
 
             // `.revalidating` fires twice here: once with the earlier head, when the stale

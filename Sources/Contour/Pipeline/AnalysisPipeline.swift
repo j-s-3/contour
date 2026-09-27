@@ -93,12 +93,16 @@ actor AnalysisPipeline {
     private let prSourceOverride: (any PRSource)?
     private let checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)?
     private let previousRevisionOverride: AnalysisCache.Entry?
+    /// Mock analysis for this pipeline alone, instead of the process-wide environment
+    /// switch (see `AnalysisService.MockOptions`).
+    private let mockOverride: AnalysisService.MockOptions?
 
     init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
          cache: AnalysisCache = AnalysisCache(),
          prSourceOverride: (any PRSource)? = nil,
          checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)? = nil,
-         previousRevisionOverride: AnalysisCache.Entry? = nil) {
+         previousRevisionOverride: AnalysisCache.Entry? = nil,
+         mockOverride: AnalysisService.MockOptions? = nil) {
         self.harnessID = harnessID
         self.trackerID = trackerID
         self.github = GitHubService(mode: githubAccess)
@@ -106,6 +110,7 @@ actor AnalysisPipeline {
         self.prSourceOverride = prSourceOverride
         self.checkoutOverride = checkoutOverride
         self.previousRevisionOverride = previousRevisionOverride
+        self.mockOverride = mockOverride
         (events, continuation) = AsyncStream.makeStream(of: PipelineEvent.self)
     }
 
@@ -197,7 +202,8 @@ actor AnalysisPipeline {
 
             // Built here rather than at init because the harness needs the checkout root to
             // resolve the context file it hands the model.
-            analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir))
+            analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
+                                       mock: mockOverride)
 
             // Written before the cache check, not after: contextual chat reads this file too,
             // and it has to be there when the analysis itself came from the cache.
