@@ -55,6 +55,23 @@ extension GraphStore {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(graph.reviewSummaryMarkdown, forType: .string)
     }
+
+    /// Read once: `gh` appearing mid-session is rare enough to need a relaunch.
+    static let ghAvailable = Shell.which("gh") != nil
+
+    var canApprove: Bool {
+        guard let graph, pullRequestWebURL != nil, approval != .approving, approval != .approved else { return false }
+        return PRApproval.canApprove(prState: graph.pr.state, ghAvailable: Self.ghAvailable)
+    }
+
+    /// Why Approve is unavailable, for its help text; nil when it's available.
+    var approveUnavailableReason: String? {
+        if approval == .approved { return "Approved" }
+        guard let graph else { return "No pull request is open" }
+        if !Self.ghAvailable { return "Approving needs the GitHub CLI — install gh and run `gh auth login`" }
+        if graph.pr.state.uppercased() != "OPEN" { return "Only an open pull request can be approved" }
+        return nil
+    }
 }
 
 /// The open review, published to the menu bar so File-menu commands act on the key window's
