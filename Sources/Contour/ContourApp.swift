@@ -41,7 +41,7 @@ struct ContourApp: App {
         .defaultSize(width: 1280, height: 820)
         .windowStyle(.automatic)
         .commands {
-            CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
+            PRSessionCommands() // replaces New Window and Close: single-window MVP, one PR per window
             CommandGroup(after: .newItem) { ReviewCommands() }
         }
 
@@ -53,15 +53,12 @@ struct ContourApp: App {
     }
 }
 
-/// File-menu exits from the review: to the PR on GitHub, or with the reviewer's judgment on
-/// the pasteboard. Disabled until a PR is open.
+/// File-menu exit from the review with the reviewer's judgment on the pasteboard, below
+/// `PRSessionCommands`' Open on GitHub. Disabled until a PR is open.
 private struct ReviewCommands: View {
     @FocusedValue(\.reviewStore) private var store
 
     var body: some View {
-        Button("Open on GitHub") { store?.openOnGitHub() }
-            .keyboardShortcut(OpenOnGitHubShortcut.key, modifiers: OpenOnGitHubShortcut.modifiers)
-            .disabled(store?.pullRequestWebURL == nil)
         Button("Copy Review Summary") { store?.copyReviewSummary() }
             .disabled(store?.graph == nil)
     }

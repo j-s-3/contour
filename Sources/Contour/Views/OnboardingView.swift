@@ -15,6 +15,7 @@ import UniformTypeIdentifiers
 /// PR is analyzed, so it is matched across the two screens.
 struct OnboardingView: View {
     @State private var urlText: String
+    @FocusState private var urlFieldFocused: Bool
     /// A pull request link waiting on the clipboard, offered inline so the reviewer
     /// doesn't have to paste it (see `ClipboardOffer`).
     @State private var clipboardOffer: ClipboardOffer?
@@ -25,6 +26,8 @@ struct OnboardingView: View {
     /// Nil until `gh` has answered, or when it can't be asked.
     @State private var reviewRequests: [ReviewRequest]?
     var markNamespace: Namespace.ID
+    /// Changes whenever File ▸ Open Pull Request… asks for the URL field.
+    var focusRequest: Int
     var onSubmit: (String) -> Void
 
     /// Rows per list: enough to cover a working week's PRs without pushing the welcome
@@ -33,9 +36,11 @@ struct OnboardingView: View {
 
     /// `initialURL` pre-fills the field — the PR the reviewer last tried, when they come
     /// back here from a failure — so a corrected or repeated attempt needs no re-paste.
-    init(initialURL: String? = nil, markNamespace: Namespace.ID, onSubmit: @escaping (String) -> Void) {
+    init(initialURL: String? = nil, markNamespace: Namespace.ID, focusRequest: Int = 0,
+         onSubmit: @escaping (String) -> Void) {
         _urlText = State(initialValue: initialURL ?? "")
         self.markNamespace = markNamespace
+        self.focusRequest = focusRequest
         self.onSubmit = onSubmit
     }
 
@@ -62,6 +67,7 @@ struct OnboardingView: View {
                 TextField("Paste a GitHub pull request URL…", text: $urlText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 420)
+                    .focused($urlFieldFocused)
                     .onSubmit(submit)
                     // ⌘V occasionally doesn't route through the standard responder chain
                     // in a bare SPM executable (no .app bundle/Edit menu wiring) — this is
@@ -113,6 +119,9 @@ struct OnboardingView: View {
             Spacer().frame(height: 60)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The start screen exists to take a URL, so it arrives ready for one.
+        .onAppear { urlFieldFocused = true }
+        .onChange(of: focusRequest) { urlFieldFocused = true }
         .animation(.easeInOut(duration: 0.2), value: clipboardOffer)
         // Re-read on every appearance, so closing a PR lists it at the top straight away.
         .task {

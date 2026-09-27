@@ -131,6 +131,17 @@ final class GraphStore {
         }
     }
 
+    /// Whether a PR session is under way — opening, open, or failed to open — rather than
+    /// the start screen. What File ▸ Close Pull Request acts on.
+    var hasOpenPR: Bool { phase != .idle }
+
+    /// The open PR on GitHub, for Open on GitHub / Copy Link. Nil on the start screen, even
+    /// though the last PR's graph is still held.
+    var pullRequestURL: URL? {
+        guard hasOpenPR else { return nil }
+        return ReviewActions(graph: graph, prURL: lastPRURL).pullRequestURL
+    }
+
     /// Opens the last PR again from scratch — what "Try again" means when opening it
     /// failed, so the reviewer never has to find and paste the URL a second time.
     @MainActor

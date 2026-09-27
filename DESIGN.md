@@ -377,6 +377,10 @@ Conversations persist for the review session, one per subject. See `Chat/` and
 
 Keyboard-first: `⌘K` command palette (jump to any lens or any named node), `esc` to pop
 one level of the navigation stack, back/forward toolbar buttons backed by the same stack.
+Leaving a PR never depends on knowing `⌘K`: File ▸ Open Pull Request… (`⌘O`) and Close
+Pull Request (`⌘W`, back to the start screen; plain window Close when no PR is open), and
+the PR name in the title bar is a menu with Open on GitHub, Copy Link and Open a Different
+Pull Request…. See `Views/PRSessionCommands.swift`.
 The sidebar and the palette both call `GraphStore.navigate(to:)`, so there's exactly one
 navigation model in the app, not one per screen.
 
