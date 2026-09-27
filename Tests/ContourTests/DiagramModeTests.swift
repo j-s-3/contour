@@ -25,7 +25,7 @@ struct DiagramModeTests {
         #expect(DiagramMode.after.showing("architecture") == "Showing the architecture after this PR")
     }
 
-    @Test func defaultsToWhatChanged() {
+    @Test @MainActor func defaultsToWhatChanged() {
         #expect(GraphStore().diagramMode == .delta)
     }
 
