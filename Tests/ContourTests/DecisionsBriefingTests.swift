@@ -97,22 +97,46 @@ struct DecisionsBriefingTests {
         #expect(graph.decisionsToReview.map(\.id) == ["b"])
         #expect(graph.otherDecisions.map(\.id) == ["a"])
         #expect(graph.decision("b")?.reviewerPlacement == .review)
-        #expect(graph.reviewProgress.total == 1)
         graph.setToReview(true, forDecision: "a")
         #expect(graph.decision("a")?.reviewerPlacement == nil)
         #expect(graph.decisionsToReview.map(\.id) == ["a", "b"])
     }
 
-    /// Progress means "I judged n of the decisions to review", so other decisions don't count.
-    @Test func reviewProgressCountsOnlyDecisionsToReview() throws {
-        var graph = try fixtureGraph()
-        #expect(graph.reviewProgress.total == 2)
-        let other = try #require(graph.decisions.firstIndex { $0.id == "skip-read-on-empty-input" })
-        graph.decisions[other].reviewerState = .accepted
-        #expect(graph.reviewProgress.reviewed == 0)
-        let review = try #require(graph.decisions.firstIndex { $0.id == "use-already-buffered-bytes" })
-        graph.decisions[review].reviewerState = .questioned
-        #expect(graph.reviewProgress.reviewed == 1)
+    // MARK: - One measure of review progress
+
+    /// The things to think about are the checklist: the denominator is the Overview's list,
+    /// whatever the number of decisions to review.
+    @Test func reviewProgressCountsTheThingsToThinkAbout() throws {
+        let graph = try fixtureGraph()
+        #expect(graph.reviewProgress().total == graph.thingsToThinkAbout.count)
+        #expect(graph.reviewProgress().total != graph.decisionsToReview.count)
+        #expect(graph.reviewProgress().reviewed == 0)
+    }
+
+    /// Judging a decision resolves every question reviewed on it; judging a decision no
+    /// question is reviewed on resolves nothing.
+    @Test func judgingADecisionResolvesItsQuestions() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.decisions = [decision("a", significance: .high), decision("b", significance: .high)]
+        graph.pr.considerations = [concern("q1", on: "a"), concern("q2", on: "a"), concern("q3", on: "c")]
+        #expect(graph.reviewProgress().reviewed == 0)
+        #expect(graph.reviewProgress().total == 3)
+        graph.decisions[1].reviewerState = .accepted
+        #expect(graph.reviewProgress().reviewed == 0)
+        graph.decisions[0].reviewerState = .questioned
+        #expect(graph.reviewProgress().reviewed == 2)
+    }
+
+    /// A question with no decision to judge it on is resolved by talking it through; one with
+    /// a decision to review isn't — its judgment is recorded on the decision.
+    @Test func aConversationResolvesOnlyQuestionsWithNoDecisionToJudge() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.decisions = [decision("a", significance: .high), decision("b", significance: .low)]
+        graph.pr.considerations = [concern("onReview", on: "a"), concern("onOther", on: "b"), concern("loose", on: "none")]
+        let discussed: Set<String> = ["onReview", "onOther", "loose"]
+        let resolved = graph.thingsToThinkAbout.filter { graph.isResolved($0, discussed: discussed) }.map(\.id)
+        #expect(resolved == ["onOther", "loose"])
+        #expect(graph.reviewProgress(discussed: discussed).reviewed == 2)
     }
 
     /// Nothing is promoted to fill the list: when no choice stands out, the reviewer is told
@@ -123,7 +147,6 @@ struct DecisionsBriefingTests {
         graph.decisions = [decision("a", significance: .low), decision("b", significance: .medium)]
         #expect(graph.decisionsToReview.isEmpty)
         #expect(graph.otherDecisions.map(\.id) == ["b", "a"])
-        #expect(graph.reviewProgress.total == 0)
         #expect(DecisionsView.framing(toReview: 0, total: 2).hasPrefix("No choice in this PR stood out"))
     }
 

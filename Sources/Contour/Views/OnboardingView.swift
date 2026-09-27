@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 /// and Finder. Inside the app the mark is the brand, and the same mark resolves while a
 /// PR is analyzed, so it is matched across the two screens.
 struct OnboardingView: View {
-    @State private var urlText: String = ""
+    @State private var urlText: String
     /// A pull request link waiting on the clipboard, offered inline so the reviewer
     /// doesn't have to paste it (see `ClipboardOffer`).
     @State private var clipboardOffer: ClipboardOffer?
@@ -18,6 +18,14 @@ struct OnboardingView: View {
     @State private var declinedChangeCount: Int?
     var markNamespace: Namespace.ID
     var onSubmit: (String) -> Void
+
+    /// `initialURL` pre-fills the field — the PR the reviewer last tried, when they come
+    /// back here from a failure — so a corrected or repeated attempt needs no re-paste.
+    init(initialURL: String? = nil, markNamespace: Namespace.ID, onSubmit: @escaping (String) -> Void) {
+        _urlText = State(initialValue: initialURL ?? "")
+        self.markNamespace = markNamespace
+        self.onSubmit = onSubmit
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -289,9 +297,12 @@ struct AnalyzingView: View {
     }
 }
 
+/// Opening the PR failed. "Try again" retries the same URL; the start screen (pre-filled
+/// with that URL) is a separate, secondary way out, for when the URL itself was wrong.
 struct FailedView: View {
     let message: String
     var onRetry: () -> Void
+    var onOpenDifferent: () -> Void
     var body: some View {
         ContentUnavailableView {
             Label("Couldn't open this PR", systemImage: "exclamationmark.triangle")
@@ -299,6 +310,8 @@ struct FailedView: View {
             Text(message)
         } actions: {
             Button("Try again", action: onRetry)
+                .keyboardShortcut(.defaultAction)
+            Button("Open a different PR", action: onOpenDifferent)
         }
     }
 }
