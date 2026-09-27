@@ -14,16 +14,20 @@ import SwiftUI
 ///
 /// Everything here is deliberately short; explanation lives one step down — a click, an
 /// expansion, or right-click → Ask about this…. File paths and line numbers never appear at
-/// this level. Review progress lives in the sidebar, since it's status, not understanding.
+/// this level. Review progress is status, not understanding: the list is the checklist, but
+/// its count stays a quiet line, and the sidebar carries it everywhere else.
 ///
 /// It opens before the analysis behind it has finished, so every section has a reserved
 /// place from the start: "✦ Understanding the change…" becomes the plain-language answer,
-/// then the before/after hero; "Loading…" becomes the why; the things to think about fill
-/// in as the analysis finds them. Placeholders are replaced in place and nothing above
-/// the reviewer's reading position is inserted later, so the page doesn't jump.
+/// then the before/after hero; "Loading…" becomes the why; the things to think about
+/// appear once judgment has weighed everything. Placeholders are replaced in place and
+/// nothing above the reviewer's reading position is inserted later, so the page doesn't jump.
 struct SummaryView: View {
     let graph: PRGraph
     var analysis = AnalysisState(isComplete: true)
+    /// Overview questions talked through in a conversation — resolved when there's no
+    /// decision to judge them on.
+    var discussed: Set<String> = []
     var onRetry: (PipelineStage) -> Void = { _ in }
     var navigate: (NavigationTarget) -> Void
 
@@ -57,10 +61,12 @@ struct SummaryView: View {
                         .padding(.top, 26)
                 }
 
-                if !graph.thingsToThinkAbout.isEmpty {
-                    thingsToThinkAbout
-                        .padding(.top, 36)
-                } else if !judgmentStatus.isSettled {
+                if let items = graph.thingsToThinkAbout(during: analysis) {
+                    if !items.isEmpty {
+                        thingsToThinkAbout(items)
+                            .padding(.top, 36)
+                    }
+                } else {
                     thingsToThinkAboutPlaceholder
                         .padding(.top, 36)
                 }
@@ -109,8 +115,35 @@ struct SummaryView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            factsLine
         }
         .reviewContextMenu(.pullRequest)
+    }
+
+    /// Size, CI, reviews, open threads and age: what a reviewer checks first, as one quiet
+    /// line. Color is kept for CI's verdict and the facts that should stop a reviewer —
+    /// requested changes, open threads; everything else stays secondary.
+    private var factsLine: some View {
+        let facts = graph.pr.glanceFacts()
+        return HStack(spacing: 6) {
+            ForEach(Array(facts.enumerated()), id: \.offset) { index, fact in
+                if index > 0 { dot }
+                Text(verbatim: fact.text)
+                    .foregroundStyle(factColor(fact.tone))
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+
+    private func factColor(_ tone: GlanceFact.Tone) -> AnyShapeStyle {
+        switch tone {
+        case .plain: AnyShapeStyle(.secondary)
+        case .good: AnyShapeStyle(Color.green)
+        case .caution: AnyShapeStyle(Color.orange)
+        case .bad: AnyShapeStyle(Color.red)
+        }
     }
 
     private var dot: some View { Text("\u{00b7}").foregroundStyle(.tertiary) }
@@ -297,9 +330,9 @@ struct SummaryView: View {
 
     // MARK: - Things to think about
 
-    private var thingsToThinkAbout: some View {
-        let items = graph.thingsToThinkAbout
+    private func thingsToThinkAbout(_ items: [Consideration]) -> some View {
         let visible = showAllConsiderations ? items : Array(items.prefix(considerationBudget))
+        let progress = graph.reviewProgress(discussed: discussed)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -309,6 +342,13 @@ struct SummaryView: View {
                     .font(.callout.weight(.semibold))
                     .tracking(0.5)
                 Spacer()
+                // This list is the review checklist; the sidebar and Decisions count the same.
+                if progress.reviewed > 0 {
+                    Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
+                        .font(.callout)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -320,6 +360,7 @@ struct SummaryView: View {
                     number: index + 1,
                     item: item,
                     graph: graph,
+                    isResolved: graph.isResolved(item, discussed: discussed),
                     isExpanded: expandedConsideration == item.id,
                     onToggle: {
                         withAnimation(.easeInOut(duration: 0.18)) {
@@ -341,8 +382,8 @@ struct SummaryView: View {
                 .padding(.bottom, 4)
             }
 
-            // Until judgment lands this list is the behavior change's own question; say
-            // more are coming rather than let it pass for the full list.
+            // While an earlier revision's list is being revalidated, say a fresh one is
+            // coming rather than let it pass for a conclusion about this code.
             if !judgmentStatus.isSettled {
                 WorkingLine(text: judgmentWorkingText, font: .caption)
                     .padding(.leading, 58)
@@ -418,7 +459,7 @@ struct SummaryView: View {
         // which says more about the diff than about the architecture.
         let architecture = graph.architecture.map { "\($0.impact.label) architectural impact" }
             ?? "\(graph.topLevelParts.count) parts"
-        let progress = graph.reviewProgress
+        let progress = graph.reviewProgress(discussed: discussed)
         return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Explore the change")
             HStack(spacing: 12) {
@@ -429,7 +470,8 @@ struct SummaryView: View {
                             detail: tileDetail(.flows, ready: "\(graph.flows.count) traced", count: graph.flows.count, noun: "flow"),
                             symbol: "arrow.triangle.branch") { navigate(.flows) }
                 ExploreTile(title: "Decisions",
-                            detail: tileDetail(.decisions, ready: "\(progress.reviewed) of \(progress.total) reviewed",
+                            detail: tileDetail(.decisions, ready: progress.total > 0 ? "\(progress.reviewed) of \(progress.total) resolved"
+                                                   : "\(graph.decisions.count) identified",
                                                count: graph.decisions.count, noun: "decision"),
                             symbol: "checklist") { navigate(.decisions) }
             }
@@ -470,6 +512,8 @@ private struct ConsiderationRow: View {
     let number: Int
     let item: Consideration
     let graph: PRGraph
+    /// Checked off: its decision judged, or — with none to judge — talked through.
+    let isResolved: Bool
     let isExpanded: Bool
     var onToggle: () -> Void
     var onReview: () -> Void
@@ -528,17 +572,28 @@ private struct ConsiderationRow: View {
     private var badge: some View {
         let isQuestion = item.kind == .question
         return ZStack {
-            Circle()
-                .fill((isQuestion ? Color.secondary : Color.orange).opacity(0.14))
-            if isQuestion {
-                Image(systemName: "questionmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+            if isResolved {
+                Circle().fill(Color.green.opacity(0.14))
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.green)
             } else {
-                Text(verbatim: "\(number)").font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(.orange)
+                openBadge(isQuestion)
             }
         }
         .frame(width: 24, height: 24)
         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
-        .help(isQuestion ? "Open question — the analysis couldn't settle this" : "A judgment call worth your attention")
+        .help(isResolved ? "Resolved"
+              : isQuestion ? "Open question — the analysis couldn't settle this" : "A judgment call worth your attention")
+    }
+
+    @ViewBuilder
+    private func openBadge(_ isQuestion: Bool) -> some View {
+        Circle()
+            .fill((isQuestion ? Color.secondary : Color.orange).opacity(0.14))
+        if isQuestion {
+            Image(systemName: "questionmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+        } else {
+            Text(verbatim: "\(number)").font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(.orange)
+        }
     }
 
     @ViewBuilder

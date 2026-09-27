@@ -48,6 +48,16 @@ final class ConversationStore {
 
     var active: Conversation? { conversations.first { $0.id == activeId } }
 
+    /// The Overview questions the reviewer has actually asked about — a thread they wrote
+    /// in, not one merely opened. A question with no decision to judge it on is resolved
+    /// this way (`PRGraph.isResolved`).
+    var discussedConsiderationIds: Set<String> {
+        Set(conversations.compactMap { c in
+            guard case .consideration(let id) = c.subject, c.messages.contains(where: { $0.role == .user }) else { return nil }
+            return id
+        })
+    }
+
     /// Opens the thread for a subject, reusing an existing one so asking about the same
     /// box twice continues the same conversation instead of starting over.
     @discardableResult
