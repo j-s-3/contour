@@ -67,6 +67,14 @@ struct CommandPaletteView: View {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }
         ]
+        // On a diagram screen, the same switch as its "Show:" control and B / A / D.
+        if store.current.showsDiagram {
+            let modes = DiagramMode.allCases.filter { $0 != store.diagramMode }.map { mode in
+                PaletteCommand(title: "Show: \(mode.label)", subtitle: "Diagram view · \(mode.key.uppercased())",
+                               symbol: "eye") { store.diagramMode = mode }
+            }
+            commands.insert(contentsOf: modes, at: 0)
+        }
         guard let graph = store.graph else { return commands }
         commands.append(.init(title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
                               symbol: "doc.on.clipboard") { store.copyReviewSummary() })

@@ -5,7 +5,8 @@ import SwiftUI
 ///
 /// It opens by saying how much the PR changes the structure — often "no structural change"
 /// — and then draws the handful of conceptual parts involved, with only what changed drawing
-/// the eye (Delta, the default; Before and After are plain snapshots). A part with parts
+/// the eye ("What changed", the default; "Before this PR" and "After this PR" are plain
+/// snapshots). A part with parts
 /// inside can be zoomed into; implementation and code are reached from the inspector, which
 /// appears only when something is selected. Decisions and Overview questions are marked on
 /// the box or arrow they concern and lead to the Decisions lens.
@@ -19,10 +20,12 @@ struct ArchitectureView: View {
     /// A part or relationship the navigation target asked for ("Open details", a chat link,
     /// "Show in Architecture" from a flow).
     var focus: ArchAnchor? = nil
+    /// Before this PR / after it / what it changed — shared with Flows.
+    @Binding var mode: DiagramMode
 
     @Environment(\.reviewActions) private var actions
 
-    @State private var mode: ArchMode = .delta
+    @FocusState private var keyboardFocused: Bool
     @State private var path: [String] = []
     @State private var selection: ArchAnchor?
 
@@ -70,9 +73,20 @@ struct ArchitectureView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { if let focus { reveal(focus) } else { publishFocus() } }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($keyboardFocused)
+        .diagramModeKeys($mode)
+        .onAppear {
+            keyboardFocused = true
+            if let focus { reveal(focus) } else { publishFocus() }
+        }
         .onChange(of: focus) { _, new in if let new { reveal(new) } }
-        .onChange(of: selection) { _, _ in publishFocus() }
+        .onChange(of: selection) { _, _ in
+            // Clicking a part takes focus back from the chat, so B / A / D work again.
+            keyboardFocused = true
+            publishFocus()
+        }
         .onChange(of: mode) { _, _ in dropHiddenSelection() }
         .onDisappear { actions.focus(nil) }
     }
@@ -81,17 +95,7 @@ struct ArchitectureView: View {
 
     private func header(_ level: ArchLevel) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                impactLabel
-                Spacer()
-                Picker("View", selection: $mode) {
-                    ForEach(ArchMode.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 220)
-                .help("Delta shows the existing architecture with this PR's change highlighted")
-            }
+            impactLabel
             if let headline = graph.architecture?.headline, !headline.isEmpty {
                 Text(headline).font(.title2.weight(.semibold))
                     .lineLimit(2)
@@ -108,6 +112,9 @@ struct ArchitectureView: View {
                 .reviewContextMenu(.pullRequest)
             }
             if !path.isEmpty { breadcrumb }
+            // Last in the header, so it sits on the edge of the drawing it filters.
+            DiagramModeControl(mode: $mode, subject: "architecture")
+                .padding(.top, 4)
         }
         .padding(.horizontal, 24)
         .padding(.top, 18)

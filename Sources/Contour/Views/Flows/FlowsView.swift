@@ -13,6 +13,8 @@ struct FlowsView: View {
     let graph: PRGraph
     /// A flow, and optionally a stage in it, that navigation asked for.
     var focus: Focus? = nil
+    /// Before this PR / after it / what it changed — shared with Architecture.
+    @Binding var mode: DiagramMode
     var onOpenEvidence: (CodeRef) -> Void
 
     struct Focus: Equatable {
@@ -24,7 +26,6 @@ struct FlowsView: View {
     @State private var selectedFlowId: String?
     @State private var selectedNodeId: String?
     @State private var level: FlowDrillLevel = .behavior
-    @State private var mode: FlowMode = .delta
     @FocusState private var keyboardFocused: Bool
 
     var body: some View {
@@ -62,6 +63,7 @@ struct FlowsView: View {
             .focusable()
             .focusEffectDisabled()
             .focused($keyboardFocused)
+            .diagramModeKeys($mode)
             .onKeyPress(phases: .down) { press in handleKey(press) }
             .onAppear {
                 keyboardFocused = true
@@ -71,7 +73,11 @@ struct FlowsView: View {
             }
             .onChange(of: focus) { _, new in apply(new) }
             .onChange(of: selectedFlowId) { _, _ in publishFocus() }
-            .onChange(of: selectedNodeId) { _, _ in publishFocus() }
+            .onChange(of: selectedNodeId) { _, _ in
+                // Clicking a stage takes focus back from the chat, so B / A / D work again.
+                keyboardFocused = true
+                publishFocus()
+            }
             .onDisappear { actions.focus(nil) }
         }
     }
@@ -158,17 +164,13 @@ struct FlowsView: View {
                     .buttonStyle(.borderless)
                     .help("Ask about this flow… (⌘⇧A)")
                 }
-                Picker("View", selection: $mode) {
-                    ForEach(FlowMode.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .help("Before this PR, after it, or what it changed")
             }
             if let flow = currentFlow, let behavior = currentBehavior {
                 story(flow, behavior)
             }
+            // Last in the header, so it sits on the edge of the drawing it filters.
+            DiagramModeControl(mode: $mode, subject: "flow")
+                .padding(.top, 2)
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)

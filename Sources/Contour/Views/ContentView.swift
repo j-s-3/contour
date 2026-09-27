@@ -410,7 +410,7 @@ struct ContentView: View {
             sectionContent(.architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
                            ask: "What part of the system does this change sit in, and how does it change it?",
                            known: graph.dominantBehaviorChange.map { $0.after.map(\.label).joined(separator: " → ") }) {
-                ArchitectureView(graph: graph, focus: architectureFocus)
+                ArchitectureView(graph: graph, focus: architectureFocus, mode: $store.diagramMode)
             }
         case .decisions, .decisionDetail(_), .consideration(_):
             sectionContent(.decisions, stage: .decisions, hasContent: !graph.decisions.isEmpty,
@@ -432,6 +432,7 @@ struct ContentView: View {
                 FlowsView(
                     graph: graph,
                     focus: flowsFocus,
+                    mode: $store.diagramMode,
                     onOpenEvidence: { store.navigate(to: .evidence($0)) }
                 )
             }

@@ -37,23 +37,9 @@ enum FlowChange: String, Codable, Hashable, Sendable {
     case removed   // only happened before this PR
 }
 
-/// Which snapshot of the flow is on screen. Delta is the default: enough existing behavior
-/// to follow the story, with only what the PR changed emphasized.
-enum FlowMode: String, CaseIterable, Identifiable, Sendable {
-    case before, after, delta
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .before: return "Before"
-        case .after: return "After"
-        case .delta: return "Delta"
-        }
-    }
-}
-
 extension FlowChange {
     /// Whether an element with this change exists in a snapshot.
-    func isVisible(in mode: FlowMode) -> Bool {
+    func isVisible(in mode: DiagramMode) -> Bool {
         switch (self, mode) {
         case (.new, .before), (.removed, .after): return false
         default: return true
@@ -216,7 +202,7 @@ struct FlowBehavior: Codable, Hashable, Sendable {
 
     /// The snapshot a mode shows: Before drops what's new, After drops what's removed, Delta
     /// keeps everything. Edges survive only when both ends do.
-    func visible(in mode: FlowMode) -> FlowBehavior {
+    func visible(in mode: DiagramMode) -> FlowBehavior {
         var out = self
         out.nodes = nodes.filter { $0.change.isVisible(in: mode) }
         let ids = Set(out.nodes.map(\.id))
