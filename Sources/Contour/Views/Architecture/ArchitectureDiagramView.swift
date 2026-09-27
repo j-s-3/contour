@@ -1,20 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Which snapshot the drawing shows. Delta is the default: the existing architecture for
-/// context, with only what this PR changed drawing the eye.
-enum ArchMode: String, CaseIterable, Identifiable {
-    case before, delta, after
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .before: return "Before"
-        case .delta: return "Delta"
-        case .after: return "After"
-        }
-    }
-}
-
 /// How a box or arrow is drawn. Only Delta distinguishes these; Before and After are
 /// coherent snapshots drawn quietly throughout.
 enum ArchEmphasis: Equatable {

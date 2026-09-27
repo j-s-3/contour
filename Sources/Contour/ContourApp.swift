@@ -31,13 +31,18 @@ struct ContourApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        // The stable id is what SwiftUI keys the autosaved window frame on; without one
+        // the key is derived from the root view's type, so any change to ContentView's
+        // modifiers would silently forget where the user left the window.
+        WindowGroup(id: "review") {
             ContentView()
                 .frame(minWidth: 1080, minHeight: 720)
         }
+        .defaultSize(width: 1280, height: 820)
         .windowStyle(.automatic)
         .commands {
-            CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
+            PRSessionCommands() // replaces New Window and Close: single-window MVP, one PR per window
+            CommandGroup(after: .newItem) { ReviewCommands() }
         }
 
         // ⌘, — the three pluggable choices (harness, GitHub access, issue tracker) plus
@@ -45,5 +50,16 @@ struct ContourApp: App {
         Settings {
             SettingsView()
         }
+    }
+}
+
+/// File-menu exit from the review with the reviewer's judgment on the pasteboard, below
+/// `PRSessionCommands`' Open on GitHub. Disabled until a PR is open.
+private struct ReviewCommands: View {
+    @FocusedValue(\.reviewStore) private var store
+
+    var body: some View {
+        Button("Copy Review Summary") { store?.copyReviewSummary() }
+            .disabled(store?.graph == nil)
     }
 }

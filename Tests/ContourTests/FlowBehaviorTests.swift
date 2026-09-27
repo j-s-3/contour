@@ -104,6 +104,19 @@ struct FlowBehaviorTests {
         #expect(graph.scenarioTitle(for: modern) == "Open a file")
     }
 
+    @Test func bracketKeysStepThroughScenariosAndWrap() throws {
+        let graph = try fixtureGraph()
+        let ids = graph.flows.map(\.id)
+        try #require(ids.count > 1)
+        #expect(graph.scenario(1, from: ids[0])?.id == ids[1])
+        #expect(graph.scenario(-1, from: ids[0])?.id == ids.last)
+        #expect(graph.scenario(1, from: ids.last)?.id == ids[0])
+        #expect(graph.scenario(1, from: "missing")?.id == ids[1])
+        var empty = graph
+        empty.flows = []
+        #expect(empty.scenario(1, from: nil) == nil)
+    }
+
     @Test func olderFlowsCondenseToATriggerAndTheirStorySteps() throws {
         let graph = try fixtureGraph()
         let file = try fileFlow(graph)
@@ -174,7 +187,7 @@ struct FlowBehaviorTests {
 
     // MARK: - Layout
 
-    private func sampleLayout(_ mode: FlowMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
+    private func sampleLayout(_ mode: DiagramMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
         let graph = ContourSampleData.publishTriggeredReindex
         let flow = try #require(graph.flow("publish-index-flow"))
         let behavior = graph.behavior(for: flow).visible(in: mode)
@@ -184,7 +197,7 @@ struct FlowBehaviorTests {
     }
 
     @Test func executionReadsTopToBottom() throws {
-        for mode in FlowMode.allCases {
+        for mode in DiagramMode.allCases {
             let (layout, behavior) = try sampleLayout(mode)
             #expect(layout.nodes.count == behavior.nodes.count)
             let trigger = try #require(layout.node("publish"))
@@ -244,6 +257,49 @@ struct FlowBehaviorTests {
         #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
     }
 
+    @Test func aWideCanvasDrawsEveryNoteAndWidensThem() throws {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let flow = try #require(graph.flow("publish-index-flow"))
+        let behavior = graph.behavior(for: flow).visible(in: .delta)
+        let notes = (0..<5).map { i in
+            FlowAnnotation(kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
+                           text: "A note long enough to wrap onto a second line in the diagram \(i)")
+        }
+        let width: CGFloat = 1500
+        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes, availableWidth: width)
+        #expect(layout.annotations.count == notes.count)
+        #expect(layout.overflow.isEmpty)
+        #expect(layout.annotations.allSatisfy { $0.frame.width > BehaviorDiagramLayoutEngine.annotationWidth })
+        #expect(layout.size.width <= width)
+        let next = try #require(layout.node("rebuild"))
+        #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
+
+        // Side-by-side branches move apart so their notes keep the width, and nothing overlaps.
+        let compact = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes)
+        func gap(_ l: BehaviorDiagramLayout) throws -> CGFloat {
+            try #require(l.node("retry")).frame.midX - (try #require(l.node("searchable"))).frame.midX
+        }
+        #expect(abs(try gap(layout)) > abs(try gap(compact)))
+        let boxes = layout.nodes.map(\.frame) + layout.annotations.map(\.frame)
+        for (i, a) in boxes.enumerated() {
+            for b in boxes[(i + 1)...] { #expect(!a.intersects(b)) }
+        }
+    }
+
+    @Test func aNarrowCanvasKeepsTheCapAndFitsTheNotes() throws {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let flow = try #require(graph.flow("publish-index-flow"))
+        let behavior = graph.behavior(for: flow).visible(in: .delta)
+        let notes = (0..<5).map { i in
+            FlowAnnotation(kind: .question, targetId: "note-\(i)", nodeId: "queue", text: "Note \(i)")
+        }
+        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes, availableWidth: 800)
+        #expect(layout.annotations.count == BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        #expect(layout.overflow.first?.count == notes.count - BehaviorDiagramLayoutEngine.maxNotesPerStage)
+        #expect(layout.size.width <= 800)
+        #expect(layout.annotations.allSatisfy { $0.frame.width >= BehaviorDiagramLayoutEngine.annotationWidth })
+    }
+
     /// A branch that skips a stage with notes: the Flows screen's own diagram, where "Yes"
     /// jumps past "Condense from story steps" and used to run through its notes.
     @Test func aConnectorSkippingAStageRunsClearOfItsNotes() throws {
@@ -271,21 +327,24 @@ struct FlowBehaviorTests {
                                text: "Could the inferred diagram for older graphs mislead reviewers?")
             }
         }
-        for mode in FlowMode.allCases {
-            let visible = behavior.visible(in: mode)
-            let ids = Set(visible.nodes.map(\.id))
-            let layout = BehaviorDiagramLayoutEngine.layout(visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) })
-            let obstacles = layout.annotations.map { ($0.id, $0.frame) } + layout.overflow.map { ($0.id, $0.frame) }
-            for placed in layout.edges {
-                let stages = layout.nodes.filter { $0.id != placed.edge.fromId && $0.id != placed.edge.toId }.map { ($0.id, $0.frame) }
-                for (p, q) in zip(placed.points, placed.points.dropFirst()) {
-                    let segment = CGRect(x: min(p.x, q.x), y: min(p.y, q.y), width: abs(p.x - q.x), height: abs(p.y - q.y))
-                        .insetBy(dx: -0.5, dy: -0.5)
-                    for (id, frame) in obstacles + stages {
-                        #expect(!segment.intersects(frame), "\(placed.id) crosses \(id) in \(mode)")
+        for mode in DiagramMode.allCases {
+            for width: CGFloat? in [nil, 900, 1500] {
+                let visible = behavior.visible(in: mode)
+                let ids = Set(visible.nodes.map(\.id))
+                let layout = BehaviorDiagramLayoutEngine.layout(visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) },
+                                                                availableWidth: width)
+                let obstacles = layout.annotations.map { ($0.id, $0.frame) } + layout.overflow.map { ($0.id, $0.frame) }
+                for placed in layout.edges {
+                    let stages = layout.nodes.filter { $0.id != placed.edge.fromId && $0.id != placed.edge.toId }.map { ($0.id, $0.frame) }
+                    for (p, q) in zip(placed.points, placed.points.dropFirst()) {
+                        let segment = CGRect(x: min(p.x, q.x), y: min(p.y, q.y), width: abs(p.x - q.x), height: abs(p.y - q.y))
+                            .insetBy(dx: -0.5, dy: -0.5)
+                        for (id, frame) in obstacles + stages {
+                            #expect(!segment.intersects(frame), "\(placed.id) crosses \(id) in \(mode) at \(String(describing: width))")
+                        }
                     }
+                    #expect(placed.points.allSatisfy { $0.x >= 0 && $0.x <= layout.size.width }, "\(placed.id) leaves the canvas in \(mode)")
                 }
-                #expect(placed.points.allSatisfy { $0.x >= 0 && $0.x <= layout.size.width }, "\(placed.id) leaves the canvas in \(mode)")
             }
         }
     }

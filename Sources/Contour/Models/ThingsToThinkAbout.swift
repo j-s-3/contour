@@ -27,6 +27,22 @@ extension PRGraph {
         return out
     }
 
+    /// What the Overview lists at this point in the analysis, or nil while the section
+    /// should keep its placeholder.
+    ///
+    /// Before judgment lands the only item there could be is the behavior change's
+    /// `humanQuestion`, condensed. The judgment stage is told to restate that question as
+    /// its first consideration when it still matters, so showing it early would mean either
+    /// swapping it for the restatement (text moving under the reviewer's eyes) or listing
+    /// the same question twice. Holding the placeholder until judgment settles keeps the
+    /// list append-only: once an item is on screen, nothing later removes or reorders it.
+    /// A stale judgment slice is already on screen, so it keeps showing until replaced.
+    func thingsToThinkAbout(during analysis: AnalysisState) -> [Consideration]? {
+        let judgment = analysis.status(.judgment)
+        guard analysis.isComplete || judgment.isSettled || judgment == .stale else { return nil }
+        return thingsToThinkAbout
+    }
+
     /// Splits a paragraph into a scannable headline and a short supporting sentence.
     /// A paragraph that asks a question leads with that question, since the question is
     /// what the reviewer is being asked to think about.

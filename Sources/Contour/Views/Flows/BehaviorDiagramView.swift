@@ -36,7 +36,7 @@ struct BehaviorDiagramView: View {
     let flowId: String
     let behavior: FlowBehavior
     let annotations: [FlowAnnotation]
-    let mode: FlowMode
+    let mode: DiagramMode
     var selectedNodeId: String?
     var onSelect: (FlowBehaviorNode) -> Void
     var onDrill: (FlowBehaviorNode) -> Void
@@ -48,8 +48,20 @@ struct BehaviorDiagramView: View {
     @State private var hoveredId: String?
 
     var body: some View {
-        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations)
+        // The legend sits in its own strip under the canvas rather than floating over it, so
+        // it can never cover a stage however short the window is.
+        VStack(spacing: 0) {
+            canvas
+            Divider()
+            legend
+        }
+    }
+
+    /// Laid out inside the reader, since the layout spreads to the width it's given.
+    private var canvas: some View {
         GeometryReader { geo in
+            let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations,
+                                                            availableWidth: geo.size.width)
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(layout.boundaries) { boundaryBox($0) }
@@ -108,13 +120,10 @@ struct BehaviorDiagramView: View {
                     }
                 }
                 .frame(width: layout.size.width, height: layout.size.height)
-                // Room to scroll the last stage clear of the legend floating over the canvas.
-                .padding(.bottom, 56)
                 // Centered across the canvas when it fits; scrolls when it doesn't.
                 .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .top)
             }
         }
-        .overlay(alignment: .bottomLeading) { legend }
     }
 
     // MARK: - Connectors
@@ -224,9 +233,9 @@ struct BehaviorDiagramView: View {
         }
         .font(.caption2)
         .labelStyle(CompactLabelStyle())
-        .padding(8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .padding(10)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func legendSwatch(_ color: Color, _ label: String) -> some View {
@@ -262,7 +271,7 @@ private struct CompactLabelStyle: LabelStyle {
 /// for an outside system, a double outline for a shared flow.
 private struct StageBox: View {
     let node: FlowBehaviorNode
-    let mode: FlowMode
+    let mode: DiagramMode
     let isSelected: Bool
     let isHovered: Bool
     let subflowTitle: String?

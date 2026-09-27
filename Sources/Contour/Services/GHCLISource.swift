@@ -13,7 +13,8 @@ struct GHCLISource: PRSource {
 
         let fields = "url,number,title,body,author,state,headRefName,baseRefName,headRefOid," +
                      "baseRefOid,isCrossRepository,headRepository,headRepositoryOwner," +
-                     "additions,deletions,changedFiles,files,commits,comments,reviews"
+                     "additions,deletions,changedFiles,files,commits,comments,reviews," +
+                     "createdAt,statusCheckRollup"
 
         let json = try await Shell.run("gh", ["pr", "view", normalized, "--json", fields])
         guard let data = json.data(using: .utf8),
@@ -67,15 +68,60 @@ struct GHCLISource: PRSource {
         let headRepoName = (headRepo?["name"] as? String) ?? repo
         let headCloneURL = "https://github.com/\(headOwnerLogin)/\(headRepoName).git"
 
+        async let unresolved = unresolvedThreadCount(prURL: url, owner: owner, repo: repo, number: number)
         let diff = try await Shell.run("gh", ["pr", "diff", normalized])
+
+        let checks = ((obj["statusCheckRollup"] as? [[String: Any]]) ?? []).map {
+            PRGlance.checkOutcome(status: $0["status"] as? String,
+                                  conclusion: $0["conclusion"] as? String,
+                                  state: $0["state"] as? String)
+        }
+        let tally = PRGlance.tallyReviews(((obj["reviews"] as? [[String: Any]]) ?? []).compactMap { r in
+            guard let who = (r["author"] as? [String: Any])?["login"] as? String,
+                  let state = r["state"] as? String else { return nil }
+            return (who, state)
+        })
+        let glance = PRGlance(
+            checks: PRGlance.rollUp(checks),
+            approvals: tally.approvals,
+            changesRequested: tally.changesRequested,
+            unresolvedThreads: await unresolved,
+            createdAt: PRGlance.date(iso8601: obj["createdAt"] as? String)
+        )
 
         return RawPRContext(
             url: url, owner: owner, repo: repo, number: number, title: title, body: body,
             author: author, state: state, headRefName: headRefName, baseRefName: baseRefName,
             headSha: headSha, baseSha: baseSha, isCrossRepository: isCross, headCloneURL: headCloneURL,
             additions: additions, deletions: deletions, changedFiles: changedFiles, files: files,
-            commits: commits, comments: comments, reviews: reviews, diff: diff
+            commits: commits, comments: comments, reviews: reviews, diff: diff, glance: glance
         )
+    }
+
+    /// Thread resolution isn't among `gh pr view`'s fields, so it takes one GraphQL query.
+    /// Best effort: a failure costs the facts line one item, never the fetch. Counts the
+    /// first 100 threads, which is every thread on all but the most contested PRs.
+    private func unresolvedThreadCount(prURL: String, owner: String, repo: String, number: Int) async -> Int? {
+        let query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved } } }
+          }
+        }
+        """
+        var args = ["api", "graphql", "-f", "query=\(query)",
+                    "-F", "owner=\(owner)", "-F", "repo=\(repo)", "-F", "number=\(number)"]
+        // `gh api` defaults to github.com; a GitHub Enterprise PR has to name its host.
+        if let host = URL(string: prURL)?.host, host != "github.com" {
+            args += ["--hostname", host]
+        }
+        guard let json = try? await Shell.run("gh", args),
+              let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pr = ((obj["data"] as? [String: Any])?["repository"] as? [String: Any])?["pullRequest"] as? [String: Any],
+              let nodes = (pr["reviewThreads"] as? [String: Any])?["nodes"] as? [[String: Any]]
+        else { return nil }
+        return nodes.filter { ($0["isResolved"] as? Bool) == false }.count
     }
 
     func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {
