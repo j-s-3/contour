@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contour — Understand the change, not just the diff</title>
+  <meta name="description" content="Contour is a native macOS app that reviews pull requests from the top down: behavior, architecture and the decisions worth human judgment first, with the code one click away as evidence.">
+  <meta name="theme-color" content="#070b12">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://j-s-3.github.io/contour/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Contour">
+  <meta property="og:title" content="Contour — Understand the change, not just the diff">
+  <meta property="og:description" content="Code review was designed for a world where humans wrote the code. That world changed. Contour starts with what changed and why; the diff is there when you need proof.">
+  <meta property="og:url" content="https://j-s-3.github.io/contour/">
+  <meta property="og:image" content="https://j-s-3.github.io/contour/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Contour mark: nested contour lines rising to an amber peak, beside the words “Understand the change. Not just the diff.”">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Contour — Understand the change, not just the diff">
+  <meta name="twitter:description" content="Pull request review, moved up the abstraction stack. A native macOS app.">
+  <meta name="twitter:image" content="https://j-s-3.github.io/contour/assets/og.png">
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" id="top">
+    <a class="nav-brand" href="#top" aria-label="Contour, back to top">
+      <svg class="mark mark--nav" data-mark aria-hidden="true"></svg>
+      <span>Contour</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="#why" class="nav-hide-sm">Why</a>
+      <a href="#how" class="nav-hide-sm">How it works</a>
+      <a href="https://github.com/j-s-3/contour" class="nav-gh">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <!-- ───────────────────────── Hero ───────────────────────── -->
+    <section class="hero" aria-labelledby="hero-title">
+      <canvas class="topo" data-topo="hero" aria-hidden="true"></canvas>
+      <div class="hero-inner">
+        <svg class="mark mark--hero" data-mark data-animate aria-hidden="true"></svg>
+        <p class="wordmark">Contour</p>
+        <h1 id="hero-title">Understand the change.<br><span class="dim">Not just the diff.</span></h1>
+        <p class="hero-sub">Code review was designed for a world where humans wrote the code.<br class="br-lg"> That world changed.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#how">See how it works <span aria-hidden="true">↓</span></a>
+          <a class="btn btn-ghost" href="https://github.com/j-s-3/contour">View on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+
+      <!-- Signature moment: zoom out from code into understanding -->
+      <figure class="stage" data-stage aria-labelledby="stage-cap">
+        <div class="stage-bar">
+          <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="stage-title" data-stage-title>src/input.rs <span class="dim">· sharkdp/bat #3877</span></span>
+          <div class="seg" role="group" aria-label="View">
+            <button type="button" data-stage-to="diff" aria-pressed="true">Diff</button>
+            <button type="button" data-stage-to="shape" aria-pressed="false">Shape</button>
+          </div>
+        </div>
+        <div class="stage-body">
+          <div class="stage-diff" data-layer="diff">
+<pre class="code" aria-label="Excerpt of the pull request diff"><code><span class="ln"> </span>    pub(crate) fn try_new&lt;R: BufRead + 'a&gt;(mut reader: R) -&gt; io::Result&lt;InputReader&lt;'a&gt;&gt; {
+<span class="add"><span class="ln">+</span>        let mut inspection_prefix = {</span>
+<span class="add"><span class="ln">+</span>            let buffered = reader.fill_buf()?;</span>
+<span class="add"><span class="ln">+</span>            buffered[..buffered.len().min(CONTENT_INSPECTION_LIMIT)].to_vec()</span>
+<span class="add"><span class="ln">+</span>        };</span>
+<span class="ln"> </span>        let mut first_line = vec![];
+<span class="del"><span class="ln">-</span>        reader.read_until(b'\n', &amp;mut first_line)?;</span>
+<span class="add"><span class="ln">+</span>        if !inspection_prefix.is_empty() {</span>
+<span class="add"><span class="ln">+</span>            reader.read_until(b'\n', &amp;mut first_line)?;</span>
+<span class="add"><span class="ln">+</span>        }</span>
+<span class="ln"> </span>
+<span class="del"><span class="ln">-</span>        let content_type = inspect_content_type(&amp;first_line);</span>
+<span class="add"><span class="ln">+</span>        let content_type = inspect_content_type(&amp;inspection_prefix);</span></code></pre>
+          </div>
+
+          <div class="stage-shape" data-layer="shape">
+            <svg class="stage-rings" data-rings aria-hidden="true"></svg>
+            <div class="shape-block">
+              <p class="label">What changed</p>
+              <p class="shape-changed">Binary files are now recognized even when a line break comes before the first null byte.</p>
+            </div>
+            <div class="shape-arrow" aria-hidden="true"></div>
+            <div class="shape-block">
+              <p class="label label-amber">What you need to decide</p>
+              <p class="shape-question">Should detection wait for more stream data?</p>
+              <div class="spectrum spectrum--hero" aria-label="Two options; the implementation chose “Use what's buffered”">
+                <div class="spec-end">
+                  <span class="spec-name">Read until 1 KB</span>
+                  <span class="spec-note">deterministic</span>
+                </div>
+                <div class="spec-track"><span class="spec-dot spec-dot--open"></span><span class="spec-line"></span><span class="spec-dot spec-dot--chosen"></span></div>
+                <div class="spec-end spec-end--chosen">
+                  <span class="spec-name">Use what's buffered</span>
+                  <span class="spec-note">non-blocking · <b>chosen</b></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption id="stage-cap" class="stage-cap">A diff gives you points. <strong>Contour shows you the shape.</strong></figcaption>
+      </figure>
+    </section>
+
+    <!-- ───────────────────── The wrong abstraction ───────────────────── -->
+    <section class="sec thesis" id="why" aria-labelledby="why-title">
+      <div class="wrap">
+        <h2 id="why-title" class="giant reveal">We still review AI‑written code like it’s 2015.</h2>
+        <div class="thesis-grid">
+          <div class="old reveal">
+            <p class="label">What the tools put in front of you</p>
+            <ul class="old-list" role="list">
+              <li><span>Files changed</span><b>47</b></li>
+              <li><span>Lines added</span><b class="plus">+2,318</b></li>
+              <li><span>Lines removed</span><b class="minus">−406</b></li>
+              <li><span>Comments</span><b>on line 1,142</b></li>
+            </ul>
+            <p class="old-note">Built for a world where a colleague typed every one of those lines, and reading them was how you understood their thinking.</p>
+          </div>
+          <div class="new">
+            <p class="label label-amber reveal">What you actually need to know</p>
+            <ol class="questions" role="list">
+              <li class="reveal">What behavior changed?</li>
+              <li class="reveal">How does it fit into the system?</li>
+              <li class="reveal">What decisions did the agent make?</li>
+              <li class="reveal">What did we trade off?</li>
+              <li class="reveal">Where does human judgment actually matter?</li>
+            </ol>
+          </div>
+        </div>
+        <p class="aside reveal">When an agent writes a thousand lines in an afternoon, reading every one of them isn’t diligence. It’s the wrong job.</p>
+      </div>
+    </section>
+
+    <div class="rule" aria-hidden="true"><canvas data-rule></canvas></div>
+
+    <!-- ───────────────────── Behavior ───────────────────── -->
+    <section class="sec behavior" id="how" aria-labelledby="behavior-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>01</span> Start with the big animal picture</p>
+        <h2 id="behavior-title" class="h-lg reveal">Know what the system does differently <span class="dim">before reading how it does it.</span></h2>
+        <p class="lede reveal">Contour opens several levels above the code. Before a single hunk, you see the behavior the pull request changes.</p>
+
+        <div class="ba reveal" data-ba>
+          <div class="ba-row">
+            <p class="ba-tag">Before</p>
+            <ol class="ba-steps" role="list">
+              <li>Open input stream</li>
+              <li class="gone">Read first line</li>
+              <li class="gone">Inspect first line only</li>
+              <li class="fail">Print binary bytes as text</li>
+            </ol>
+          </div>
+          <div class="ba-row ba-row--after">
+            <p class="ba-tag">After</p>
+            <ol class="ba-steps" role="list">
+              <li>Open input stream</li>
+              <li class="new">Snapshot buffered first kilobyte</li>
+              <li>Read first line</li>
+              <li class="new">Inspect larger prefix</li>
+              <li class="ok">Mark file as binary</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <figure class="shot shot--wide reveal">
+        <div class="window">
+          <img src="assets/shots/overview.webp" width="2200" height="1375" loading="lazy" decoding="async"
+               alt="Contour's Overview for sharkdp/bat pull request 3877: a headline of what changed, a before and after behavior strip, why and consequence lines, and four things to think about.">
+        </div>
+        <figcaption>The Overview for <a href="https://github.com/sharkdp/bat/pull/3877">sharkdp/bat #3877</a>. What changed, why, what it costs, and four things to think about, before you’ve read a line of Rust.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ───────────────────── Decisions ───────────────────── -->
+    <section class="sec decisions" aria-labelledby="decisions-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>02</span> The philosophical centerpiece</p>
+        <h2 id="decisions-title" class="giant reveal">Review decisions,<br><span class="dim">not keystrokes.</span></h2>
+
+        <div class="decision-layout">
+          <div class="decision-card reveal" data-decision>
+            <p class="label">Decision · src/input.rs</p>
+            <h3 class="decision-q">Should detection wait for more stream data?</h3>
+
+            <div class="spectrum spectrum--card">
+              <div class="spec-end">
+                <span class="spec-name">Read until 1 KB</span>
+                <span class="spec-note">complete sample</span>
+              </div>
+              <div class="spec-track"><span class="spec-dot spec-dot--open"></span><span class="spec-line"></span><span class="spec-dot spec-dot--chosen"></span></div>
+              <div class="spec-end spec-end--chosen">
+                <span class="spec-name">Use what's buffered</span>
+                <span class="spec-note">never blocks · <b>chosen</b></span>
+              </div>
+            </div>
+
+            <dl class="facts">
+              <div>
+                <dt>What we're trading</dt>
+                <dd>
+                  <div class="trade" role="img" aria-label="Positioned 75 percent toward streaming responsiveness, away from detection completeness">
+                    <span>detection completeness</span>
+                    <span class="trade-bar"><i style="--pos:.75"></i></span>
+                    <span class="strong">streaming responsiveness</span>
+                  </div>
+                </dd>
+              </div>
+              <div>
+                <dt>Why this side?</dt>
+                <dd>A non-consuming <code>fill_buf</code> snapshot loses no bytes and adds no blocking read. <span class="prov">Author rationale</span></dd>
+              </div>
+              <div>
+                <dt>What it costs</dt>
+                <dd>On a pipe, a NUL that arrives after the first short read is still missed. <span class="prov">Interpretation · medium confidence</span></dd>
+              </div>
+            </dl>
+
+            <div class="verdict" role="group" aria-label="Your review of this decision">
+              <button type="button" data-verdict="good">✓ Looks good</button>
+              <button type="button" data-verdict="question">? Question</button>
+              <button type="button" data-verdict="discuss">Discuss</button>
+            </div>
+            <p class="verdict-out" data-verdict-out aria-live="polite">Your call. Contour records it; it never makes it.</p>
+          </div>
+
+          <div class="decision-copy">
+            <p class="reveal">Contour finds the consequential choices embodied in the implementation: what was chosen, what it was chosen over, and what it trades away.</p>
+            <p class="reveal">Then it asks the only question that matters.</p>
+            <p class="agree reveal">Do you agree?</p>
+            <p class="small reveal">It doesn’t grade the choice. It doesn’t approve the PR. It lays the decision out so a human can own it.</p>
+          </div>
+        </div>
+      </div>
+
+      <figure class="shot shot--offset reveal">
+        <div class="window window--bare">
+          <img src="assets/shots/decision.webp" width="1720" height="895" loading="lazy" decoding="async"
+               alt="A decision card in Contour: How much data should binary detection inspect? The implementation chose First 1 KB over First line only, trading text-file permissiveness for binary detection completeness, with Looks good, Question and Discuss buttons.">
+        </div>
+        <figcaption>The same PR’s other system-level decision, as the app shows it.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ───────────────────── Attention ───────────────────── -->
+    <section class="sec attention" aria-labelledby="attention-title">
+      <div class="wrap attention-grid">
+        <div>
+          <p class="kicker reveal"><span>03</span> Human judgment is scarce</p>
+          <h2 id="attention-title" class="h-lg reveal">Spend human attention where it matters.</h2>
+          <p class="lede reveal">Every PR is full of choices. Most are implementation detail. Contour keeps the ones that look consequential to</p>
+          <ul class="dims reveal" role="list">
+            <li>correctness</li><li>architecture</li><li>security</li><li>performance</li><li>reliability</li><li>compatibility</li><li>user behavior</li>
+          </ul>
+          <p class="lede reveal">and hands you those.</p>
+        </div>
+
+        <div class="funnel reveal" data-funnel>
+          <p class="funnel-count"><b data-count-from>4</b> choices identified <span aria-hidden="true">→</span> <b class="amber">2</b> worth your judgment</p>
+          <ol class="funnel-list" role="list">
+            <li class="keep"><span class="tier">system</span>How much data should binary detection inspect?</li>
+            <li class="keep"><span class="tier">system</span>Should detection wait for more stream data?</li>
+            <li class="drop"><span class="tier">detail</span>Which sample wins when the first line exceeds the buffer?</li>
+            <li class="drop"><span class="tier">detail</span>Should empty input trigger a second read attempt?</li>
+          </ol>
+          <p class="funnel-note">The two set aside are still one click away, and you can promote either.</p>
+        </div>
+      </div>
+      <p class="statement reveal"><span>The AI filters attention.</span> <span class="amber">The human retains judgment.</span></p>
+    </section>
+
+    <div class="rule" aria-hidden="true"><canvas data-rule></canvas></div>
+
+    <!-- ───────────────────── Flows ───────────────────── -->
+    <section class="sec flows" aria-labelledby="flows-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>04</span> Flows</p>
+        <h2 id="flows-title" class="h-lg reveal">“Show me what happens when…” <span class="dim typed" data-typed="…I pipe an encrypted file into bat."></span></h2>
+      </div>
+      <div class="wrap flows-grid">
+        <div class="flow reveal" data-flow aria-label="Runtime flow when piping an encrypted file into bat">
+          <div class="flow-entry"><code>gpg -d notes.gpg | bat</code></div>
+          <ol class="flow-steps" role="list">
+            <li>bat opens stdin</li>
+            <li class="new">Snapshot what's already buffered, up to 1 KB <em>new</em></li>
+            <li class="chg">Read the first line without losing the snapshot <em>changed</em></li>
+          </ol>
+          <div class="flow-fork">
+            <div class="flow-branch">
+              <p class="branch-when">first read ≥ 1 KB</p>
+              <p class="branch-step ok">NUL found in the prefix → <b>&lt;BINARY&gt;</b></p>
+            </div>
+            <div class="flow-branch flow-branch--warn">
+              <p class="branch-when">first read is short</p>
+              <p class="branch-step warn">NUL arrives in a later chunk → printed as text</p>
+            </div>
+          </div>
+          <p class="flow-foot">Review question: <em>can binary data still slip through when the first read is short?</em></p>
+        </div>
+        <div class="flows-side">
+          <p class="big-quote reveal">Flows explain runtime behavior as a story, not as a translated call stack.</p>
+          <figure class="shot reveal">
+            <div class="window window--bare">
+              <img src="assets/shots/flows.webp" width="1152" height="1181" loading="lazy" decoding="async"
+                   alt="Contour's Flows lens for bat file input: a vertical sequence of steps with new and changed steps highlighted, and decisions and a review question pinned beside the new snapshot step.">
+            </div>
+            <figcaption>Decisions and open questions pin themselves to the step where they bite.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Architecture ───────────────────── -->
+    <section class="sec arch" aria-labelledby="arch-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>05</span> Architecture</p>
+        <h2 id="arch-title" class="h-lg reveal">See where the change sits.</h2>
+        <p class="arch-verdict reveal"><span class="pill">Architectural impact · low</span> No structural change: binary sniffing now looks at a larger sample.</p>
+      </div>
+      <figure class="shot shot--bleed reveal">
+        <div class="window window--bare">
+          <img src="assets/shots/architecture.webp" width="2390" height="375" loading="lazy" decoding="async"
+               alt="Contour's architecture diagram: Input Reading, Content Inspection and Printer inside the bat process, feeding the Terminal. Only Content Inspection and its incoming edge are highlighted as changed, the edge relabelled from first line to buffered 1 KB sample.">
+        </div>
+      </figure>
+      <div class="wrap arch-foot">
+        <p class="statement statement--left reveal">Contour doesn’t confuse <span class="amber">“components changed”</span> with <span class="amber">“architecture changed.”</span></p>
+        <p class="small reveal">Three files touched, no new relationships. One existing edge now carries a different payload, and that edge is what gets highlighted.</p>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Evidence ───────────────────── -->
+    <section class="sec evidence" aria-labelledby="evidence-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>06</span> Evidence</p>
+        <h2 id="evidence-title" class="h-lg reveal">Big picture first. <span class="dim">Evidence always available.</span></h2>
+      </div>
+      <div class="wrap evidence-grid">
+        <ol class="ladder reveal" data-ladder role="list">
+          <li><span class="rung">Decision</span><span class="rung-v">Use what's buffered</span></li>
+          <li><span class="rung">Tradeoff</span><span class="rung-v">completeness ↔ responsiveness</span></li>
+          <li><span class="rung">Flow</span><span class="rung-v">bat (stdin)</span></li>
+          <li><span class="rung">Architecture</span><span class="rung-v">Input Reading → Content Inspection</span></li>
+          <li><span class="rung">Implementation</span><span class="rung-v">InputReader::try_new</span></li>
+          <li class="ladder-code"><span class="rung">Code</span><span class="rung-v"><code>src/input.rs:272–275</code></span></li>
+        </ol>
+        <div class="evidence-code reveal">
+          <div class="file-bar"><span>src/input.rs</span><span class="dim">272–275</span></div>
+<pre class="code code--lines"><code><span class="n">267</span>    pub(crate) fn try_new&lt;R: BufRead + 'a&gt;(mut reader: R) -&gt; io::Result&lt;InputReader&lt;'a&gt;&gt; {
+<span class="n">268</span><span class="c">        // content_inspector scans at most 1024 bytes. Capture the already-buffered</span>
+<span class="n">269</span><span class="c">        // prefix before splitting out the first line so an early newline in binary</span>
+<span class="n">270</span><span class="c">        // data does not shorten the inspected content. This does not consume input</span>
+<span class="n">271</span><span class="c">        // or perform an additional read beyond the one read_until needs anyway.</span>
+<span class="hl"><span class="n">272</span>        let mut inspection_prefix = {</span>
+<span class="hl"><span class="n">273</span>            let buffered = reader.fill_buf()?;</span>
+<span class="hl"><span class="n">274</span>            buffered[..buffered.len().min(CONTENT_INSPECTION_LIMIT)].to_vec()</span>
+<span class="hl"><span class="n">275</span>        };</span></code></pre>
+          <p class="evidence-why">Every explanation leads back to the code that supports it. The difference is that <strong>you read those lines because you know why they matter.</strong></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule" aria-hidden="true"><canvas data-rule></canvas></div>
+
+    <!-- ───────────────────── Chat ───────────────────── -->
+    <section class="sec chat" aria-labelledby="chat-title">
+      <div class="wrap">
+        <p class="kicker reveal"><span>07</span> Talk to the change</p>
+        <h2 id="chat-title" class="h-lg reveal">When something doesn’t make sense, <span class="dim">ask it.</span></h2>
+      </div>
+      <div class="wrap chat-grid">
+        <div class="chat-demo reveal">
+          <div class="ctx">
+            <div class="ctx-node">
+              <b>Content Inspection</b>
+              <span>Determines whether input is text, UTF-16, or binary</span>
+            </div>
+            <ul class="ctx-menu" role="presentation">
+              <li>Open</li>
+              <li>Show in flow</li>
+              <li class="sep" aria-hidden="true"></li>
+              <li class="on">Ask about this… <kbd>⌘⇧A</kbd></li>
+            </ul>
+          </div>
+          <div class="thread">
+            <p class="who">You</p>
+            <p class="msg msg--you">Why not just keep reading until we have the full 1 KB?</p>
+            <p class="who who--c">Contour</p>
+            <p class="msg">Because reading ahead blocks on a pipe. With <code>tail -f log | bat</code>, bat would print nothing until 1 KB arrived or the stream closed. The PR copies whatever <code>fill_buf</code> already holds instead, so it never adds a read, at the cost of missing a NUL that arrives in a later chunk.</p>
+            <p class="msg-links"><a href="#decisions-title">Show decision</a><a href="#evidence-title">Show code · src/input.rs:272</a></p>
+          </div>
+        </div>
+        <div class="chat-side">
+          <p class="lede reveal">You shouldn’t have to explain to the AI what you’re looking at. Right-click anything and the conversation starts already knowing</p>
+          <ul class="knows reveal" role="list">
+            <li>the PR</li><li>the architecture element</li><li>the decision</li><li>the related flows</li><li>the implementation</li><li>the evidence</li>
+          </ul>
+          <figure class="shot reveal">
+            <div class="window window--bare">
+              <img src="assets/shots/chat-context.webp" width="835" height="526" loading="lazy" decoding="async"
+                   alt="Contour's chat panel scoped to the decision Should detection wait for more stream data, showing what was chosen and traded, with buttons to add related flows, implementation, or the entire PR to the context.">
+            </div>
+            <figcaption>The real panel. Widen the context when you want to; you never have to paste it in.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Altitude ───────────────────── -->
+    <section class="sec altitude" aria-labelledby="alt-title">
+      <div class="wrap altitude-grid">
+        <div class="alt-copy">
+          <p class="kicker reveal"><span>08</span> Progressive understanding</p>
+          <h2 id="alt-title" class="giant reveal">Zoom in when you need to.</h2>
+          <p class="lede reveal">Start with the shape of the change. Descend into implementation only where your judgment or curiosity takes you.</p>
+        </div>
+        <div class="layers" data-layers>
+          <svg class="layers-svg" data-layer-rings viewBox="-215 -165 470 350" aria-hidden="true"></svg>
+          <ol class="layer-list" role="list">
+            <li data-layer-i="0"><span>System</span></li>
+            <li data-layer-i="1"><span>Behavior</span></li>
+            <li data-layer-i="2"><span>Decisions</span></li>
+            <li data-layer-i="3"><span>Implementation</span></li>
+            <li data-layer-i="4"><span>Code</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Manifesto ───────────────────── -->
+    <section class="sec manifesto" aria-labelledby="man-title">
+      <div class="wrap">
+        <h2 id="man-title" class="h-lg reveal">The answer to AI-generated code isn’t more humans pretending to be linters.</h2>
+        <div class="split">
+          <div class="reveal">
+            <p class="label">Machines are good at</p>
+            <ul role="list">
+              <li>tracing code</li><li>synthesizing context</li><li>finding relationships</li><li>explaining implementation</li><li>surfacing possible consequences</li>
+            </ul>
+          </div>
+          <div class="reveal">
+            <p class="label label-amber">Humans are still for</p>
+            <ul role="list" class="strong">
+              <li>intent</li><li>judgment</li><li>architecture</li><li>tradeoffs</li><li>risk acceptance</li><li>deciding whether the system should work this way</li>
+            </ul>
+          </div>
+        </div>
+        <blockquote class="pull reveal">
+          <p>Let machines explain what changed.</p>
+          <p class="amber">Let humans decide whether it should have changed that way.</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Try ───────────────────── -->
+    <section class="sec try" id="try" aria-labelledby="try-title">
+      <div class="wrap try-grid">
+        <div>
+          <h2 id="try-title" class="h-md reveal">Try Contour</h2>
+          <p class="reveal">A native SwiftUI app for macOS 15+. It drives an AI CLI you’re already signed in to (Claude Code or pi) and needs nothing else but <code>git</code>. Public PRs don’t even need <code>gh</code>.</p>
+          <p class="small reveal">Early and experimental. Expect rough edges.</p>
+        </div>
+        <div class="term reveal" aria-label="Build and run commands">
+          <div class="file-bar"><span>zsh</span></div>
+<pre class="code"><code><span class="c"># clone, build, run</span>
+git clone https://github.com/j-s-3/contour
+cd contour
+swift run Contour
+<span class="c"># then paste a pull request URL</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────────────── Close ───────────────────── -->
+    <section class="close" aria-labelledby="close-title">
+      <canvas class="topo" data-topo="close" aria-hidden="true"></canvas>
+      <div class="close-inner">
+        <svg class="mark mark--close" data-mark aria-hidden="true"></svg>
+        <h2 id="close-title">Code changed.<br><span class="amber">Understand its shape.</span></h2>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/j-s-3/contour">View on GitHub <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-ghost" href="https://github.com/j-s-3/contour/blob/main/DESIGN.md">Read the design <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Contour · <a href="https://github.com/j-s-3/contour/blob/main/LICENSE">Apache 2.0</a></p>
+    <p class="dim">The examples come from Contour’s analysis of <a href="https://github.com/sharkdp/bat/pull/3877">sharkdp/bat #3877</a>, “Detect binary content beyond the first line.” Screenshots are unedited; the chat reply is paraphrased from that analysis.</p>
+  </footer>
+</body>
+</html>
