@@ -101,6 +101,17 @@ actor AnalysisPipeline {
         runTask = Task { await run(prURL: prURL, forceRefresh: forceRefresh) }
     }
 
+    /// Test/bench-only seam (`BenchTests`, issue #60): runs the pipeline against a
+    /// pre-built context and checkout, skipping the real GitHub fetch and git clone —
+    /// the two network-bound steps a repeatable, offline latency measurement has no
+    /// business timing. Everything from here on (context-file write, cache lookup, stage
+    /// dispatch, verification, graph assembly, linking, publish) is the exact path a real
+    /// run takes, with `CONTOUR_MOCK_ANALYSIS=1` standing in for the model calls.
+    func start(offlineContext ctx: RawPRContext, checkout: RepoCheckout, forceRefresh: Bool = true) {
+        runTask?.cancel()
+        runTask = Task { await runOffline(ctx: ctx, checkout: checkout, forceRefresh: forceRefresh) }
+    }
+
     /// Ends the run for good: nothing more is reported, and the stream closes.
     func cancel() {
         cancelInFlight()
@@ -183,6 +194,46 @@ actor AnalysisPipeline {
             }
             await runStages(toRun)
             // Stopped partway: `stop()` has already settled every stage and reported it.
+            guard !Task.isCancelled else { return }
+            finishIfSettled()
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            continuation.yield(.fatal(error.localizedDescription))
+        }
+    }
+
+    /// The tail of `run(prURL:forceRefresh:)` — everything from the fetched context and a
+    /// ready checkout onward — with the fetch and the real `git clone`/checkout dropped.
+    /// See `start(offlineContext:checkout:forceRefresh:)`.
+    private func runOffline(ctx: RawPRContext, checkout: RepoCheckout, forceRefresh: Bool) async {
+        do {
+            self.ctx = ctx
+            cache.recordOpened(url: ctx.url, repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title)
+            graph = .shell(from: ctx)
+            continuation.yield(.diff(ctx.diff))
+            publish()
+            setStatus(.fetching, .done)
+
+            self.checkout = checkout
+            verifier = CodeRefVerifier(checkout: checkout)
+            continuation.yield(.checkout(checkout))
+            setStatus(.checkingOut, .done)
+            try Task.checkCancellation()
+
+            analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir))
+
+            let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
+            try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
+
+            let toRun = restoreFromCache(ctx, forceRefresh: forceRefresh)
+            if toRun.isEmpty {
+                setStatus(.ticket, .done)
+                finishIfSettled()
+                return
+            }
+            await runStages(toRun)
             guard !Task.isCancelled else { return }
             finishIfSettled()
         } catch is CancellationError {

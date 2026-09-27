@@ -233,6 +233,13 @@ RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter In
 see its `README.md` for what came from where, including one fixture that is partly
 synthesized and why.
 
+`swift test --filter BenchTests` measures Contour's own latency — diff parsing, graph
+assembly, verification, linking — against a deterministic fixture corpus of small,
+medium and large PRs, run through `CONTOUR_MOCK_ANALYSIS` so no model or network is
+involved. It prints a per-milestone table (see `LatencyMilestone`) and fails on a
+large-multiple regression; CI runs it on every build. `scripts/summarize-metrics.py`
+reports the same p50/p95 breakdown from a real `metrics.jsonl` collected over normal use.
+
 `CorpusRunTests` runs the same pipeline against a small corpus of real, long-merged public
 PRs (`Fixtures/corpus.json`) instead of one, and records per-stage failure/retry rates,
 unverifiable citations and latency — a nightly workflow
