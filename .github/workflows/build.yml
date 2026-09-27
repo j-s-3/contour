@@ -36,7 +36,36 @@ jobs:
 
       - name: Test
         # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
-        run: swift test
+        run: swift test --enable-code-coverage
+
+      - name: Code coverage report
+        run: |
+          BIN_PATH="$(swift build --show-bin-path)"
+          TEST_BINARY="$BIN_PATH/ContourPackageTests.xctest/Contents/MacOS/ContourPackageTests"
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+
+          xcrun llvm-cov report "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            -ignore-filename-regex='\.build|Tests/' \
+            | tee coverage-summary.txt
+
+          {
+            echo '### Code coverage'
+            echo '```'
+            cat coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          xcrun llvm-cov export "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            -ignore-filename-regex='\.build|Tests/' \
+            -format=lcov > coverage.lcov
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.lcov
 
       - name: Build release
         run: swift build -c release
