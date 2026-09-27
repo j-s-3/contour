@@ -34,16 +34,12 @@ jobs:
       - name: Build
         run: swift build
 
-      - name: DIAGNOSTIC - isolate TrackerAndCacheTests crash
-        # Temporary: bisecting a swiftpm-testing-helper signal-5 crash that, under
-        # --no-parallel, lands deterministically between testAnalysisCacheRoundTrip and
-        # testFetchRealJiraTicket in this one suite. Running it alone, parallel and serial,
-        # tells us whether this needs the rest of the suite's state or reproduces standalone.
-        run: |
-          echo "--- isolated TrackerAndCacheTests, default (parallel) ---"
-          swift test --filter TrackerAndCacheTests || echo "ISOLATED PARALLEL run failed: exit $?"
-          echo "--- isolated TrackerAndCacheTests, --no-parallel ---"
-          swift test --filter TrackerAndCacheTests --no-parallel || echo "ISOLATED SERIAL run failed: exit $?"
+      - name: DIAGNOSTIC - full suite, no coverage
+        # Isolated TrackerAndCacheTests alone (parallel and serial) ran clean twice — the
+        # crash needs the full suite's accumulated state. This step isolates the other
+        # variable: does --enable-code-coverage's instrumentation matter, or does the full
+        # suite crash here even without it?
+        run: swift test --no-parallel || echo "FULL SUITE, NO COVERAGE failed: exit $?"
 
       - name: Test
         # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
