@@ -158,4 +158,18 @@ struct ContextualChatTests {
             .code("let x = 1"),
         ])
     }
+
+    // MARK: - Review progress
+
+    /// Only a thread the reviewer wrote in counts as talking a question through — opening
+    /// one, or asking about something that isn't an Overview question, doesn't.
+    @Test func aQuestionIsDiscussedOnceTheReviewerAsksAboutIt() {
+        let store = ConversationStore()
+        store.open(.consideration("opened"))
+        let asked = store.open(.consideration("asked"))
+        asked.messages.append(ChatMessage(role: .user, text: "Is this safe?"))
+        let onDecision = store.open(.decision("index-on-publish"))
+        onDecision.messages.append(ChatMessage(role: .user, text: "Why?"))
+        #expect(store.discussedConsiderationIds == ["asked"])
+    }
 }

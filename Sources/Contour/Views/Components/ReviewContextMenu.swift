@@ -38,6 +38,37 @@ extension EnvironmentValues {
     @Entry var reviewActions = ReviewActions()
 }
 
+/// The ways out of a review, shared by the toolbar, the File menu and the command palette.
+extension GraphStore {
+    var pullRequestWebURL: URL? {
+        ReviewActions(graph: graph, prURL: lastPRURL).pullRequestURL
+    }
+
+    func openOnGitHub() {
+        if let url = pullRequestWebURL { NSWorkspace.shared.open(url) }
+    }
+
+    /// Puts the reviewer's marks and notes on the pasteboard as Markdown for a GitHub review
+    /// comment (`PRGraph.reviewSummaryMarkdown`).
+    func copyReviewSummary() {
+        guard let graph else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(graph.reviewSummaryMarkdown, forType: .string)
+    }
+}
+
+/// The open review, published to the menu bar so File-menu commands act on the key window's
+/// PR and disable themselves when there is none.
+extension FocusedValues {
+    @Entry var reviewStore: GraphStore?
+}
+
+/// ⌘⇧O — bound on the File menu's "Open on GitHub" and named in the toolbar button's help.
+enum OpenOnGitHubShortcut {
+    static let key: KeyEquivalent = "o"
+    static let modifiers: EventModifiers = [.command, .shift]
+}
+
 extension View {
     /// The standard right-click menu for any review artifact: "Ask about this…" first, then
     /// a handful of ways to go deeper, then copy. Kept short on purpose.
@@ -86,6 +117,9 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
 
             if let target = resolved.detailTarget, resolved.kind != .tradeoff {
                 Button(resolved.kind == .code ? "Show in code" : "Open details") { actions.navigate(target) }
+            }
+            if resolved.kind == .code, case .codeRef(let ref) = subject {
+                Button("Show in Diff") { actions.navigate(.diffLocation(ref)) }
             }
             showInArchitecture(resolved, graph)
             relatedDecisions(resolved, graph)

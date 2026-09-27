@@ -55,7 +55,7 @@ actor AnalysisPipeline {
     /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
     /// cache filename, so old cache entries from a previous schema are never mistakenly
     /// decoded against the new one; they just miss and re-run (§13).
-    static let pipelineVersion = 12
+    static let pipelineVersion = 13
 
     nonisolated let events: AsyncStream<PipelineEvent>
     private let continuation: AsyncStream<PipelineEvent>.Continuation
@@ -64,6 +64,7 @@ actor AnalysisPipeline {
     private var ctx: RawPRContext?
     private var checkout: RepoCheckout?
     private var analysis: AnalysisService?
+    private var verifier: CodeRefVerifier?
     private var ticket: TicketInfo?
     private var ticketLookedUp = false
     /// Unlinked: links are derived on every publish, so a retried stage re-derives them.
@@ -117,6 +118,7 @@ actor AnalysisPipeline {
             log(.fetching, "via \(source.describesItself)")
             let ctx = try await source.fetchContext(prURL: prURL)
             self.ctx = ctx
+            cache.recordOpened(url: ctx.url, repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title)
             graph = .shell(from: ctx)
             continuation.yield(.diff(ctx.diff))
             publish()
@@ -126,6 +128,7 @@ actor AnalysisPipeline {
             log(.checkingOut, "\(ctx.owner)/\(ctx.repo) @ \(ctx.headSha.prefix(8))")
             let checkout = try await repoContext.checkout(ctx)
             self.checkout = checkout
+            verifier = CodeRefVerifier(checkout: checkout)
             continuation.yield(.checkout(checkout))
             setStatus(.checkingOut, .done)
 
@@ -259,12 +262,21 @@ actor AnalysisPipeline {
     // MARK: - One stage
 
     private func execute(_ stage: PipelineStage) async {
-        guard let analysis, let checkout, !Task.isCancelled else { return }
+        guard let analysis, let checkout, let verifier, !Task.isCancelled else { return }
         setStatus(stage, .running(detail: nil))
         do {
             let result = try await perform(stage, analysis: analysis, cwd: checkout.rootDir)
             guard !Task.isCancelled else { return }
-            graph?.apply(result)
+            // Checked before the slice lands, so no ref the checkout can't back is shown as
+            // final or used to link decisions to flows.
+            let (verified, check) = await verifier.verify(result)
+            guard !Task.isCancelled else { return }
+            if check.unresolvedCount > 0 {
+                log(stage, "\(check.unresolvedCount) of \(check.checked) references couldn't be verified: "
+                    + check.unresolved.prefix(5).joined(separator: ", "))
+            }
+            graph?.apply(verified)
+            graph?.record(check, for: stage)
             stale.remove(stage)
             completed.insert(stage)
             setStatus(stage, .done)
@@ -276,8 +288,10 @@ actor AnalysisPipeline {
             // slice that would read as a conclusion about this code.
             graph?.clear(stage)
             stale.remove(stage)
+            // The technical account (raw response, stderr) goes to the log; the section
+            // gets a line the reviewer can act on.
             log(stage, "failed: \(error.localizedDescription)")
-            setStatus(stage, .failed(error.localizedDescription))
+            setStatus(stage, .failed(stage.failureMessage(for: error)))
             publish()
         }
     }

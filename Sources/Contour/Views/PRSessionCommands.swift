@@ -44,6 +44,7 @@ struct PRSessionCommands: Commands {
                 .disabled(session == nil)
             Divider()
             Button("Open on GitHub") { session?.openOnGitHub() }
+                .keyboardShortcut(OpenOnGitHubShortcut.key, modifiers: OpenOnGitHubShortcut.modifiers)
                 .disabled(session?.pullRequestURL == nil)
             Button("Copy Link to Pull Request") { session?.copyLink() }
                 .disabled(session?.pullRequestURL == nil)

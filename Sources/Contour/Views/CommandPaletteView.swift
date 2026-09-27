@@ -68,6 +68,9 @@ struct CommandPaletteView: View {
             }
         ]
         guard let graph = store.graph else { return commands }
+        commands.append(.init(title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
+                              symbol: "doc.on.clipboard") { store.copyReviewSummary() })
+        commands.append(.init(title: "Open on GitHub", subtitle: nil, symbol: "arrow.up.forward.square") { store.openOnGitHub() })
         for d in graph.decisions {
             commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {
                 store.navigate(to: .decisionDetail(d.id))

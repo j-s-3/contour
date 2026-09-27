@@ -25,6 +25,8 @@ struct RawPRContext: Sendable {
     var comments: [String]         // issue-thread comments, author + body flattened
     var reviews: [String]          // review bodies, for author-stated rationale extraction
     var diff: String
+    /// Best-effort CI, review and thread state; whatever the source couldn't read stays nil.
+    var glance = PRGlance()
 }
 
 struct CommitInfo: Sendable {

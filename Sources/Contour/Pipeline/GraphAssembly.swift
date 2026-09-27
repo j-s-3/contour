@@ -24,7 +24,8 @@ extension PRGraph {
             repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
             state: ctx.state, branch: ctx.headRefName, baseBranch: ctx.baseRefName, headSha: ctx.headSha,
             baseSha: ctx.baseSha, intent: shellIntent(title: ctx.title),
-            filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions
+            filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions,
+            glance: ctx.glance
         ))
     }
 
@@ -42,6 +43,7 @@ extension PRGraph {
         pr.filesChanged = fresh.filesChanged
         pr.additions = fresh.additions
         pr.deletions = fresh.deletions
+        pr.glance = fresh.glance
     }
 
     mutating func apply(_ result: StageResult) {
@@ -106,6 +108,14 @@ extension PRGraph {
         case .fetching, .checkingOut, .cacheCheck, .ticket:
             break
         }
+        refChecks?[stage.rawValue] = nil
+    }
+
+    /// Records how a stage's refs fared against the checkout, replacing any earlier tally
+    /// for the same stage (a retry, or this revision replacing a previous one's slice).
+    mutating func record(_ check: RefCheck, for stage: PipelineStage) {
+        refChecks = refChecks ?? [:]
+        refChecks?[stage.rawValue] = check
     }
 
     static func shellIntent(title: String) -> Statement {

@@ -23,6 +23,8 @@ enum NavigationTarget: Hashable {
     case flows
     case files
     case diff
+    /// The raw diff, scrolled to the file and hunk a code reference lands in.
+    case diffLocation(CodeRef)
     case decisionDetail(String)
     /// An Overview "thing to think about", reviewed on the decision it belongs to.
     case consideration(String)
@@ -42,6 +44,8 @@ final class GraphStore {
     private(set) var graph: PRGraph?
     private(set) var checkout: RepoCheckout?
     private(set) var diffText: String?
+    /// `diffText` as files and hunks, parsed once when it arrives rather than per render.
+    private(set) var diffFiles: [DiffFile] = []
     private(set) var phase: SessionPhase = .idle
     private(set) var progressLog: [PipelineProgressEntry] = []
     /// Per-stage progress of the analysis filling in the open review.
@@ -88,6 +92,7 @@ final class GraphStore {
         graph = nil
         checkout = nil
         diffText = nil
+        diffFiles = []
         analysis = AnalysisState()
         metrics = AnalysisMetrics(pr: prURL)
         metricsSaved = false
@@ -137,7 +142,16 @@ final class GraphStore {
         return ReviewActions(graph: graph, prURL: lastPRURL).pullRequestURL
     }
 
-    /// Leaves the current PR: stops its analysis and returns to the URL prompt.
+    /// Opens the last PR again from scratch — what "Try again" means when opening it
+    /// failed, so the reviewer never has to find and paste the URL a second time.
+    @MainActor
+    func reopen() {
+        guard let lastPRURL else { return close() }
+        load(prURL: lastPRURL)
+    }
+
+    /// Leaves the current PR: stops its analysis and returns to the URL prompt. The
+    /// prompt is pre-filled with `lastPRURL`, which survives the close.
     @MainActor
     func close() {
         stopAnalysis()
@@ -148,10 +162,7 @@ final class GraphStore {
     /// failure was upstream of every stage), so the whole PR is reopened instead.
     @MainActor
     func retry(_ stage: PipelineStage) {
-        guard let pipeline, checkout != nil else {
-            if let lastPRURL { load(prURL: lastPRURL) }
-            return
-        }
+        guard let pipeline, checkout != nil else { return reopen() }
         Task { await pipeline.retry(stage) }
     }
 
@@ -178,6 +189,7 @@ final class GraphStore {
             if phase == .opening { phase = .review }
         case .diff(let diff):
             diffText = diff
+            diffFiles = UnifiedDiff.parse(diff)
         case .checkout(let checkout):
             self.checkout = checkout
         case .revalidating(let head):
@@ -192,9 +204,12 @@ final class GraphStore {
                 phase = .failed(message)
             } else {
                 // The PR is on screen but couldn't be checked out: keep the shell and the
-                // raw diff, and say why each section is empty.
+                // raw diff, and say why each section is empty. The underlying error (git's
+                // stderr, usually) goes to the technical log rather than into every section.
+                progressLog.append(PipelineProgressEntry(stage: PipelineStage.checkingOut.rawValue,
+                                                         detail: "failed: \(message)"))
                 for stage in PipelineStage.analysis where analysis.status(stage) != .done {
-                    analysis.stages[stage] = .failed(message)
+                    analysis.stages[stage] = .failed(stage.checkoutFailureMessage)
                 }
                 analysis.isComplete = true
             }
@@ -268,7 +283,7 @@ final class GraphStore {
         case .consideration(let id): return .consideration(id)
         case .flowDetail(let id): return .flow(id)
         case .flowNodeDetail(let flowId, let nodeId): return .flowNode(flowId: flowId, nodeId: nodeId)
-        case .evidence(let ref): return .codeRef(ref)
+        case .evidence(let ref), .diffLocation(let ref): return .codeRef(ref)
         default:
             if let change = graph?.dominantBehaviorChange { return .behaviorChange(change.id) }
             return .pullRequest

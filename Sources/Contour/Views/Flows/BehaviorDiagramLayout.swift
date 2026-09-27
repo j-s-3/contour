@@ -48,20 +48,34 @@ struct BehaviorDiagramLayout {
 /// top, each stage below the one that leads to it, branches side by side under the branch
 /// point, and decision/question notes beside the connection they sit on. Connections are
 /// routed orthogonally — down, across at the fan-out bar, down into the target.
+///
+/// Given the canvas width, it spreads out to use it: notes widen and columns move apart so
+/// each branch's notes keep their width, and on a wide canvas every note is drawn rather
+/// than the first few.
 enum BehaviorDiagramLayoutEngine {
     static let nodeWidth: CGFloat = 232
     static let columnGap: CGFloat = 56
     static var columnWidth: CGFloat { nodeWidth + columnGap }
-    static let annotationWidth: CGFloat = columnWidth - 34
+    /// How far a note's right edge stops short of the next column's stage center.
+    static let noteInset: CGFloat = 34
+    static let annotationWidth: CGFloat = columnWidth - noteInset
+    /// Notes stop widening here; past it a line is too long to read at a glance.
+    static let maxAnnotationWidth: CGFloat = 420
     static let margin: CGFloat = 28
     /// Space between the fan-out bar and the target's top, where branch labels sit.
     static let labelBand: CGFloat = 30
     static let minLayerGap: CGFloat = 60
-    /// Notes drawn per stage before the rest collapse into "+N more"; the inspector lists all.
+    /// Notes drawn per stage before the rest collapse into "+N more" on a narrow canvas; the
+    /// inspector lists all.
     static let maxNotesPerStage = 3
+    /// A canvas at least this wide draws every note; narrower ones cap at `maxNotesPerStage`.
+    static let roomyWidth: CGFloat = 1200
     static let overflowHeight: CGFloat = 20
 
-    static func layout(_ behavior: FlowBehavior, mode: FlowMode, annotations: [FlowAnnotation]) -> BehaviorDiagramLayout {
+    /// `availableWidth` is the canvas the diagram is drawn on; without it the diagram keeps its
+    /// compact spacing and caps notes, as on a narrow canvas.
+    static func layout(_ behavior: FlowBehavior, mode: FlowMode, annotations: [FlowAnnotation],
+                       availableWidth: CGFloat? = nil) -> BehaviorDiagramLayout {
         let nodes = behavior.nodes
         guard !nodes.isEmpty else { return BehaviorDiagramLayout() }
         let index = Dictionary(nodes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -95,10 +109,22 @@ enum BehaviorDiagramLayoutEngine {
         let hasBackEdges = behavior.edges.count > forward.count
         let leftGutter: CGFloat = hasBackEdges ? 40 : 0
         let minColumn = column.values.min() ?? 0
+        let span = (column.values.max() ?? 0) - minColumn
 
         let grouped = Dictionary(grouping: annotations, by: \.nodeId)
-        let byNode = grouped.mapValues { Array($0.prefix(maxNotesPerStage)) }
-        let hidden = grouped.mapValues { max(0, $0.count - maxNotesPerStage) }
+        let cap = (availableWidth ?? 0) >= roomyWidth ? Int.max : maxNotesPerStage
+        let byNode = grouped.mapValues { Array($0.prefix(cap)) }
+        let hidden = grouped.mapValues { max(0, $0.count - cap) }
+
+        // Horizontal: the rightmost column's notes reach the canvas edge, and every column
+        // steps over by a note's width so side-by-side branches keep theirs.
+        var noteWidth = annotationWidth
+        if let availableWidth, !annotations.isEmpty {
+            let fixed = 2 * margin + leftGutter + nodeWidth / 2 + 14 - noteInset
+            let fitted = (availableWidth - fixed) / (span + 1) - noteInset
+            noteWidth = min(maxAnnotationWidth, max(annotationWidth, fitted))
+        }
+        let pitch = noteWidth + noteInset
         let heights = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, height(of: $0, mode: mode)) })
 
         // Vertical: each layer is as tall as its tallest stage; the gap under it makes room for
@@ -108,7 +134,7 @@ enum BehaviorDiagramLayoutEngine {
         for row in rows {
             tops.append(y)
             let rowHeight = row.map { heights[$0]! }.max() ?? 0
-            let notes = row.map { stackHeight(byNode[$0] ?? []) + (hidden[$0, default: 0] > 0 ? overflowHeight + 6 : 0) }.max() ?? 0
+            let notes = row.map { stackHeight(byNode[$0] ?? [], width: noteWidth) + (hidden[$0, default: 0] > 0 ? overflowHeight + 6 : 0) }.max() ?? 0
             let gap = max(minLayerGap, notes > 0 ? 12 + notes + 10 + labelBand : 0)
             y += rowHeight + gap
         }
@@ -117,7 +143,7 @@ enum BehaviorDiagramLayoutEngine {
         var frames: [String: CGRect] = [:]
         for n in nodes {
             let l = layer[n.id]!
-            let x = margin + leftGutter + (column[n.id]! - minColumn) * columnWidth
+            let x = margin + leftGutter + (column[n.id]! - minColumn) * pitch
             let frame = CGRect(x: x, y: tops[l], width: nodeWidth, height: heights[n.id]!)
             frames[n.id] = frame
             out.nodes.append(.init(node: n, frame: frame))
@@ -128,14 +154,14 @@ enum BehaviorDiagramLayoutEngine {
             guard let notes = byNode[n.id], let frame = frames[n.id] else { continue }
             var noteY = frame.maxY + 12
             for note in notes {
-                let h = height(of: note)
+                let h = height(of: note, width: noteWidth)
                 out.annotations.append(.init(annotation: note,
-                                             frame: CGRect(x: frame.midX + 14, y: noteY, width: annotationWidth, height: h)))
+                                             frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: h)))
                 noteY += h + 6
             }
             if let count = hidden[n.id], count > 0 {
                 out.overflow.append(.init(nodeId: n.id, count: count,
-                                          frame: CGRect(x: frame.midX + 14, y: noteY, width: annotationWidth, height: overflowHeight)))
+                                          frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: overflowHeight)))
             }
         }
 
@@ -308,12 +334,14 @@ enum BehaviorDiagramLayoutEngine {
         return h
     }
 
-    static func height(of note: FlowAnnotation) -> CGFloat {
-        20 + CGFloat(lines(note.text, perLine: 34, max: 3)) * 16
+    /// A caption runs a little over 5 pt a character; 6 after the note's padding keeps the
+    /// estimate on the safe side as notes widen.
+    static func height(of note: FlowAnnotation, width: CGFloat = annotationWidth) -> CGFloat {
+        20 + CGFloat(lines(note.text, perLine: max(20, Int((width - 16) / 6)), max: 3)) * 16
     }
 
-    static func stackHeight(_ notes: [FlowAnnotation]) -> CGFloat {
+    static func stackHeight(_ notes: [FlowAnnotation], width: CGFloat = annotationWidth) -> CGFloat {
         guard !notes.isEmpty else { return 0 }
-        return notes.map(height(of:)).reduce(0, +) + CGFloat(notes.count - 1) * 6
+        return notes.map { height(of: $0, width: width) }.reduce(0, +) + CGFloat(notes.count - 1) * 6
     }
 }

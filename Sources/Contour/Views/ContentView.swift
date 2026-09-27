@@ -8,12 +8,12 @@ struct ContentView: View {
     @State private var showPalette = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
-    /// Explicit, not `.automatic`: `WindowAccessor` force-enters real fullscreen ~0.2s
-    /// after launch, and that AppKit transition is a known trigger for
-    /// `NavigationSplitView` silently collapsing its sidebar column (the automatic
-    /// width-based visibility heuristic gets a bad reading mid-transition and never
-    /// reconsiders). Owning the binding — and reasserting it once fullscreen actually
-    /// completes — is what keeps the sidebar from vanishing.
+    /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
+    /// opted in (`WindowAccessor`), or at any time via the green button — is a known
+    /// trigger for `NavigationSplitView` silently collapsing its sidebar column (the
+    /// automatic width-based visibility heuristic gets a bad reading mid-transition and
+    /// never reconsiders). Owning the binding — and reasserting it once fullscreen
+    /// actually completes — is what keeps the sidebar from vanishing.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     /// Carries the Contour mark from the welcome screen into the analysis screen.
     @Namespace private var markNamespace
@@ -22,8 +22,7 @@ struct ContentView: View {
     @State private var urlFieldFocusRequest = 0
 
     var body: some View {
-        Group {
-            if needsOnboarding {
+        Group {            if needsOnboarding {
                 WelcomeWizard { firstURL in
                     needsOnboarding = false
                     if let firstURL { store.load(prURL: firstURL) }
@@ -40,7 +39,9 @@ struct ContentView: View {
                 .keyboardShortcut("k", modifiers: .command)
                 .opacity(0)
         )
-        .background(WindowAccessor()) // enters full screen shortly after launch, see §1/2 request
+        // Full screen only on opt-in; otherwise the window reopens at its last frame.
+        .background(WindowAccessor(entersFullScreen: Preferences.shared.opensInFullScreen))
+        .focusedSceneValue(\.reviewStore, store.phase == .review ? store : nil)
         // File ▸ Open / Close Pull Request. Not published during first-run setup, which has
         // no PR to leave and its own way to open the first one.
         .focusedSceneValue(\.prSession, needsOnboarding ? nil : sessionActions)
@@ -66,6 +67,15 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
+        // `contour://…` and GitHub PR links handed to the app by the system. Only live once
+        // Contour runs from a bundle whose Info.plist declares the scheme; a bare SwiftPM
+        // executable is never sent them.
+        .onOpenURL { url in
+            guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
+            store.load(prURL: prURL)
+        }
+        // Route incoming links to this window rather than opening a second one.
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
 
     private var sessionActions: PRSessionActions {
@@ -88,23 +98,28 @@ struct ContentView: View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView(markNamespace: markNamespace, focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
+                OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace,
+                               focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
             case .opening:
                 // Only the fetch happens here now; the review opens as soon as the PR has
                 // been read, and the mark carries on resolving in the toolbar.
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
-                FailedView(message: message) { store.close() }
+                FailedView(message: message, onRetry: { store.reopen() }, onOpenDifferent: { store.close() })
             case .review:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView(markNamespace: markNamespace, focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
+                    OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace,
+                                   focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
                 }
             }
         }
         // Screen changes crossfade (and the mark glides from welcome into opening).
         .animation(.easeInOut(duration: 0.45), value: screen)
+        // A PR link dropped on the start screen or an open review opens that PR; one PR
+        // per window, so a review in progress is replaced.
+        .opensDroppedPullRequests { url in store.load(prURL: url) }
     }
 
     /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
@@ -181,11 +196,19 @@ struct ContentView: View {
                     .disabled(!store.canGoForward)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics) {
+                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
+                                  refCheck: graph.refCheckTotal) {
                     store.retry($0)
                 }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
+                // The ways out once the PR is understood: back to GitHub, or with the
+                // reviewer's judgment ready to paste into a review comment there.
+                Button { store.copyReviewSummary() } label: { Image(systemName: "doc.on.clipboard") }
+                    .help("Copy review summary as Markdown")
+                Button { store.openOnGitHub() } label: { Image(systemName: "arrow.up.forward.square") }
+                    .help("Open on GitHub (⌘⇧O)")
+                    .disabled(store.pullRequestWebURL == nil)
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         if store.conversations.isPresented {
@@ -220,11 +243,13 @@ struct ContentView: View {
                            status: flowsStatus, section: .flows)
             }
             Section("Review") {
-                // Review progress means "I have consciously judged n of the consequential
-                // decisions this PR made", so it sits on the row where that judgment happens.
-                let p = graph.reviewProgress
+                // Review progress is the Overview's things to think about, resolved — the
+                // same n of m the Overview shows — and sits on the row where judgments are
+                // recorded.
+                let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
                 let decisionsStatus = analysis.status(.decisions)
-                let done = decisionsStatus == .done && p.total > 0 && p.reviewed == p.total
+                let done = decisionsStatus == .done && analysis.status(.judgment) == .done
+                    && p.total > 0 && p.reviewed == p.total
                 sidebarRow("Decisions", "checklist", .decisions, status: decisionsStatus, section: .decisions) {
                     if p.total > 0 {
                         HStack(spacing: 4) {
@@ -238,7 +263,7 @@ struct ContentView: View {
                         .font(.callout)
                     }
                 }
-                .help("Decisions to review you've consciously judged: \(p.reviewed) of \(p.total)")
+                .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
                 sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
@@ -296,7 +321,7 @@ struct ContentView: View {
     private func isActive(_ target: NavigationTarget) -> Bool {
         switch (store.current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
-             (.flows, .flows), (.diff, .diff):
+             (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
              (.consideration(_), .decisions), (.flowDetail(_), .flows),
@@ -323,6 +348,12 @@ struct ContentView: View {
         case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
         default: return nil
         }
+    }
+
+    /// The code reference a navigation target asks the raw diff to land on.
+    private var diffFocus: CodeRef? {
+        if case .diffLocation(let ref) = store.current { return ref }
+        return nil
     }
 
     /// The decision a navigation target asks Decisions to open, and the Overview question
@@ -373,7 +404,8 @@ struct ContentView: View {
         let analysis = store.analysis
         switch store.current {
         case .summary:
-            SummaryView(graph: graph, analysis: analysis, onRetry: { store.retry($0) }) { store.navigate(to: $0) }
+            SummaryView(graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
+                        onRetry: { store.retry($0) }) { store.navigate(to: $0) }
         case .architecture, .componentDetail(_), .edgeDetail(_):
             sectionContent(.architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
                            ask: "What part of the system does this change sit in, and how does it change it?",
@@ -387,6 +419,7 @@ struct ContentView: View {
                 DecisionsView(
                     graph: graph,
                     focus: decisionsFocus(graph),
+                    discussed: store.conversations.discussedConsiderationIds,
                     onSetState: { store.setReviewerState($1, forDecision: $0) },
                     onSetNote: { store.setReviewerNote($1, forDecision: $0) },
                     onSetToReview: { store.setToReview($1, forDecision: $0) }
@@ -404,9 +437,9 @@ struct ContentView: View {
             }
         case .files:
             ContentUnavailableView("No file view", systemImage: "doc.text")
-        case .diff:
-            if let diff = store.diffText {
-                DiffView(diff: diff)
+        case .diff, .diffLocation(_):
+            if store.diffText != nil {
+                DiffView(files: store.diffFiles, graph: graph, focus: diffFocus)
             } else {
                 ContentUnavailableView("No diff available", systemImage: "doc.text")
             }
