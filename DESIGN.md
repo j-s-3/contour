@@ -430,7 +430,13 @@ The checkout uses plain `git clone`, not `gh repo clone`. Git's credential helpe
 code path serves both cases and the checkout depends on `gh` not at all.
 
 Posting reviews back to GitHub is designed (one line-anchored comment per reviewer-marked
-decision via the REST reviews API) but deferred past MVP.
+decision via the REST reviews API) but deferred past MVP. Until then the review still has a
+way out: **Open on GitHub** (toolbar, File menu, ⌘⇧O) and **Copy Review Summary** (toolbar,
+File menu, ⌘K), which puts the reviewer's judgment on the pasteboard as Markdown for a review
+comment — what changed in one line, each judged decision with its state and note, and the
+Overview questions no "Looks good" has settled. That Markdown
+(`PRGraph.reviewSummaryMarkdown`, `Models/ReviewSummary.swift`) is the payload the deferred
+posting will send.
 
 One real-world robustness detail worth calling out because it surfaced during
 development: PR base branches are frequently deleted after merge. Fetching the head ref

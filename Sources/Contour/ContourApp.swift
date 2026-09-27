@@ -42,6 +42,7 @@ struct ContourApp: App {
         .windowStyle(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) { } // single-window MVP; one PR per window
+            CommandGroup(after: .newItem) { ReviewCommands() }
         }
 
         // ⌘, — the three pluggable choices (harness, GitHub access, issue tracker) plus
@@ -49,5 +50,19 @@ struct ContourApp: App {
         Settings {
             SettingsView()
         }
+    }
+}
+
+/// File-menu exits from the review: to the PR on GitHub, or with the reviewer's judgment on
+/// the pasteboard. Disabled until a PR is open.
+private struct ReviewCommands: View {
+    @FocusedValue(\.reviewStore) private var store
+
+    var body: some View {
+        Button("Open on GitHub") { store?.openOnGitHub() }
+            .keyboardShortcut(OpenOnGitHubShortcut.key, modifiers: OpenOnGitHubShortcut.modifiers)
+            .disabled(store?.pullRequestWebURL == nil)
+        Button("Copy Review Summary") { store?.copyReviewSummary() }
+            .disabled(store?.graph == nil)
     }
 }

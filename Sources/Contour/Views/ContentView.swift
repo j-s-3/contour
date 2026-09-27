@@ -38,6 +38,7 @@ struct ContentView: View {
         )
         // Full screen only on opt-in; otherwise the window reopens at its last frame.
         .background(WindowAccessor(entersFullScreen: Preferences.shared.opensInFullScreen))
+        .focusedSceneValue(\.reviewStore, store.phase == .review ? store : nil)
         .onAppear {
             // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
             // rather than pasting a URL on every launch.
@@ -156,6 +157,13 @@ struct ContentView: View {
                 }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
+                // The ways out once the PR is understood: back to GitHub, or with the
+                // reviewer's judgment ready to paste into a review comment there.
+                Button { store.copyReviewSummary() } label: { Image(systemName: "doc.on.clipboard") }
+                    .help("Copy review summary as Markdown")
+                Button { store.openOnGitHub() } label: { Image(systemName: "arrow.up.forward.square") }
+                    .help("Open on GitHub (⌘⇧O)")
+                    .disabled(store.pullRequestWebURL == nil)
                 Button {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         if store.conversations.isPresented {
