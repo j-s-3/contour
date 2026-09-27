@@ -40,9 +40,17 @@ jobs:
 
       - name: Code coverage report
         run: |
-          BIN_PATH="$(swift build --show-bin-path)"
-          TEST_BINARY="$BIN_PATH/ContourPackageTests.xctest/Contents/MacOS/ContourPackageTests"
-          PROFDATA="$BIN_PATH/codecov/default.profdata"
+          # The build output layout varies by build system (classic SwiftPM vs.
+          # the Xcode-style Swift Build backend), so locate the artifacts instead
+          # of assuming a fixed path under `swift build --show-bin-path`.
+          TEST_BINARY="$(find .build -type f -path '*.xctest/Contents/MacOS/*' -print -quit)"
+          PROFDATA="$(find .build -type f -name 'default.profdata' -print -quit)"
+
+          if [ -z "$TEST_BINARY" ] || [ -z "$PROFDATA" ]; then
+            echo "::error::Could not locate test binary or coverage profile under .build"
+            find .build \( -iname '*.xctest' -o -iname '*.profdata' \)
+            exit 1
+          fi
 
           xcrun llvm-cov report "$TEST_BINARY" \
             -instr-profile "$PROFDATA" \
