@@ -96,6 +96,122 @@ struct ContextualChatTests {
         #expect(prompt.hasSuffix("Reviewer's question: What other process?"))
     }
 
+    // MARK: - Suggestions and link tokens across every subject kind
+
+    private func stub(
+        _ kind: SubjectKind, subject: ReviewSubject = .pullRequest,
+        decisionIds: [String] = [], flowIds: [String] = [], refs: [CodeRef] = []
+    ) -> ResolvedSubject {
+        ResolvedSubject(
+            subject: subject, kind: kind, title: "t", lineage: [], summary: [], detail: "d",
+            decisionIds: decisionIds, flowIds: flowIds, refs: refs
+        )
+    }
+
+    /// `suggestions(for:)` switches on every `SubjectKind` — a kind with no case in the
+    /// switch would fall through to nothing, silently leaving a lens without starting
+    /// prompts. Pinning one call per kind (both branches of the shared `.flowStep` case)
+    /// means a future kind added to the enum without a matching switch case fails to compile
+    /// rather than shipping empty suggestions.
+    @Test func suggestionsCoverEveryKind() {
+        #expect(ChatContextBuilder.suggestions(for: stub(.component)).first == "Why is this its own part?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.relationship)).first == "What crosses here, and why?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.decision)).first == "Why was this chosen?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.option)).first == "Why did they choose this?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.tradeoff)).first == "Why did the PR choose this side?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.flow)).first == "Walk me through this")
+        let flowNodeStep = stub(.flowStep, subject: .flowNode(flowId: "f", nodeId: "n"))
+        #expect(ChatContextBuilder.suggestions(for: flowNodeStep)[1] == "What changed at this step?")
+        let plainStep = stub(.flowStep, subject: .flowStep(flowId: "f", stepId: "s"))
+        #expect(ChatContextBuilder.suggestions(for: plainStep)[1] == "What can fail at this step?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.behavior)).first == "Why did this change?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.stage)).first == "Why did this change?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.statement)).first == "Is this actually true?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.consideration)).first == "Why does this matter?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.entryPoint)).first == "What triggers this?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.code)).first == "Why this line?")
+        #expect(ChatContextBuilder.suggestions(for: stub(.pullRequest)).first == "Summarize this PR")
+    }
+
+    /// `availableExpansions` gates each expansion on both the resolved kind and whether the
+    /// subject actually has anything to widen into — offering "Related decisions" on
+    /// something with no decisions, or on a decision itself, would be a dead button.
+    @Test func availableExpansionsGateOnKindAndData() {
+        let noData = stub(.component)
+        #expect(ChatContextBuilder.availableExpansions(for: noData) == [.entirePR])
+
+        let withDecisions = stub(.component, decisionIds: ["d1"])
+        #expect(ChatContextBuilder.availableExpansions(for: withDecisions).contains(.relatedDecisions))
+        let decisionItself = stub(.decision, decisionIds: ["d1"])
+        #expect(!ChatContextBuilder.availableExpansions(for: decisionItself).contains(.relatedDecisions))
+        let optionItself = stub(.option, decisionIds: ["d1"])
+        #expect(!ChatContextBuilder.availableExpansions(for: optionItself).contains(.relatedDecisions))
+
+        let withFlows = stub(.component, flowIds: ["f1"])
+        #expect(ChatContextBuilder.availableExpansions(for: withFlows).contains(.relatedFlows))
+        let flowItself = stub(.flow, flowIds: ["f1"])
+        #expect(!ChatContextBuilder.availableExpansions(for: flowItself).contains(.relatedFlows))
+
+        let withRefs = stub(.component, refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)])
+        #expect(ChatContextBuilder.availableExpansions(for: withRefs).contains(.implementation))
+        let codeItself = stub(.code, refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)])
+        #expect(!ChatContextBuilder.availableExpansions(for: codeItself).contains(.implementation))
+
+        let pr = stub(.pullRequest)
+        #expect(!ChatContextBuilder.availableExpansions(for: pr).contains(.entirePR))
+    }
+
+    /// `linkToken` is the only thing standing between a model writing `[[decision:x]]` and
+    /// the reviewer seeing a clickable link — every addressable subject that has a detail
+    /// page needs a token, and everything else (an entry point, a raw code ref, the PR
+    /// itself) must come back nil rather than a bogus token nothing resolves.
+    @Test func linkTokenCoversEveryReviewSubjectCase() {
+        #expect(ChatContextBuilder.linkToken(for: .component("c")) == "[[component:c]]")
+        #expect(ChatContextBuilder.linkToken(for: .relationship("r")) == "[[relationship:r]]")
+        #expect(ChatContextBuilder.linkToken(for: .decision("d")) == "[[decision:d]]")
+        #expect(ChatContextBuilder.linkToken(for: .decisionOption(decisionId: "d", index: 0)) == "[[decision:d]]")
+        #expect(ChatContextBuilder.linkToken(for: .tradeoff(decisionId: "d", index: 0)) == "[[decision:d]]")
+        #expect(ChatContextBuilder.linkToken(for: .flow("f")) == "[[flow:f]]")
+        #expect(ChatContextBuilder.linkToken(for: .flowStep(flowId: "f", stepId: "s")) == "[[flow:f]]")
+        #expect(ChatContextBuilder.linkToken(for: .storyStep(flowId: "f", index: 0)) == "[[flow:f]]")
+        #expect(ChatContextBuilder.linkToken(for: .flowNode(flowId: "f", nodeId: "n")) == "[[flow:f]]")
+
+        #expect(ChatContextBuilder.linkToken(for: .pullRequest) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .behaviorChange("b")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .behaviorStage(changeId: "b", stageId: "s")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .behaviorWhy(changeId: "b")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .behaviorConsequence(changeId: "b")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .consideration("c")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .entryPoint("e")) == nil)
+        #expect(ChatContextBuilder.linkToken(for: .codeRef(CodeRef(path: "a.swift", startLine: 1, endLine: 2))) == nil)
+    }
+
+    /// The context document is built for flows, entry points and behavior-change subjects
+    /// too, not just components and decisions — each has its own lineage/detail shape in
+    /// `document`, and a regression there would only show up once a reviewer clicked one.
+    @Test func documentBuildsForFlowsEntryPointsAndBehaviorChanges() throws {
+        let flow = try #require(graph.resolve(.flow("publish-index-flow")))
+        let flowDoc = ChatContextBuilder.document(graph: graph, resolved: flow, expansions: [], pinnedRefs: [], excerpts: [])
+        #expect(flowDoc.contains("**Publish a page** ← selected"))
+
+        let entry = try #require(graph.resolve(.entryPoint("publish-endpoint")))
+        let entryDoc = ChatContextBuilder.document(graph: graph, resolved: entry, expansions: [], pinnedRefs: [], excerpts: [])
+        #expect(entryDoc.contains("PUT /pages/{slug}"))
+
+        let change = try #require(graph.resolve(.behaviorChange("immediate-reindex")))
+        let changeDoc = ChatContextBuilder.document(graph: graph, resolved: change, expansions: [], pinnedRefs: [], excerpts: [])
+        #expect(changeDoc.contains("Publishing now triggers reindexing immediately"))
+
+        let firstStageId = try #require(graph.behaviorChanges.first(where: { $0.id == "immediate-reindex" })?.before.first?.id)
+        let stage = try #require(graph.resolve(.behaviorStage(changeId: "immediate-reindex", stageId: firstStageId)))
+        #expect(stage.kind == .stage)
+        let stageDoc = ChatContextBuilder.document(graph: graph, resolved: stage, expansions: [], pinnedRefs: [], excerpts: [])
+        #expect(stageDoc.contains("Publish page"))
+
+        let why = try #require(graph.resolve(.behaviorWhy(changeId: "immediate-reindex")))
+        #expect(why.kind == .statement)
+    }
+
     // MARK: - Links
 
     private func linkify(_ text: String) -> String {
