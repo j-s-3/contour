@@ -88,7 +88,7 @@ struct ArchitectureInspector: View {
 
     /// Pulled out of the view (static, taking `graph` explicitly) so it's directly
     /// testable, per the "extract inspector content-selection/formatting logic" guidance.
-    static func eyebrow(for part: ComponentNode, in graph: PRGraph) -> String {
+    nonisolated static func eyebrow(for part: ComponentNode, in graph: PRGraph) -> String {
         let kind = part.parentId.flatMap(graph.component).map { "Part of \($0.title)" } ?? "Part"
         switch part.changeKind {
         case .new: return "\(kind) · New"
@@ -98,7 +98,7 @@ struct ArchitectureInspector: View {
         }
     }
 
-    static func unchangedLine(_ part: ComponentNode) -> String {
+    nonisolated static func unchangedLine(_ part: ComponentNode) -> String {
         switch part.changeKind {
         case .new: return "Added by this PR."
         case .removed: return "Removed by this PR."
@@ -178,14 +178,14 @@ struct ArchitectureInspector: View {
         askButton(.relationship(e.id))
     }
 
-    static func properties(_ e: ArchitectureEdge) -> String {
+    nonisolated static func properties(_ e: ArchitectureEdge) -> String {
         var parts = [e.flow == .async ? "Asynchronous" : "Synchronous"]
         if e.isTrustBoundary { parts.append("crosses a trust boundary") }
         if e.onCriticalPath { parts.append("on a critical path") }
         return parts.joined(separator: " · ")
     }
 
-    static func changeWord(_ change: EdgeChange) -> String {
+    nonisolated static func changeWord(_ change: EdgeChange) -> String {
         switch change {
         case .new: return "New"
         case .changed: return "Changed"

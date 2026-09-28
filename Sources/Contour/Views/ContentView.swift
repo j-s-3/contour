@@ -128,7 +128,7 @@ struct ContentView: View {
     /// screen, so it never animates here.
     private var screen: Int { Self.screen(for: store.phase) }
 
-    static func screen(for phase: SessionPhase) -> Int {
+    nonisolated static func screen(for phase: SessionPhase) -> Int {
         switch phase {
         case .idle: return 0
         case .opening: return 1
@@ -294,7 +294,7 @@ struct ContentView: View {
 
     private var reviewFailureTitle: String { Self.reviewFailureTitle(for: store.review) }
 
-    static func reviewFailureTitle(for review: PRReview.State) -> String {
+    nonisolated static func reviewFailureTitle(for review: PRReview.State) -> String {
         if case .failed(.requestChanges, _) = review { return "Couldn't request changes" }
         return "Couldn't approve the pull request"
     }
@@ -379,7 +379,7 @@ struct ContentView: View {
         .listRowBackground(isActive(target) ? Color.accentColor.opacity(0.15) : Color.clear)
     }
 
-    static func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
+    nonisolated static func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
         guard let section else { return nil }
         switch status {
         case .running(let detail): return detail ?? section.workingLabel
@@ -393,7 +393,7 @@ struct ContentView: View {
 
     private func isActive(_ target: NavigationTarget) -> Bool { Self.isActive(target, given: store.current) }
 
-    static func isActive(_ target: NavigationTarget, given current: NavigationTarget) -> Bool {
+    nonisolated static func isActive(_ target: NavigationTarget, given current: NavigationTarget) -> Bool {
         switch (current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
              (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
@@ -410,7 +410,7 @@ struct ContentView: View {
     /// The node or edge a navigation target asks Architecture to select, if any.
     private var architectureFocus: ArchAnchor? { Self.architectureFocus(for: store.current) }
 
-    static func architectureFocus(for current: NavigationTarget) -> ArchAnchor? {
+    nonisolated static func architectureFocus(for current: NavigationTarget) -> ArchAnchor? {
         switch current {
         case .componentDetail(let id): return .node(id)
         case .edgeDetail(let id): return .edge(id)
@@ -421,7 +421,7 @@ struct ContentView: View {
     /// The flow, and stage, a navigation target asks Flows to show.
     private var flowsFocus: FlowsView.Focus? { Self.flowsFocus(for: store.current) }
 
-    static func flowsFocus(for current: NavigationTarget) -> FlowsView.Focus? {
+    nonisolated static func flowsFocus(for current: NavigationTarget) -> FlowsView.Focus? {
         switch current {
         case .flowDetail(let id): return .init(flowId: id)
         case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
@@ -432,7 +432,7 @@ struct ContentView: View {
     /// The code reference a navigation target asks the raw diff to land on.
     private var diffFocus: CodeRef? { Self.diffFocus(for: store.current) }
 
-    static func diffFocus(for current: NavigationTarget) -> CodeRef? {
+    nonisolated static func diffFocus(for current: NavigationTarget) -> CodeRef? {
         if case .diffLocation(let ref) = current { return ref }
         return nil
     }
@@ -443,7 +443,7 @@ struct ContentView: View {
         Self.decisionsFocus(for: store.current, graph: graph)
     }
 
-    static func decisionsFocus(for current: NavigationTarget, graph: PRGraph) -> DecisionsView.Focus? {
+    nonisolated static func decisionsFocus(for current: NavigationTarget, graph: PRGraph) -> DecisionsView.Focus? {
         switch current {
         case .decisionDetail(let id):
             return .init(decisionId: id)

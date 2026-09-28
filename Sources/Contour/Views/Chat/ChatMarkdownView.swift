@@ -69,7 +69,7 @@ struct ChatMarkdownView: View {
     }
 
     /// Line-oriented block split. Consecutive plain lines join into one paragraph.
-    static func blocks(_ text: String) -> [Block] {
+    nonisolated static func blocks(_ text: String) -> [Block] {
         var blocks: [Block] = []
         var paragraph: [String] = []
         var code: [String]?

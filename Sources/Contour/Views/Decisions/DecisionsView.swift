@@ -131,7 +131,7 @@ struct DecisionsView: View {
 
     /// Says what the list is for — where the reviewer's time is best spent — without claiming
     /// the analysis ranked importance perfectly, and that more was found than is shown.
-    static func framing(toReview: Int, total: Int) -> String {
+    nonisolated static func framing(toReview: Int, total: Int) -> String {
         let others = total - toReview
         if toReview == 0 {
             return "No choice in this PR stood out as needing your judgment. "
@@ -420,7 +420,7 @@ enum DecisionsViewLogic {
     }
 
     /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
-    static func provenanceNote(_ s: Statement) -> String {
+    nonisolated static func provenanceNote(_ s: Statement) -> String {
         switch s.provenance {
         case .claim: return "Author rationale"
         case .fact: return "Observed"

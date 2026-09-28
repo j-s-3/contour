@@ -28,7 +28,7 @@ struct WindowAccessor: NSViewRepresentable {
     /// testable without a live `NSWindow`: opted in, not already toggled by this view, and
     /// the window isn't already in full screen by some other means (the user's own
     /// green-button click, or a restored full-screen frame).
-    static func shouldEnterFullScreen(entersFullScreen: Bool, alreadyEntered: Bool, isCurrentlyFullScreen: Bool) -> Bool {
+    nonisolated static func shouldEnterFullScreen(entersFullScreen: Bool, alreadyEntered: Bool, isCurrentlyFullScreen: Bool) -> Bool {
         entersFullScreen && !alreadyEntered && !isCurrentlyFullScreen
     }
 

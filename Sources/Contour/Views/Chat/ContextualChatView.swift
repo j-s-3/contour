@@ -320,7 +320,7 @@ struct ContextualChatView: View {
     /// names a file the review model cites (models often write just `Listener.java:353`).
     /// Pulled out (static, taking the checkout root and cited paths explicitly) so it's
     /// directly testable.
-    static func resolvePath(_ path: String, checkoutRoot: URL?, citedPaths: [String]) -> String? {
+    nonisolated static func resolvePath(_ path: String, checkoutRoot: URL?, citedPaths: [String]) -> String? {
         if let checkoutRoot, FileManager.default.fileExists(atPath: checkoutRoot.appendingPathComponent(path).path) {
             return path
         }

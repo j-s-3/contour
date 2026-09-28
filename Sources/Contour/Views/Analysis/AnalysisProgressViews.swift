@@ -238,7 +238,7 @@ struct AnalysisDetailsView: View {
 
     /// The second line under a section's status glyph. Pulled out of the view body so it's
     /// directly testable, per the "views should be thin" principle.
-    static func subtitle(_ section: ReviewSection, _ status: StageStatus) -> String? {
+    nonisolated static func subtitle(_ section: ReviewSection, _ status: StageStatus) -> String? {
         switch status {
         case .running(let detail): return detail ?? section.workingLabel
         case .failed(let message): return message
