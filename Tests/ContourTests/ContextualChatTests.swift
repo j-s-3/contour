@@ -105,6 +105,75 @@ struct ContextualChatTests {
         #expect(PRGraph.describe(statement) == "Stale results were reported. (author's claim) [source: PR description]")
     }
 
+    /// `.consideration` and `.flowStep` were the only two `ReviewSubject` cases in
+    /// `resolve(_:)` with no direct success test — `.consideration` only appeared as a
+    /// dangling-id nil check, `.flowStep` only as a nil check on an unknown step id. Both
+    /// need a real match too, and a consideration whose `relatedIds` point at a component
+    /// and an edge must surface through `architectureQuestions(touching:edges:)` into those
+    /// subjects' own `detail`, not just get carried on the consideration's own summary.
+    @Test func considerationAndFlowStepResolveAndConsiderationsReachArchitectureQuestions() throws {
+        var withQuestion = graph
+        withQuestion.pr.considerations = [
+            Consideration(
+                id: "burst-handling", question: "Can the queue absorb a burst of publishes?",
+                detail: "No load test covers this.", relatedIds: ["index-queue", "publish-queues"]
+            )
+        ]
+
+        let consideration = try #require(withQuestion.resolve(.consideration("burst-handling")))
+        #expect(consideration.kind == .consideration)
+        #expect(consideration.title == "Can the queue absorb a burst of publishes?")
+        #expect(consideration.componentIds == ["index-queue"])
+
+        let component = try #require(withQuestion.resolve(.component("index-queue")))
+        #expect(component.detail.contains("Overview question about this part: Can the queue absorb a burst of publishes?"))
+
+        let relationship = try #require(withQuestion.resolve(.relationship("publish-queues")))
+        #expect(relationship.detail.contains("Overview question about this relationship: Can the queue absorb a burst of publishes?"))
+
+        let step = try #require(graph.resolve(.flowStep(flowId: "publish-index-flow", stepId: "step-enqueue")))
+        #expect(step.kind == .flowStep)
+        #expect(step.title == "enqueue index job")
+        #expect(step.componentIds == ["index-queue"])
+        #expect(step.detailTarget == .flowDetail("publish-index-flow"))
+    }
+
+    /// `describe(DecisionNode)` and `describe(BehaviorChange)` build the harness-facing
+    /// detail for every decision and behavior change, but the sample graph's own decision and
+    /// change never set `significance`, `question`, `why`, a reviewed `reviewerState`, a
+    /// `reviewerNote`, or a behavior change's `humanQuestion` — so those branches went
+    /// unexercised even though the functions themselves are called constantly. Constructing
+    /// rich nodes directly (bypassing the sample graph) hits every optional branch.
+    @Test func describeDecisionAndBehaviorChangeCoverEveryOptionalField() {
+        let decision = DecisionNode(
+            id: "d", title: "Use a queue", decision: Statement(text: "Queued.", provenance: .fact),
+            rationale: [Statement(text: "Faster.", provenance: .fact)],
+            alternatives: [Statement(text: "Inline call.", provenance: .interpretation, confidence: .low)],
+            consequences: [Statement(text: "Extra hop.", provenance: .interpretation, confidence: .low)],
+            confidence: .high,
+            tradeoffs: [DecisionTradeoff(dimensionA: "speed", dimensionB: "freshness", chosenPosition: 0.5)],
+            componentIds: [],
+            reviewerState: .accepted, reviewerNote: "Makes sense.",
+            level: .system, question: "Should this be queued?",
+            why: Statement(text: "Avoids blocking the publish path.", provenance: .claim, source: "author"),
+            significance: .high, impacts: [.correctness, .performance],
+            significanceReason: "Changes the failure mode."
+        )
+        let described = PRGraph.describe(decision)
+        #expect(described.contains("Review significance: high; impacts"))
+        #expect(described.contains("Changes the failure mode."))
+        #expect(described.contains("Question it answers: Should this be queued?"))
+        #expect(described.contains("Why (short): Avoids blocking the publish path."))
+        #expect(described.contains("Reviewer marked it: Looks good"))
+        #expect(described.contains("Reviewer note: Makes sense."))
+
+        let change = BehaviorChange(
+            id: "c", title: "Reindex sooner",
+            humanQuestion: Statement(text: "Is the queue durable across a restart?", provenance: .interpretation, confidence: .medium)
+        )
+        #expect(PRGraph.describe(change).contains("Open question: Is the queue durable across a restart?"))
+    }
+
     // MARK: - Context document
 
     @Test func documentIsFocusedByDefaultAndWidensOnRequest() throws {
