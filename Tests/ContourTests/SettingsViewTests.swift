@@ -5,14 +5,10 @@ import SwiftUI
 /// `SettingsViewLogic` is the status-derivation, precedence-aware footer, and override-notice
 /// text logic CLAUDE.md calls out for this file, pulled out of `SettingsView`/`ToolStatusRow`'s
 /// bodies so it's directly testable against plain `ToolStatus`/`ExternalTool`/`HarnessID`
-/// fixtures. What's left in `SettingsView.swift` itself — the three `Form`/`Section`/`Picker`
-/// tab bodies, `ToolStatusRow.body`, and the private async `refresh()` that drives a real
-/// `EnvironmentProbe()` — is SwiftUI view construction and process-probing with no seam for
-/// injection, matching the same accepted gap `WelcomeWizardTests.swift` documents for its
-/// near-identical `refresh()`/probe pattern. There is no UI-testing/snapshot infrastructure in
-/// this suite to render or inspect a `body` value, so that portion stays out of reach of this
-/// file's line-coverage number; every non-trivial branch of logic this file contains is tested
-/// below.
+/// fixtures. The view construction itself is exercised by `SettingsViewHostingTests` below,
+/// which hosts each tab in an `NSHostingView`. Only the private async `refresh()` that drives
+/// a real `EnvironmentProbe()` stays uncovered (no injection seam), matching the accepted gap
+/// `WelcomeWizardTests.swift` documents for its near-identical probe pattern.
 struct SettingsViewTests {
 
     // MARK: - harnessTool / label
@@ -95,5 +91,39 @@ struct SettingsViewTests {
         let status = ToolStatus(tool: .acli, path: nil, version: nil, authenticated: nil, detail: "not found")
         #expect(SettingsViewLogic.symbol(for: status, tool: .acli) == "minus.circle")
         #expect(SettingsViewLogic.tint(for: status, tool: .acli) == .secondary)
+    }
+}
+
+/// Hosts each Settings tab and `ToolStatusRow` in an `NSHostingView` and forces a layout
+/// pass, so the `Form`/`Section`/`Picker` builders and their closures actually run. These
+/// pin that every tab still builds and lays out to a real size for every status shape the
+/// logic tests describe; the visual result is checked by hand.
+@MainActor
+struct SettingsViewHostingTests {
+
+    private func laidOutSize<V: View>(_ view: V) -> CGSize {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 520, height: 400)
+        host.layoutSubtreeIfNeeded()
+        return host.fittingSize
+    }
+
+    @Test func everyTabLaysOutToANonEmptySize() {
+        let view = SettingsView()
+        #expect(laidOutSize(view.harnessTab).height > 0)
+        #expect(laidOutSize(view.sourcesTab).height > 0)
+        #expect(laidOutSize(view.windowTab).height > 0)
+    }
+
+    @Test func theTabViewShellBuilds() {
+        #expect(laidOutSize(SettingsView()).width > 0)
+    }
+
+    @Test func toolStatusRowBuildsForEveryStatusShape() {
+        let usable = ToolStatus(tool: .git, path: "/usr/bin/git", version: "2.0", authenticated: nil, detail: "ok")
+        let absent = ToolStatus(tool: .acli, path: nil, version: nil, authenticated: nil, detail: "Not installed")
+        #expect(laidOutSize(ToolStatusRow(status: nil, tool: .git)).height > 0)
+        #expect(laidOutSize(ToolStatusRow(status: usable, tool: .git)).height > 0)
+        #expect(laidOutSize(ToolStatusRow(status: absent, tool: .acli)).height > 0)
     }
 }
