@@ -10,9 +10,14 @@ import Foundation
 /// these can drive the same state transitions the real pipeline drives, with synthetic
 /// `PipelineEvent`s, exercising the pure state-machine logic without any of that.
 ///
-/// `load()`, `submitReview`, `retry`, `stopAnalysis`, `ask`/`send` (contextual chat), and
-/// `openOnGitHub`/`copyReviewSummary` (AppKit/pasteboard) are left uncovered for the same
-/// reason.
+/// `load()` itself is still left uncovered for the same PATH/network reason (it resolves a
+/// harness and, once it has one, spawns a `Task` that runs the real pipeline against the
+/// network). But every guard in `submitReview`/`retry`/`stopAnalysis`/`ask`/`send` that
+/// short-circuits *before* touching a pipeline, a harness or the network is reachable from a
+/// store that never called `load()` — `pipeline`, `graph`, `checkout` and `lastPRURL` are all
+/// `nil` in that state, which is exactly the branch every one of those guards takes first.
+/// This second block of tests drives those guard-only paths, plus the navigation-adjacent
+/// `hasOpenPR`/`pullRequestURL` computed properties and the contextual-chat entry points.
 struct GraphStoreTests {
 
     private var sampleGraph: PRGraph { ContourSampleData.publishTriggeredReindex }
@@ -326,5 +331,89 @@ struct GraphStoreTests {
     @Test @MainActor func stoppingAnalysisWithoutAPipelineIsNeverPossible() {
         let store = GraphStore()
         #expect(!store.canStopAnalysis, "no pipeline exists outside of load()")
+    }
+
+    /// `stopAnalysis()` guards on `canStopAnalysis` before touching `pipeline`; pins that
+    /// calling it on a store that never `load()`ed is a silent no-op, not a crash on a nil
+    /// pipeline.
+    @Test @MainActor func stopAnalysisWithoutAPipelineIsANoOp() {
+        let store = GraphStore()
+        store.handle(.graph(sampleGraph))
+        store.stopAnalysis()
+        #expect(store.graph != nil, "the guard exits before anything about the store changes")
+    }
+
+    /// `retry(_:)` falls back to `reopen()` whenever there's no pipeline or checkout to retry
+    /// a single stage against — true for every store that never `load()`ed — and `reopen()`
+    /// with no `lastPRURL` on file falls further back to `close()`. Pins that whole chain
+    /// rather than a crash or a stuck state.
+    @Test @MainActor func retryWithoutAPipelineFallsBackToReopenAndThenToClose() {
+        let store = GraphStore()
+        store.handle(.graph(sampleGraph))
+        store.retry(.architecture)
+        #expect(store.phase == .idle, "no checkout/pipeline exists outside load(), so retry() reopens, which closes")
+    }
+
+    /// `reopen()` with no `lastPRURL` (true for any store that never `load()`ed) closes the
+    /// session instead of trying to reload an empty URL.
+    @Test @MainActor func reopenWithNoPriorPRJustCloses() {
+        let store = GraphStore()
+        store.handle(.graph(sampleGraph))
+        store.reopen()
+        #expect(store.phase == .idle)
+    }
+
+    /// `submitReview` guards on `canSubmitReview`, which requires a graph; pins that a store
+    /// with nothing open leaves `review` untouched rather than submitting against a URL that
+    /// doesn't exist.
+    @Test @MainActor func submitReviewWithoutAGraphIsANoOp() {
+        let store = GraphStore()
+        store.submitReview(.approve)
+        #expect(store.review == .idle)
+    }
+
+    // MARK: - hasOpenPR / pullRequestURL
+
+    /// `hasOpenPR` tracks `phase != .idle`, not whether the analysis ever produced a graph —
+    /// a session that failed to open (no graph at all) still counts as "open" for the
+    /// purposes of File ▸ Close Pull Request and the toolbar.
+    @Test @MainActor func hasOpenPRIsTrueOnceASessionHasFailedToOpen() {
+        let store = GraphStore()
+        #expect(!store.hasOpenPR)
+        #expect(store.pullRequestURL == nil)
+
+        store.handle(.fatal("network unreachable"))
+        #expect(store.hasOpenPR, "a failed-to-open session is still a session, until close()")
+        #expect(store.pullRequestURL == nil, "no graph and no stored PR URL means nothing to link to")
+    }
+
+    // MARK: - Contextual chat
+
+    /// `ask(about:)` opens (or reuses) that subject's conversation thread; pins the wiring
+    /// without needing a harness, since `ConversationStore.open` never touches one.
+    @Test @MainActor func askOpensTheThreadForItsSubject() {
+        let store = GraphStore()
+        store.ask(about: .pullRequest)
+        #expect(store.conversations.active?.subject == .pullRequest)
+    }
+
+    /// `ask(_:about:)` opens the thread and then calls `send`, whose own guard requires a
+    /// graph. Pins that asking a specific question with nothing loaded still opens the
+    /// thread (so the reviewer sees where their question went) but sends nothing into it.
+    @Test @MainActor func askWithAQuestionOpensTheThreadButSendsNothingWithoutAGraph() {
+        let store = GraphStore()
+        store.ask("Why this side?", about: .pullRequest)
+        #expect(store.conversations.active?.subject == .pullRequest)
+        #expect(store.conversations.active?.messages.isEmpty == true, "send()'s graph guard exits before appending anything")
+    }
+
+    /// `send(_:in:)` guards on `graph` before ever reaching `ConversationStore.send` (and
+    /// therefore the harness); pins that calling it on an unloaded store is a no-op rather
+    /// than a crash on force-unwrapping a nil graph.
+    @Test @MainActor func sendWithoutAGraphIsANoOp() {
+        let store = GraphStore()
+        let conversation = store.conversations.open(.pullRequest)
+        store.send("does this matter?", in: conversation)
+        #expect(conversation.messages.isEmpty)
     }
 }
