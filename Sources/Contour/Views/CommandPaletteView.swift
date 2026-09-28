@@ -1,6 +1,9 @@
 import SwiftUI
 
-private struct PaletteCommand: Identifiable {
+/// Internal rather than private so `CommandPaletteViewTests` can build fixed lists of these
+/// directly, per CLAUDE.md's guidance to test this file's filtering/ranking logic with
+/// fixed input lists and queries.
+struct PaletteCommand: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String?
@@ -55,7 +58,11 @@ struct CommandPaletteView: View {
         if let first = filtered.first { first.action(); isPresented = false }
     }
 
-    private var allCommands: [PaletteCommand] {
+    private var allCommands: [PaletteCommand] { Self.allCommands(store: store) }
+
+    /// Pulled out (static, taking `store` explicitly) so the command list can be checked
+    /// directly against a real `GraphStore` instead of a live view.
+    static func allCommands(store: GraphStore) -> [PaletteCommand] {
         var commands: [PaletteCommand] = [
             .init(title: "Go to Overview", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
             .init(title: "Go to Architecture", subtitle: nil, symbol: "square.stack.3d.up") { store.navigate(to: .architecture) },
@@ -103,8 +110,12 @@ struct CommandPaletteView: View {
         return commands
     }
 
-    private var filtered: [PaletteCommand] {
-        guard !query.isEmpty else { return allCommands }
-        return allCommands.filter { $0.title.localizedCaseInsensitiveContains(query) }
+    private var filtered: [PaletteCommand] { Self.filtered(allCommands, query: query) }
+
+    /// Pulled out (static) so the query-matching rule is directly testable with fixed
+    /// input lists and queries.
+    static func filtered(_ commands: [PaletteCommand], query: String) -> [PaletteCommand] {
+        guard !query.isEmpty else { return commands }
+        return commands.filter { $0.title.localizedCaseInsensitiveContains(query) }
     }
 }
