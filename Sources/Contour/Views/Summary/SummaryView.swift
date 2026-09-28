@@ -142,12 +142,7 @@ struct SummaryView: View {
     }
 
     private func factColor(_ tone: GlanceFact.Tone) -> AnyShapeStyle {
-        switch tone {
-        case .plain: AnyShapeStyle(.secondary)
-        case .good: AnyShapeStyle(Color.green)
-        case .caution: AnyShapeStyle(Color.orange)
-        case .bad: AnyShapeStyle(Color.red)
-        }
+        SummaryViewLogic.factTint(tone).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary)
     }
 
     private var dot: some View { Text("\u{00b7}").foregroundStyle(.tertiary) }
@@ -277,23 +272,13 @@ struct SummaryView: View {
     /// Judgment runs last, over everything else; until then, say what it's waiting on in the
     /// reviewer's terms, and point at the decisions already found.
     private var judgmentWorkingText: String {
-        let found = graph.decisions.count
-        let decisions = analysis.status(.decisions)
-        if !judgmentStatus.isRunning, decisions.isRunning || decisions == .pending {
-            return found > 0 ? "\(found) \(found == 1 ? "decision" : "decisions") found · looking for consequential choices…"
-                             : "Looking for consequential choices…"
-        }
-        return "Weighing what needs your judgment…"
+        SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: graph.decisions.count, decisionsStatus: analysis.status(.decisions), judgmentStatus: judgmentStatus
+        )
     }
 
     private func openStage(_ stage: BehaviorStage) {
-        if let componentId = stage.componentIds.first {
-            navigate(.componentDetail(componentId))
-        } else if let flowId = stage.flowId {
-            navigate(.flowDetail(flowId))
-        } else {
-            navigate(.architecture)
-        }
+        navigate(SummaryViewLogic.navigationTarget(for: stage))
     }
 
     // MARK: - Why / consequence
@@ -491,13 +476,7 @@ struct SummaryView: View {
 
     /// A tile's line: its summary once ready, otherwise how far its analysis has got.
     private func tileDetail(_ stage: PipelineStage, ready: String, count: Int, noun: String) -> String {
-        switch analysis.status(stage) {
-        case .done, .stale: return ready
-        case .failed: return "Couldn't be analyzed"
-        case .stopped: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s"), stopped" : "Stopped"
-        case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
-        case .pending: return "Waiting…"
-        }
+        SummaryViewLogic.tileDetail(status: analysis.status(stage), ready: ready, count: count, noun: noun)
     }
 
     // MARK: - Helpers
@@ -633,7 +612,7 @@ private struct ConsiderationRow: View {
                 WrapChips(item.refs) { ref in CodeRefChip(ref: ref) { navigate(.evidence(ref)) } }
             }
             HStack(spacing: 12) {
-                Text(PRGraph.provenanceLabel(item.provenance, item.confidence).capitalizedFirst)
+                Text(SummaryViewLogic.capitalizedFirst(PRGraph.provenanceLabel(item.provenance, item.confidence)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Button { actions.ask(.consideration(item.id)) } label: {
@@ -645,12 +624,7 @@ private struct ConsiderationRow: View {
     }
 
     private var relatedLinks: [(title: String, symbol: String, target: NavigationTarget)] {
-        item.relatedIds.compactMap { id in
-            if let d = graph.decision(id) { return (d.title, "checklist", .decisionDetail(id)) }
-            if let c = graph.component(id) { return (c.title, "square.stack.3d.up", .componentDetail(id)) }
-            if let f = graph.flow(id) { return (f.title, "arrow.triangle.branch", .flowDetail(id)) }
-            return nil
-        }
+        SummaryViewLogic.relatedLinks(for: item, graph: graph)
     }
 }
 
@@ -694,6 +668,68 @@ private struct ExploreTile: View {
     }
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+/// The grouping/filtering/formatting logic CLAUDE.md calls out for this file, pulled out
+/// of `SummaryView`/`ConsiderationRow`'s bodies so it's directly testable against plain
+/// fixtures — `GlanceFact.Tone`, `StageStatus`, `BehaviorStage`, `Consideration`, and a
+/// hand-built `PRGraph` — rather than through the SwiftUI `body`.
+enum SummaryViewLogic {
+    /// The facts line's tint for a tone; nil means "leave it at .secondary" (the shared
+    /// default, rather than a color of its own).
+    static func factTint(_ tone: GlanceFact.Tone) -> Color? {
+        switch tone {
+        case .plain: return nil
+        case .good: return .green
+        case .caution: return .orange
+        case .bad: return .red
+        }
+    }
+
+    /// Judgment runs last, over everything else; until then, say what it's waiting on in the
+    /// reviewer's terms, and point at the decisions already found.
+    static func judgmentWorkingText(decisionsFound: Int, decisionsStatus: StageStatus, judgmentStatus: StageStatus) -> String {
+        if !judgmentStatus.isRunning, decisionsStatus.isRunning || decisionsStatus == .pending {
+            return decisionsFound > 0
+                ? "\(decisionsFound) \(decisionsFound == 1 ? "decision" : "decisions") found · looking for consequential choices…"
+                : "Looking for consequential choices…"
+        }
+        return "Weighing what needs your judgment…"
+    }
+
+    /// Where a behavior stage's box opens to: its component, or its flow, or Architecture
+    /// as the fallback when neither is known.
+    static func navigationTarget(for stage: BehaviorStage) -> NavigationTarget {
+        if let componentId = stage.componentIds.first {
+            return .componentDetail(componentId)
+        } else if let flowId = stage.flowId {
+            return .flowDetail(flowId)
+        } else {
+            return .architecture
+        }
+    }
+
+    /// A tile's line: its summary once ready, otherwise how far its analysis has got.
+    static func tileDetail(status: StageStatus, ready: String, count: Int, noun: String) -> String {
+        switch status {
+        case .done, .stale: return ready
+        case .failed: return "Couldn't be analyzed"
+        case .stopped: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s"), stopped" : "Stopped"
+        case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
+        case .pending: return "Waiting…"
+        }
+    }
+
+    /// The decisions, components and flows a consideration names, each with the icon and
+    /// destination its own detail view uses.
+    static func relatedLinks(for item: Consideration, graph: PRGraph) -> [(title: String, symbol: String, target: NavigationTarget)] {
+        item.relatedIds.compactMap { id in
+            if let d = graph.decision(id) { return (d.title, "checklist", .decisionDetail(id)) }
+            if let c = graph.component(id) { return (c.title, "square.stack.3d.up", .componentDetail(id)) }
+            if let f = graph.flow(id) { return (f.title, "arrow.triangle.branch", .flowDetail(id)) }
+            return nil
+        }
+    }
+
+    static func capitalizedFirst(_ text: String) -> String {
+        text.prefix(1).uppercased() + text.dropFirst()
+    }
 }
