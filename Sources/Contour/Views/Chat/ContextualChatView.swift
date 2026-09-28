@@ -110,7 +110,7 @@ struct ContextualChatView: View {
                     Button {
                         conversations.activeId = c.id
                     } label: {
-                        let title = graph.resolve(c.subject)?.title ?? "Conversation"
+                        let title = ChatViewLogic.menuTitle(for: c, in: graph)
                         if c.id == conversations.activeId {
                             Label(title, systemImage: "checkmark")
                         } else {
@@ -149,29 +149,29 @@ struct ContextualChatView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(resolved.summary.prefix(4).enumerated()), id: \.offset) { index, line in
-                    Text(line)
-                        .font(index == 0 ? .callout.weight(.semibold) : .caption)
-                        .foregroundStyle(index == 0 ? .primary : .secondary)
-                        .lineLimit(index == 0 ? 2 : 1)
+                ForEach(ChatViewLogic.summaryLines(for: resolved)) { line in
+                    Text(line.text)
+                        .font(line.isLead ? .callout.weight(.semibold) : .caption)
+                        .foregroundStyle(line.isLead ? .primary : .secondary)
+                        .lineLimit(line.isLead ? 2 : 1)
                         .truncationMode(.tail)
                 }
             }
             let expansions = ChatContextBuilder.availableExpansions(for: resolved)
-            if Self.showsContextChips(expansions: expansions, pinnedRefs: conversation.pinnedRefs) {
+            if ChatViewLogic.showsContextChips(expansions: expansions, pinnedRefs: conversation.pinnedRefs) {
                 FlowLayout(spacing: 6) {
                     ForEach(conversation.pinnedRefs) { ref in
                         chip("\(ref.display)", symbol: "pin.fill", on: true) {
-                            conversation.pinnedRefs.removeAll { $0 == ref }
+                            ChatViewLogic.unpin(ref, in: conversation)
                         }
                         .help("Included in this conversation — click to remove")
                     }
                     ForEach(expansions) { expansion in
                         let on = conversation.expansions.contains(expansion)
-                        chip(expansion.label, symbol: on ? "checkmark" : "plus", on: on) {
-                            if on { conversation.expansions.remove(expansion) } else { conversation.expansions.insert(expansion) }
+                        chip(expansion.label, symbol: ChatViewLogic.expansionSymbol(on: on), on: on) {
+                            ChatViewLogic.toggle(expansion, in: conversation)
                         }
-                        .help(on ? "Included in the next answer" : "Include \(expansion.label.lowercased()) in the next answer")
+                        .help(ChatViewLogic.expansionHelp(expansion, on: on))
                     }
                 }
                 .padding(.top, 2)
@@ -199,7 +199,7 @@ struct ContextualChatView: View {
 
     private func suggestions(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Ask about \(Self.subjectPhrase(for: resolved))")
+            Text("Ask about \(ChatViewLogic.subjectPhrase(for: resolved))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -241,7 +241,7 @@ struct ContextualChatView: View {
                 if message.isStreaming {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text(conversation.activity ?? "thinking")
+                        Text(ChatViewLogic.activityText(conversation.activity))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -261,7 +261,7 @@ struct ContextualChatView: View {
 
     private func composer(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let ref = Self.evidenceToOffer(current: store.current, pinnedRefs: conversation.pinnedRefs, subject: conversation.subject) {
+            if let ref = ChatViewLogic.evidenceToOffer(current: store.current, pinnedRefs: conversation.pinnedRefs, subject: conversation.subject) {
                 Button { conversations.pin(ref, in: conversation) } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
@@ -274,7 +274,7 @@ struct ContextualChatView: View {
                 .foregroundStyle(Color.accentColor)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask about \(Self.subjectPhrase(for: resolved))…",
+                TextField("Ask about \(ChatViewLogic.subjectPhrase(for: resolved))…",
                           text: Binding(get: { conversation.draft }, set: { conversation.draft = $0 }),
                           axis: .vertical)
                     .textFieldStyle(.plain)
@@ -294,8 +294,8 @@ struct ContextualChatView: View {
                         Image(systemName: "arrow.up.circle.fill").font(.title3)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Self.canSend(conversation.draft) ? Color.accentColor : Color.secondary)
-                    .disabled(!Self.canSend(conversation.draft))
+                    .foregroundStyle(ChatViewLogic.canSend(conversation.draft) ? Color.accentColor : Color.secondary)
+                    .disabled(!ChatViewLogic.canSend(conversation.draft))
                     .help("Send (↩)")
                 }
             }
@@ -306,38 +306,6 @@ struct ContextualChatView: View {
         .padding(12)
     }
 
-    // MARK: - Pure view logic
-
-    /// The noun used in "Ask about …" prompts: a code range has no title of its own, so
-    /// the composer and the suggestions header both fall back to a generic phrase for it.
-    /// Pulled out because it was duplicated verbatim in two `body`-adjacent view builders.
-    nonisolated static func subjectPhrase(for resolved: ResolvedSubject) -> String {
-        resolved.kind == .code ? "this code" : resolved.title
-    }
-
-    /// Whether the composer's send affordance is enabled — a draft that's only whitespace
-    /// has nothing to send. Pulled out because the same emptiness check drove both the
-    /// button's color and its `disabled` state, previously computed twice inline.
-    nonisolated static func canSend(_ draft: String) -> Bool {
-        !draft.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    /// The code reference to offer pinning via "Include the code you're viewing", if any.
-    /// Only offered when the reviewer is currently looking at evidence that (a) isn't
-    /// already pinned to this thread and (b) isn't already this thread's own subject —
-    /// asking about a code range and being offered to "include" that same range would be
-    /// a dead, redundant button.
-    nonisolated static func evidenceToOffer(current: NavigationTarget, pinnedRefs: [CodeRef], subject: ReviewSubject) -> CodeRef? {
-        guard case .evidence(let ref) = current, !pinnedRefs.contains(ref), subject != .codeRef(ref) else { return nil }
-        return ref
-    }
-
-    /// Whether the pinned-refs / expansion chip row under "You are discussing" has
-    /// anything to show — there is nothing to render once both are empty.
-    nonisolated static func showsContextChips(expansions: [ContextExpansion], pinnedRefs: [CodeRef]) -> Bool {
-        !expansions.isEmpty || !pinnedRefs.isEmpty
-    }
-
     // MARK: - Links
 
     private func linkify(_ text: String) -> String {
@@ -345,35 +313,10 @@ struct ContextualChatView: View {
     }
 
     private func resolvePath(_ path: String) -> String? {
-        Self.resolvePath(path, checkoutRoot: store.checkout?.rootDir, citedPaths: graph.citedPaths)
-    }
-
-    /// Accepts a cited path when it is a real file in the checkout, or when it uniquely
-    /// names a file the review model cites (models often write just `Listener.java:353`).
-    /// Pulled out (static, taking the checkout root and cited paths explicitly) so it's
-    /// directly testable.
-    nonisolated static func resolvePath(_ path: String, checkoutRoot: URL?, citedPaths: [String]) -> String? {
-        if let checkoutRoot, FileManager.default.fileExists(atPath: checkoutRoot.appendingPathComponent(path).path) {
-            return path
-        }
-        if citedPaths.contains(path) { return path }
-        let matches = citedPaths.filter { $0.hasSuffix("/" + path) }
-        return matches.count == 1 ? matches[0] : nil
+        ChatViewLogic.resolvePath(path, checkoutRoot: store.checkout?.rootDir, citedPaths: graph.citedPaths)
     }
 
     private func handle(_ url: URL) -> OpenURLAction.Result {
-        Self.handle(url, store: store, graph: graph)
-    }
-
-    /// Pulled out (static, taking `store`/`graph` explicitly) so it's directly testable.
-    static func handle(_ url: URL, store: GraphStore, graph: PRGraph) -> OpenURLAction.Result {
-        guard let target = ChatLinks.target(for: url) else { return .systemAction }
-        switch target {
-        case .code(let ref):
-            store.navigate(to: .evidence(ref))
-        case .node(let subject):
-            if let destination = graph.resolve(subject)?.detailTarget { store.navigate(to: destination) }
-        }
-        return .handled
+        ChatViewLogic.handle(url, store: store, graph: graph) == .handled ? .handled : .systemAction
     }
 }
