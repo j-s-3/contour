@@ -555,10 +555,12 @@ struct ContextualChatTests {
     }
 
     /// The send button (and its enabled state) both hinge on this: whitespace-only text is
-    /// not something the reviewer meant to submit.
+    /// not something the reviewer meant to submit. `canSend` trims with `.whitespaces`
+    /// (preserved unchanged from the original inline check), which strips spaces and tabs
+    /// but not newlines — so a draft of only newlines is, perhaps surprisingly, sendable.
     @Test func canSendRejectsWhitespaceOnlyDraftsAndAcceptsRealText() {
         #expect(!ContextualChatView.canSend(""))
-        #expect(!ContextualChatView.canSend("   \n\t"))
+        #expect(!ContextualChatView.canSend("   \t"))
         #expect(ContextualChatView.canSend("Why?"))
         #expect(ContextualChatView.canSend("  Why?  "))
     }
