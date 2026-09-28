@@ -441,20 +441,25 @@ struct ContextualChatTests {
 
     // MARK: - handle
 
+    /// `OpenURLAction.Result` isn't `Equatable`, so these match it by pattern rather than `==`.
     @Test @MainActor func handleNavigatesToTheCodeReferenceForACodeLink() throws {
         let store = GraphStore()
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         let url = try #require(ChatLinks.url(for: ref))
-        let result = ContextualChatView.handle(url, store: store, graph: graph)
-        #expect(result == .handled)
+        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
+            Issue.record("expected .handled")
+            return
+        }
         #expect(store.current == .evidence(ref))
     }
 
     @Test @MainActor func handleNavigatesToADecisionsDetailTargetForANodeLink() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "index-on-publish"))
-        let result = ContextualChatView.handle(url, store: store, graph: graph)
-        #expect(result == .handled)
+        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
+            Issue.record("expected .handled")
+            return
+        }
         #expect(store.current == .decisionDetail("index-on-publish"))
     }
 
@@ -463,15 +468,20 @@ struct ContextualChatTests {
     @Test @MainActor func handleStillReportsHandledForADanglingNodeReference() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "does-not-exist"))
-        let result = ContextualChatView.handle(url, store: store, graph: graph)
-        #expect(result == .handled)
+        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
+            Issue.record("expected .handled")
+            return
+        }
         #expect(store.current == .summary, "nothing to navigate to, so the path is unchanged")
     }
 
     @Test @MainActor func handleFallsBackToSystemActionForAnUnrecognizedURL() throws {
         let store = GraphStore()
         let url = try #require(URL(string: "https://example.com"))
-        #expect(ContextualChatView.handle(url, store: store, graph: graph) == .systemAction)
+        guard case .systemAction = ContextualChatView.handle(url, store: store, graph: graph) else {
+            Issue.record("expected .systemAction")
+            return
+        }
         #expect(store.current == .summary)
     }
 
