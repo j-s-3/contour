@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import Testing
 @testable import Contour
@@ -8,6 +9,13 @@ import Testing
 /// — are all already internal, not private, so they're directly testable with no production
 /// changes needed. The view's `body`, `canvas`, `boxView`/`labelView`/`containerView`, and
 /// `draw(_:_:in:)` render real SwiftUI/AppKit content and stay untested here.
+///
+/// A second pass (issue #103, reopened at 14.35%) found more inline logic still worth
+/// extracting on the same pattern: which orientation the diagram lays out in moved to
+/// `GraphLayoutEngine.bestFit` beside the rest of the layout math, and the arrow's stroke
+/// style, dash pattern, arrowhead geometry and hover-state transition moved to the new
+/// `ArchDrawingLogic`, alongside `ArchContainer.isExternalBoundary`/`tint`. Those additions
+/// are covered below; the render-only surface they were extracted from stays untested.
 struct ArchitectureDiagramViewTests {
 
     // MARK: - ArchEmphasis
@@ -140,5 +148,149 @@ struct ArchitectureDiagramViewTests {
     @Test func roundedPathOfASinglePointIsJustAMove() {
         let path = ArchitectureDiagramView.roundedPath([CGPoint(x: 3, y: 4)])
         #expect(path.currentPoint == CGPoint(x: 3, y: 4))
+    }
+
+    // MARK: - ArchContainer.isExternalBoundary / tint
+
+    private func container(kind: BoundaryKind, isFocus: Bool = false) -> ArchContainer {
+        ArchContainer(id: "c", label: "Container", kind: kind, memberIds: [], isFocus: isFocus)
+    }
+
+    @Test func onlyExternalTrustAndNetworkBoundariesAreDrawnDashed() {
+        #expect(container(kind: .external).isExternalBoundary)
+        #expect(container(kind: .trust).isExternalBoundary)
+        #expect(container(kind: .network).isExternalBoundary)
+        #expect(!container(kind: .process).isExternalBoundary)
+        #expect(!container(kind: .application).isExternalBoundary)
+    }
+
+    /// A trust boundary is flagged orange no matter whether it's the one focused on, since
+    /// that color means something specific (a security boundary) that focus mustn't mask.
+    @Test func trustBoundaryTintIsAlwaysOrange() {
+        #expect(container(kind: .trust, isFocus: false).tint == .orange)
+        #expect(container(kind: .trust, isFocus: true).tint == .orange)
+    }
+
+    @Test func nonTrustBoundaryTintFollowsFocus() {
+        #expect(container(kind: .process, isFocus: true).tint == .accentColor)
+        #expect(container(kind: .process, isFocus: false).tint == .secondary)
+    }
+
+    // MARK: - ArchDrawingLogic.strokeStyle / dashPattern
+
+    @Test func strokeStyleWidensAndColorsByEmphasis() {
+        #expect(ArchDrawingLogic.strokeStyle(for: .context).color == Color.secondary.opacity(0.55))
+        #expect(ArchDrawingLogic.strokeStyle(for: .context).width == 1.4)
+        #expect(ArchDrawingLogic.strokeStyle(for: .changed).color == .blue)
+        #expect(ArchDrawingLogic.strokeStyle(for: .changed).width == 2.4)
+        #expect(ArchDrawingLogic.strokeStyle(for: .added).color == .green)
+        #expect(ArchDrawingLogic.strokeStyle(for: .added).width == 2.6)
+        #expect(ArchDrawingLogic.strokeStyle(for: .removed).color == Color.red.opacity(0.8))
+        #expect(ArchDrawingLogic.strokeStyle(for: .removed).width == 1.8)
+        // Context, the quietest emphasis, is always the thinnest line.
+        let widths = [ArchEmphasis.changed, .added, .removed].map { ArchDrawingLogic.strokeStyle(for: $0).width }
+        #expect(widths.allSatisfy { $0 > ArchDrawingLogic.strokeStyle(for: .context).width })
+    }
+
+    /// A removed relationship keeps reading as removed even when it was also async — the
+    /// two dash patterns can't both show, and "this is gone" matters more than "this was async".
+    @Test func removedDashPatternWinsOverAsync() {
+        #expect(ArchDrawingLogic.dashPattern(for: arrow(isAsync: false)) == [])
+        var asyncArrow = arrow(isAsync: true)
+        #expect(ArchDrawingLogic.dashPattern(for: asyncArrow) == [7, 5])
+        asyncArrow.emphasis = .removed
+        #expect(ArchDrawingLogic.dashPattern(for: asyncArrow) == [4, 4])
+        var removedOnly = arrow(isAsync: false)
+        removedOnly.emphasis = .removed
+        #expect(ArchDrawingLogic.dashPattern(for: removedOnly) == [4, 4])
+    }
+
+    // MARK: - ArchDrawingLogic.arrowheadTriangle
+
+    /// The arrowhead is symmetric around the line it caps: both back corners sit the same
+    /// distance from the tip, straddling the line's direction evenly.
+    @Test func arrowheadTriangleIsSymmetricAroundTheLine() {
+        let triangle = ArchDrawingLogic.arrowheadTriangle(tip: CGPoint(x: 100, y: 0), from: CGPoint(x: 0, y: 0), size: 10)
+        #expect(triangle.tip == CGPoint(x: 100, y: 0))
+        // Pointing along +x, the back corners land symmetric above and below the tip's row.
+        #expect(abs(triangle.left.x - triangle.right.x) < 0.0001)
+        #expect(triangle.left.y == -triangle.right.y)
+        let leftDistance = hypot(triangle.left.x - triangle.tip.x, triangle.left.y - triangle.tip.y)
+        let rightDistance = hypot(triangle.right.x - triangle.tip.x, triangle.right.y - triangle.tip.y)
+        #expect(abs(leftDistance - rightDistance) < 0.0001)
+    }
+
+    /// A bigger `size` makes a bigger arrowhead: both back corners move further from the tip.
+    @Test func arrowheadTriangleGrowsWithSize() {
+        let small = ArchDrawingLogic.arrowheadTriangle(tip: CGPoint(x: 50, y: 50), from: CGPoint(x: 0, y: 50), size: 4)
+        let big = ArchDrawingLogic.arrowheadTriangle(tip: CGPoint(x: 50, y: 50), from: CGPoint(x: 0, y: 50), size: 20)
+        func distanceFromTip(_ p: CGPoint, _ tip: CGPoint) -> CGFloat { hypot(p.x - tip.x, p.y - tip.y) }
+        #expect(distanceFromTip(big.left, big.tip) > distanceFromTip(small.left, small.tip))
+    }
+
+    // MARK: - ArchDrawingLogic.hoverUpdate
+
+    /// Pins the hover-toggle rule: entering always sets the hover, but leaving only clears it
+    /// if this anchor is still the one hovered — a fast pointer move onto a sibling box fires
+    /// that sibling's "entered" before this box's "left", so this box's "left" must not
+    /// clobber the sibling's hover.
+    @Test func hoverUpdateEnteringAlwaysSetsTheAnchor() {
+        #expect(ArchDrawingLogic.hoverUpdate(current: nil, anchor: .node("a"), isHovering: true) == .node("a"))
+        #expect(ArchDrawingLogic.hoverUpdate(current: .node("b"), anchor: .node("a"), isHovering: true) == .node("a"))
+    }
+
+    @Test func hoverUpdateLeavingClearsOnlyIfStillTheHoveredAnchor() {
+        #expect(ArchDrawingLogic.hoverUpdate(current: .node("a"), anchor: .node("a"), isHovering: false) == nil)
+    }
+
+    @Test func hoverUpdateLeavingLeavesADifferentHoverAlone() {
+        #expect(ArchDrawingLogic.hoverUpdate(current: .node("b"), anchor: .node("a"), isHovering: false) == .node("b"))
+        #expect(ArchDrawingLogic.hoverUpdate(current: nil, anchor: .node("a"), isHovering: false) == nil)
+    }
+
+    // MARK: - GraphLayoutEngine.bestFit
+
+    /// One box far smaller than the available pane already fits left-to-right, so the guard
+    /// returns it immediately at full scale without ever computing the vertical alternative.
+    @Test func bestFitKeepsAcrossWhenItAlreadyFits() {
+        let nodes = [GraphLayoutEngine.NodeSpec(id: "a", size: CGSize(width: 100, height: 60))]
+        let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: [], groups: [], available: CGSize(width: 5000, height: 5000))
+        let across = GraphLayoutEngine.layout(nodes: nodes, edges: [], groups: [], vertical: false)
+        #expect(fit == 1)
+        #expect(layout.size.width == across.size.width && layout.size.height == across.size.height)
+    }
+
+    private func chain(count: Int) -> (nodes: [GraphLayoutEngine.NodeSpec], edges: [GraphLayoutEngine.EdgeSpec]) {
+        let nodes = (0..<count).map { GraphLayoutEngine.NodeSpec(id: "n\($0)", size: CGSize(width: 224, height: 50)) }
+        let edges = (0..<count - 1).map {
+            GraphLayoutEngine.EdgeSpec(id: "e\($0)", fromId: "n\($0)", toId: "n\($0 + 1)", labelSize: CGSize(width: 20, height: 10))
+        }
+        return (nodes, edges)
+    }
+
+    /// A left-to-right chain of wide, short boxes lays out wide-and-short across, but
+    /// narrow-and-tall down (the same boxes, just stacked). Sizing the pane to exactly fit
+    /// the vertical layout — which the horizontal one doesn't come close to fitting — forces
+    /// the "clearly better vertically" branch, without hardcoding either layout's geometry.
+    @Test func bestFitSwitchesToDownWhenItFitsSubstantiallyBetter() {
+        let (nodes, edges) = chain(count: 4)
+        let down = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: [], vertical: true)
+        let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: edges, groups: [], available: down.size)
+        #expect(fit == 1)
+        #expect(layout.size.width == down.size.width && layout.size.height == down.size.height)
+    }
+
+    /// Scaling the pane down from the across layout's own bounding box, keeping its aspect
+    /// ratio, guarantees `fit(across)` equals that scale exactly — while the down layout, a
+    /// very differently-shaped box, fits far worse in a pane shaped like the wide one. That
+    /// keeps the across orientation even though it doesn't fill the pane, pinning the "not
+    /// enough of an edge to flip to down" half of the tie-break.
+    @Test func bestFitKeepsAcrossWhenDownIsNotSubstantiallyBetter() {
+        let (nodes, edges) = chain(count: 4)
+        let across = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: [], vertical: false)
+        let available = CGSize(width: across.size.width * 0.5, height: across.size.height * 0.5)
+        let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: edges, groups: [], available: available)
+        #expect(fit == 0.5)
+        #expect(layout.size.width == across.size.width && layout.size.height == across.size.height)
     }
 }
