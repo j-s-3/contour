@@ -126,8 +126,10 @@ struct ContentView: View {
 
     /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
     /// screen, so it never animates here.
-    private var screen: Int {
-        switch store.phase {
+    private var screen: Int { Self.screen(for: store.phase) }
+
+    static func screen(for phase: SessionPhase) -> Int {
+        switch phase {
         case .idle: return 0
         case .opening: return 1
         case .failed: return 2
@@ -290,8 +292,10 @@ struct ContentView: View {
         }
     }
 
-    private var reviewFailureTitle: String {
-        if case .failed(.requestChanges, _) = store.review { return "Couldn't request changes" }
+    private var reviewFailureTitle: String { Self.reviewFailureTitle(for: store.review) }
+
+    static func reviewFailureTitle(for review: PRReview.State) -> String {
+        if case .failed(.requestChanges, _) = review { return "Couldn't request changes" }
         return "Couldn't approve the pull request"
     }
 
@@ -353,7 +357,7 @@ struct ContentView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 1) {
                     Label(title, systemImage: symbol)
-                    if let subtitle = sidebarSubtitle(status, section) {
+                    if let subtitle = Self.sidebarSubtitle(status, section) {
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -375,7 +379,7 @@ struct ContentView: View {
         .listRowBackground(isActive(target) ? Color.accentColor.opacity(0.15) : Color.clear)
     }
 
-    private func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
+    static func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
         guard let section else { return nil }
         switch status {
         case .running(let detail): return detail ?? section.workingLabel
@@ -387,8 +391,10 @@ struct ContentView: View {
         }
     }
 
-    private func isActive(_ target: NavigationTarget) -> Bool {
-        switch (store.current, target) {
+    private func isActive(_ target: NavigationTarget) -> Bool { Self.isActive(target, given: store.current) }
+
+    static func isActive(_ target: NavigationTarget, given current: NavigationTarget) -> Bool {
+        switch (current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
              (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
             return true
@@ -402,8 +408,10 @@ struct ContentView: View {
     }
 
     /// The node or edge a navigation target asks Architecture to select, if any.
-    private var architectureFocus: ArchAnchor? {
-        switch store.current {
+    private var architectureFocus: ArchAnchor? { Self.architectureFocus(for: store.current) }
+
+    static func architectureFocus(for current: NavigationTarget) -> ArchAnchor? {
+        switch current {
         case .componentDetail(let id): return .node(id)
         case .edgeDetail(let id): return .edge(id)
         default: return nil
@@ -411,8 +419,10 @@ struct ContentView: View {
     }
 
     /// The flow, and stage, a navigation target asks Flows to show.
-    private var flowsFocus: FlowsView.Focus? {
-        switch store.current {
+    private var flowsFocus: FlowsView.Focus? { Self.flowsFocus(for: store.current) }
+
+    static func flowsFocus(for current: NavigationTarget) -> FlowsView.Focus? {
+        switch current {
         case .flowDetail(let id): return .init(flowId: id)
         case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
         default: return nil
@@ -420,15 +430,21 @@ struct ContentView: View {
     }
 
     /// The code reference a navigation target asks the raw diff to land on.
-    private var diffFocus: CodeRef? {
-        if case .diffLocation(let ref) = store.current { return ref }
+    private var diffFocus: CodeRef? { Self.diffFocus(for: store.current) }
+
+    static func diffFocus(for current: NavigationTarget) -> CodeRef? {
+        if case .diffLocation(let ref) = current { return ref }
         return nil
     }
 
     /// The decision a navigation target asks Decisions to open, and the Overview question
     /// that brought the reviewer there, if any.
     private func decisionsFocus(_ graph: PRGraph) -> DecisionsView.Focus? {
-        switch store.current {
+        Self.decisionsFocus(for: store.current, graph: graph)
+    }
+
+    static func decisionsFocus(for current: NavigationTarget, graph: PRGraph) -> DecisionsView.Focus? {
+        switch current {
         case .decisionDetail(let id):
             return .init(decisionId: id)
         case .consideration(let id):
