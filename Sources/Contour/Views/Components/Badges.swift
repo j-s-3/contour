@@ -94,7 +94,11 @@ struct ProvenanceMark: View {
             .accessibilityLabel(helpText)
     }
 
-    private var helpText: String {
+    private var helpText: String { Self.helpText(provenance: provenance, confidence: confidence, source: source) }
+
+    /// Pulled out (static, taking its inputs explicitly) so this file's central "never
+    /// present an inference as a fact" text is directly testable per `Provenance` case.
+    static func helpText(provenance: Provenance, confidence: Confidence?, source: String?) -> String {
         var text: String
         switch provenance {
         case .fact: text = "Observed fact"
