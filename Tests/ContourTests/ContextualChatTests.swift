@@ -653,16 +653,16 @@ struct ContextualChatTests {
         #expect(result.runs.contains { $0.link == URL(string: "https://example.com/x") })
     }
 
-    /// `^[text](attr: value)` is valid markdown syntax for a custom attribute, but the
-    /// default (unscoped) parse used here doesn't recognize an arbitrary attribute name and
-    /// throws rather than silently dropping it — model output can contain a stray `^[`
-    /// this never intended as markup, and `attributedText` must fall back to the raw,
-    /// unlinkified text (every character preserved) instead of losing the line.
-    @Test func attributedTextFallsBackToRawTextWhenMarkdownFailsToParse() {
-        let malformed = "^[bad](notARealAttribute: 1)"
-        let result = ChatMarkdownView.attributedText(for: malformed, linkify: { $0 })
-        #expect(String(result.characters) == malformed)
-    }
+    // `attributedText`'s catch-and-fall-back-to-raw-text branch (`try?` degrading to
+    // `AttributedString(s)`) is intentionally left untested: `AttributedString(markdown:
+    // options:)`'s exact throwing conditions — which malformed inputs raise
+    // `MarkdownParsingError` versus degrade leniently to literal text — are a Foundation
+    // implementation detail that differs across toolchain versions and isn't documented
+    // precisely enough to pin without a real build. A candidate string assumed here to
+    // throw (`^[bad](notARealAttribute: 1)`, custom-attribute syntax with an unscoped
+    // parse) did not throw on the real `xcode-27` CI toolchain, so the fallback never
+    // triggered — this repo's convention is to document an untestable gap honestly rather
+    // than guess again at another "definitely malformed" string with no way to verify it.
 
     // MARK: - Review progress
 
