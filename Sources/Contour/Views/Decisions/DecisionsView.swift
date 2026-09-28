@@ -409,6 +409,32 @@ struct DecisionsView: View {
     }
 }
 
+/// Pure grouping/ordering logic pulled out of this file's views (per CLAUDE.md's guidance)
+/// so it's directly testable without a live view.
+enum DecisionsViewLogic {
+    /// Reorders a decision's Overview questions so the one the reviewer arrived from leads,
+    /// leaving the rest in their original order.
+    static func questions(from all: [Consideration], leadingWith arrivedFromConsiderationId: String?) -> [Consideration] {
+        guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
+        return [item] + all.filter { $0.id != lead }
+    }
+
+    /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
+    static func provenanceNote(_ s: Statement) -> String {
+        switch s.provenance {
+        case .claim: return "Author rationale"
+        case .fact: return "Observed"
+        case .interpretation: return "AI inference"
+        }
+    }
+
+    static func provenanceHelp(_ s: Statement) -> String {
+        var text = PRGraph.provenanceLabel(s.provenance, s.confidence)
+        if let source = s.source, !source.isEmpty { text += " — \(source)" }
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+}
+
 // MARK: - A decision
 
 /// One decision's default surface — question, choice, tradeoff, why, judgment — plus its
@@ -436,9 +462,8 @@ private struct DecisionCard: View {
 
     /// Overview questions reviewed here; the one the reviewer arrived from leads.
     private var questions: [Consideration] {
-        let all = graph.overviewQuestions(reviewedOn: decision.id)
-        guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
-        return [item] + all.filter { $0.id != lead }
+        DecisionsViewLogic.questions(from: graph.overviewQuestions(reviewedOn: decision.id),
+                                     leadingWith: arrivedFromConsiderationId)
     }
 
     var body: some View {
@@ -551,11 +576,11 @@ private struct DecisionCard: View {
             if let why = brief.why {
                 GridRow {
                     rowLabel(brief.shape == nil && brief.tradeoff == nil ? "Why" : "Why this side?")
-                    (Text(why.text) + Text("   " + Self.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
+                    (Text(why.text) + Text("   " + DecisionsViewLogic.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
                         .font(.body)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .help(Self.provenanceHelp(why))
+                        .help(DecisionsViewLogic.provenanceHelp(why))
                         .reviewContextMenu(.decision(decision.id))
                 }
             }
@@ -624,21 +649,6 @@ private struct DecisionCard: View {
         .padding(10)
         .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.25)))
-    }
-
-    /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
-    static func provenanceNote(_ s: Statement) -> String {
-        switch s.provenance {
-        case .claim: return "Author rationale"
-        case .fact: return "Observed"
-        case .interpretation: return "AI inference"
-        }
-    }
-
-    static func provenanceHelp(_ s: Statement) -> String {
-        var text = PRGraph.provenanceLabel(s.provenance, s.confidence)
-        if let source = s.source, !source.isEmpty { text += " — \(source)" }
-        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 
