@@ -372,7 +372,7 @@ struct SummaryView: View {
                     isExpanded: expandedConsideration == item.id,
                     onToggle: {
                         withAnimation(.easeInOut(duration: 0.18)) {
-                            expandedConsideration = expandedConsideration == item.id ? nil : item.id
+                            expandedConsideration = SummaryViewLogic.toggled(expandedConsideration, item.id)
                         }
                     },
                     onReview: { review(item) },
@@ -419,10 +419,9 @@ struct SummaryView: View {
     /// to, with the question shown there — and when there isn't one, straight into a
     /// conversation about the item.
     private func review(_ item: Consideration) {
-        if graph.reviewDecisionId(for: item) != nil {
-            navigate(.consideration(item.id))
-        } else {
-            actions.ask(.consideration(item.id))
+        switch SummaryViewLogic.reviewAction(hasDecision: graph.reviewDecisionId(for: item) != nil) {
+        case .navigate: navigate(.consideration(item.id))
+        case .ask: actions.ask(.consideration(item.id))
         }
     }
 
@@ -436,7 +435,7 @@ struct SummaryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Button {
                             withAnimation(.easeInOut(duration: 0.18)) {
-                                expandedOtherChange = expandedOtherChange == change.id ? nil : change.id
+                                expandedOtherChange = SummaryViewLogic.toggled(expandedOtherChange, change.id)
                             }
                         } label: {
                             HStack(spacing: 10) {
@@ -520,7 +519,7 @@ struct SummaryView: View {
 /// (longer reasoning, related review objects, evidence, provenance); right-click offers the
 /// usual Ask about this…. Concerns and open questions share the list and differ only in a
 /// subtle badge — the analysis engine's taxonomy doesn't get to dictate the layout.
-private struct ConsiderationRow: View {
+struct ConsiderationRow: View {
     let number: Int
     let item: Consideration
     let graph: PRGraph
@@ -650,7 +649,7 @@ private struct ConsiderationRow: View {
 // MARK: - Explore tile
 
 /// Navigation, not content: an icon, a name, and one count.
-private struct ExploreTile: View {
+struct ExploreTile: View {
     let title: String
     let detail: String
     let symbol: String
@@ -692,6 +691,18 @@ private struct ExploreTile: View {
 /// fixtures — `GlanceFact.Tone`, `StageStatus`, `BehaviorStage`, `Consideration`, and a
 /// hand-built `PRGraph` — rather than through the SwiftUI `body`.
 enum SummaryViewLogic {
+    /// The disclosure state after clicking a row: it opens, or closes if it was the open one.
+    static func toggled(_ current: String?, _ id: String) -> String? {
+        current == id ? nil : id
+    }
+
+    enum ReviewAction: Equatable { case navigate, ask }
+
+    /// "Review →" goes to the decision when the item has one, else into a conversation.
+    static func reviewAction(hasDecision: Bool) -> ReviewAction {
+        hasDecision ? .navigate : .ask
+    }
+
     /// The facts line's tint for a tone; nil means "leave it at .secondary" (the shared
     /// default, rather than a color of its own).
     static func factTint(_ tone: GlanceFact.Tone) -> Color? {

@@ -355,4 +355,18 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.whySectionMode(hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: false)
                 == .none)
     }
+
+    // MARK: - toggled / reviewAction
+
+    /// Clicking a row opens it, moves the disclosure to it from another, or closes it.
+    @Test func toggledOpensSwitchesAndCloses() {
+        #expect(SummaryViewLogic.toggled(nil, "a") == "a")
+        #expect(SummaryViewLogic.toggled("b", "a") == "a")
+        #expect(SummaryViewLogic.toggled("a", "a") == nil)
+    }
+
+    @Test func reviewActionNavigatesWithADecisionAndAsksWithout() {
+        #expect(SummaryViewLogic.reviewAction(hasDecision: true) == .navigate)
+        #expect(SummaryViewLogic.reviewAction(hasDecision: false) == .ask)
+    }
 }
