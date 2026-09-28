@@ -159,7 +159,13 @@ struct ArchitectureView: View {
 
     // MARK: - What to draw
 
-    private func boxes(_ level: ArchLevel) -> [ArchBox] {
+    private func boxes(_ level: ArchLevel) -> [ArchBox] { Self.boxes(level, graph: graph, mode: mode) }
+    private func arrows(_ level: ArchLevel) -> [ArchArrow] { Self.arrows(level, graph: graph, mode: mode) }
+    private func containers(_ level: ArchLevel) -> [ArchContainer] { Self.containers(level, graph: graph, mode: mode) }
+
+    /// Pulled out of the view (static, taking `graph`/`mode` explicitly) so it's directly
+    /// testable, per the "extract layout/selection/formatting logic" guidance.
+    static func boxes(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchBox] {
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
         let neighbors = Set(level.context.map(\.id))
@@ -190,8 +196,8 @@ struct ArchitectureView: View {
         }
     }
 
-    private func arrows(_ level: ArchLevel) -> [ArchArrow] {
-        let drawn = Set(boxes(level).map(\.id))
+    static func arrows(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchArrow] {
+        let drawn = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
         return level.edges.compactMap { le in
@@ -212,8 +218,8 @@ struct ArchitectureView: View {
         }
     }
 
-    private func containers(_ level: ArchLevel) -> [ArchContainer] {
-        let drawn = Set(boxes(level).map(\.id))
+    static func containers(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchContainer] {
+        let drawn = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         return level.boundaries.compactMap { b in
             let members = b.componentIds.filter(drawn.contains)
             guard !members.isEmpty else { return nil }
