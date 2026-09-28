@@ -312,20 +312,29 @@ struct ContextualChatView: View {
         ChatLinks.linkify(text, resolve: resolvePath, title: graph.linkTitle)
     }
 
+    private func resolvePath(_ path: String) -> String? {
+        Self.resolvePath(path, checkoutRoot: store.checkout?.rootDir, citedPaths: graph.citedPaths)
+    }
+
     /// Accepts a cited path when it is a real file in the checkout, or when it uniquely
     /// names a file the review model cites (models often write just `Listener.java:353`).
-    private func resolvePath(_ path: String) -> String? {
-        if let root = store.checkout?.rootDir,
-           FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path) {
+    /// Pulled out (static, taking the checkout root and cited paths explicitly) so it's
+    /// directly testable.
+    static func resolvePath(_ path: String, checkoutRoot: URL?, citedPaths: [String]) -> String? {
+        if let checkoutRoot, FileManager.default.fileExists(atPath: checkoutRoot.appendingPathComponent(path).path) {
             return path
         }
-        let cited = graph.citedPaths
-        if cited.contains(path) { return path }
-        let matches = cited.filter { $0.hasSuffix("/" + path) }
+        if citedPaths.contains(path) { return path }
+        let matches = citedPaths.filter { $0.hasSuffix("/" + path) }
         return matches.count == 1 ? matches[0] : nil
     }
 
     private func handle(_ url: URL) -> OpenURLAction.Result {
+        Self.handle(url, store: store, graph: graph)
+    }
+
+    /// Pulled out (static, taking `store`/`graph` explicitly) so it's directly testable.
+    static func handle(_ url: URL, store: GraphStore, graph: PRGraph) -> OpenURLAction.Result {
         guard let target = ChatLinks.target(for: url) else { return .systemAction }
         switch target {
         case .code(let ref):
