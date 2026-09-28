@@ -109,6 +109,34 @@ enum AskShortcut {
     static let modifiers: EventModifiers = [.command, .shift]
 }
 
+/// Which related items a menu offers for a resolved subject — pulled out of
+/// `ReviewContextMenuModifier`'s `@ViewBuilder` helpers so the "which items, how many"
+/// selection logic is directly testable, per CLAUDE.md's guidance for this file. Rendering
+/// (single button vs. submenu vs. nothing) stays in the view; this only picks the list.
+enum ReviewContextMenuLogic {
+    static func architectureParts(for resolved: ResolvedSubject, in graph: PRGraph) -> [ComponentNode] {
+        guard ![.component, .relationship, .pullRequest].contains(resolved.kind) else { return [] }
+        return unique(resolved.componentIds.compactMap(graph.drawablePart(for:)))
+    }
+
+    static func relatedDecisions(for resolved: ResolvedSubject, in graph: PRGraph) -> [DecisionNode] {
+        guard ![.decision, .tradeoff].contains(resolved.kind) else { return [] }
+        return resolved.decisionIds.compactMap(graph.decision)
+    }
+
+    static func relatedFlows(for resolved: ResolvedSubject, in graph: PRGraph) -> [FlowNode] {
+        guard ![.flow, .flowStep].contains(resolved.kind) else { return [] }
+        return resolved.flowIds.compactMap(graph.flow)
+    }
+
+    /// Code gets a line permalink; anything else links to its first cited range when it has
+    /// one, else to the pull request itself.
+    static func githubURL(for resolved: ResolvedSubject, actions: ReviewActions) -> URL? {
+        if let ref = resolved.refs.first, let url = actions.githubURL(for: ref) { return url }
+        return actions.pullRequestURL
+    }
+}
+
 private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
     @Environment(\.reviewActions) private var actions
     let subject: ReviewSubject
@@ -164,8 +192,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
     /// to that part on the architecture drawing.
     @ViewBuilder
     private func showInArchitecture(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let parts = [.component, .relationship, .pullRequest].contains(resolved.kind) ? []
-            : unique(resolved.componentIds.compactMap { graph.drawablePart(for: $0) })
+        let parts = ReviewContextMenuLogic.architectureParts(for: resolved, in: graph)
         if parts.count == 1, let part = parts.first {
             Button("Show in Architecture") { actions.navigate(.componentDetail(part.id)) }
         } else if parts.count > 1 {
@@ -177,7 +204,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
 
     @ViewBuilder
     private func relatedDecisions(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let decisions = [.decision, .tradeoff].contains(resolved.kind) ? [] : resolved.decisionIds.compactMap(graph.decision)
+        let decisions = ReviewContextMenuLogic.relatedDecisions(for: resolved, in: graph)
         if decisions.count == 1, let d = decisions.first {
             Button("Show Related Decision") { actions.navigate(.decisionDetail(d.id)) }
         } else if decisions.count > 1 {
@@ -189,7 +216,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
 
     @ViewBuilder
     private func relatedFlows(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let flows = [.flow, .flowStep].contains(resolved.kind) ? [] : resolved.flowIds.compactMap(graph.flow)
+        let flows = ReviewContextMenuLogic.relatedFlows(for: resolved, in: graph)
         if flows.count == 1, let f = flows.first {
             Button("Show Related Flow") { actions.navigate(.flowDetail(f.id)) }
         } else if flows.count > 1 {
@@ -211,10 +238,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
         }
     }
 
-    /// Code gets a line permalink; anything else links to its first cited range when it
-    /// has one, else to the pull request itself.
     private func githubURL(_ resolved: ResolvedSubject) -> URL? {
-        if let ref = resolved.refs.first, let url = actions.githubURL(for: ref) { return url }
-        return actions.pullRequestURL
+        ReviewContextMenuLogic.githubURL(for: resolved, actions: actions)
     }
 }
