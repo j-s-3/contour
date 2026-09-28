@@ -38,8 +38,7 @@ struct RequestChangesSheet: View {
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Request Changes") {
-                    onSubmit(comment)
-                    dismiss()
+                    Self.submit(comment: comment, onSubmit: onSubmit) { dismiss() }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!PRReview.isReady(.requestChanges, comment: comment))
@@ -48,5 +47,13 @@ struct RequestChangesSheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear { editorFocused = true }
+    }
+
+    /// Pulled out (static, taking its dependencies explicitly) so the submit action is
+    /// directly testable. The comment-required validation that gates the button lives in
+    /// `PRReview.isReady`, already covered by `PRReviewTests`.
+    static func submit(comment: String, onSubmit: (String) -> Void, dismiss: () -> Void) {
+        onSubmit(comment)
+        dismiss()
     }
 }
