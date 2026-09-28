@@ -25,7 +25,7 @@ struct CodeViewerView: View {
                 ContentUnavailableView("Couldn't load this file", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if showWholeFile {
-                ScrollView { codeText(wholeFile.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }) }
+                ScrollView { codeText(CodeViewerLogic.numberedLines(wholeFile)) }
             } else {
                 ScrollView { codeText(lines) }
             }
@@ -96,7 +96,7 @@ struct CodeViewerView: View {
     private func codeText(_ rows: [(number: Int, text: String)]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(rows, id: \.number) { row in
-                let isInRef = row.number >= ref.startLine && row.number <= ref.endLine
+                let isInRef = CodeViewerLogic.isInRef(row.number, ref: ref)
                 HStack(alignment: .top, spacing: 10) {
                     Text("\(row.number)")
                         .font(.system(.footnote, design: .monospaced))
@@ -137,5 +137,21 @@ struct CodeViewerView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// The line-range highlight resolution and whole-file line numbering CLAUDE.md calls out
+/// for this file, pulled out of `CodeViewerView`'s body so it's directly testable with
+/// fixture `CodeRef`s and source text.
+enum CodeViewerLogic {
+    /// Whether a line number falls within the reference's cited range — what gets the
+    /// highlight background.
+    static func isInRef(_ lineNumber: Int, ref: CodeRef) -> Bool {
+        lineNumber >= ref.startLine && lineNumber <= ref.endLine
+    }
+
+    /// A whole file's text as 1-indexed rows, the same numbering `codeText` expects.
+    static func numberedLines(_ text: String) -> [(number: Int, text: String)] {
+        text.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }
     }
 }
