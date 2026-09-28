@@ -94,4 +94,36 @@ struct RepoContextServiceTests {
         let error = RepoContextError.gitFailed("fatal: not a git repository")
         #expect(error.errorDescription == "fatal: not a git repository")
     }
+
+    /// `contextLines` defaults to 6 when the caller omits it (the code viewer's normal call
+    /// shape). The other tests all pass it explicitly, which never exercises the compiler's
+    /// default-argument path, so this pins the default's actual value rather than just its
+    /// presence in the signature.
+    @Test func readLinesDefaultsToSixLinesOfContextWhenOmitted() async throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lines = (1...20).map { "line \($0)" }
+        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let result = try await RepoContextService().readLines(in: checkout, path: "a.txt", startLine: 10, endLine: 10)
+        #expect(result.lines.map(\.number) == Array(4...16), "default context is 6 lines either side")
+    }
+
+    /// A request whose entire range falls past the end of the file (e.g. a stale ref from a
+    /// revision where the file was longer) must clamp to nothing rather than crash indexing
+    /// into `allLines`, exercising the `where n <= allLines.count` guard's false branch.
+    @Test func readLinesReturnsEmptyWhenTheRequestedRangeIsEntirelyPastTheEndOfTheFile() async throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lines = (1...3).map { "line \($0)" }
+        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let result = try await RepoContextService().readLines(
+            in: checkout, path: "a.txt", startLine: 10, endLine: 12, contextLines: 0
+        )
+        #expect(result.lines.isEmpty)
+        #expect(result.refStart == 10 && result.refEnd == 12, "the requested range is echoed back even when nothing matched")
+    }
 }
