@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftUI
 @testable import Contour
 
 /// The contract behind "the reviewer never has to explain what they are looking at":
@@ -404,6 +405,74 @@ struct ContextualChatTests {
             title: { _ in "Use [fast path]" }
         )
         #expect(out == "See [Use \\[fast path\\]](contour://node?kind=decision&id=x).")
+    }
+
+    // MARK: - resolvePath
+
+    /// A path that exists in the checkout is accepted outright, before any cited-paths
+    /// fallback is even considered.
+    @Test func resolvePathAcceptsARealFileInTheCheckout() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "content".write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
+        #expect(ContextualChatView.resolvePath("a.swift", checkoutRoot: dir, citedPaths: []) == "a.swift")
+    }
+
+    @Test func resolvePathAcceptsAPathTheModelCitedDirectly() {
+        #expect(ContextualChatView.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
+    }
+
+    /// Models often cite just the bare filename (`Listener.java:353`); that resolves when
+    /// it uniquely suffix-matches one of the paths the review actually cited.
+    @Test func resolvePathAcceptsABareNameThatUniquelySuffixMatchesACitedPath() {
+        let cited = ["src/main/Listener.java"]
+        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
+    }
+
+    @Test func resolvePathDeclinesAnAmbiguousSuffixMatch() {
+        let cited = ["a/Listener.java", "b/Listener.java"]
+        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == nil)
+    }
+
+    @Test func resolvePathDeclinesAnUnknownPath() {
+        #expect(ContextualChatView.resolvePath("Nope.java", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == nil)
+    }
+
+    // MARK: - handle
+
+    /// `OpenURLAction.Result` is an opaque type (no `Equatable`, no matchable cases), so these
+    /// pin `handle`'s actual logic — which URL navigates where — via its `store` side effect
+    /// rather than its return value; `targetDeclinesUnrecognizedOrIncompleteURLs` above already
+    /// covers which URLs `ChatLinks.target(for:)` itself accepts or declines.
+    @Test @MainActor func handleNavigatesToTheCodeReferenceForACodeLink() throws {
+        let store = GraphStore()
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        let url = try #require(ChatLinks.url(for: ref))
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        #expect(store.current == .evidence(ref))
+    }
+
+    @Test @MainActor func handleNavigatesToADecisionsDetailTargetForANodeLink() throws {
+        let store = GraphStore()
+        let url = try #require(ChatLinks.url(kind: "decision", id: "index-on-publish"))
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        #expect(store.current == .decisionDetail("index-on-publish"))
+    }
+
+    /// A node link naming an id the graph doesn't have has nowhere to navigate.
+    @Test @MainActor func handleDoesNotNavigateForADanglingNodeReference() throws {
+        let store = GraphStore()
+        let url = try #require(ChatLinks.url(kind: "decision", id: "does-not-exist"))
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        #expect(store.current == .summary, "nothing to navigate to, so the path is unchanged")
+    }
+
+    @Test @MainActor func handleDoesNotNavigateForAnUnrecognizedURL() throws {
+        let store = GraphStore()
+        let url = try #require(URL(string: "https://example.com"))
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        #expect(store.current == .summary)
     }
 
     /// `citedPaths` pools refs from every source the review model can cite from — a source
