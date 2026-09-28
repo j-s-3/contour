@@ -112,13 +112,8 @@ struct FlowsView: View {
     /// aren't ours.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         guard graph.flows.count > 1,
-              press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
-        let offset: Int
-        switch press.characters {
-        case "[": offset = -1
-        case "]": offset = 1
-        default: return .ignored
-        }
+              press.modifiers.isDisjoint(with: [.command, .control, .option]),
+              let offset = FlowsViewLogic.scenarioOffset(for: press.characters) else { return .ignored }
         if let next = graph.scenario(offset, from: currentFlow?.id) { openFlow(next.id) }
         return .handled
     }
@@ -129,9 +124,9 @@ struct FlowsView: View {
         let available = FlowDrillLevel.available(for: node, in: flow, graph: graph)
         if selectedNodeId != node.id {
             selectedNodeId = node.id
-            level = available.first { $0 > .behavior } ?? .behavior
+            level = FlowsViewLogic.nextLevel(after: .behavior, available: available)
         } else {
-            level = available.first { $0 > level } ?? level
+            level = FlowsViewLogic.nextLevel(after: level, available: available)
         }
     }
 
@@ -267,10 +262,7 @@ struct FlowsView: View {
 
     /// Older analyses carry no change sentence; name the stages that changed instead.
     private func condensedChangeSummary(_ behavior: FlowBehavior) -> String? {
-        let changed = behavior.nodes.filter { $0.change != .existing && $0.kind != .trigger }
-        guard !changed.isEmpty else { return nil }
-        return "Changes " + changed.prefix(3).map { "“\($0.label)”" }.joined(separator: ", ")
-            + (changed.count > 3 ? ", and \(changed.count - 3) more" : "") + "."
+        FlowsViewLogic.condensedChangeSummary(behavior)
     }
 
     /// Several triggers converging on this flow, or this flow handing off to a shared one.
@@ -320,5 +312,33 @@ struct FlowsView: View {
                 if let node = selectedNode, !node.change.isVisible(in: new) { select(nil) }
             }
         }
+    }
+}
+
+/// The scenario-cycling and drill-down selection logic, plus the change-summary condensation
+/// CLAUDE.md calls out for this file, pulled out of `FlowsView`'s body so they're directly
+/// testable without a view instance or `PRGraph`.
+enum FlowsViewLogic {
+    /// Which way `[` or `]` cycles scenarios; nil for any other key.
+    static func scenarioOffset(for characters: String) -> Int? {
+        switch characters {
+        case "[": return -1
+        case "]": return 1
+        default: return nil
+        }
+    }
+
+    /// The next rung of the ladder strictly below `level` that has something on it, or
+    /// `level` itself when there is none.
+    static func nextLevel(after level: FlowDrillLevel, available: [FlowDrillLevel]) -> FlowDrillLevel {
+        available.first { $0 > level } ?? level
+    }
+
+    /// Older analyses carry no change sentence; name the stages that changed instead.
+    static func condensedChangeSummary(_ behavior: FlowBehavior) -> String? {
+        let changed = behavior.nodes.filter { $0.change != .existing && $0.kind != .trigger }
+        guard !changed.isEmpty else { return nil }
+        return "Changes " + changed.prefix(3).map { "“\($0.label)”" }.joined(separator: ", ")
+            + (changed.count > 3 ? ", and \(changed.count - 3) more" : "") + "."
     }
 }
