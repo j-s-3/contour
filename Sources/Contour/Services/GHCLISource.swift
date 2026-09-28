@@ -6,17 +6,46 @@ import Foundation
 struct GHCLISource: PRSource {
     var describesItself: String { "gh CLI" }
 
+    static let prViewFields = "url,number,title,body,author,state,headRefName,baseRefName,headRefOid," +
+                 "baseRefOid,isCrossRepository,headRepository,headRepositoryOwner," +
+                 "additions,deletions,changedFiles,files,commits,comments,reviews," +
+                 "createdAt,statusCheckRollup"
+
+    /// What `parsePRView` pulls out before anything that needs the network (thread count,
+    /// diff) can start, so `fetchContext` can kick those off concurrently.
+    struct ParsedPRView {
+        var obj: [String: Any]
+        var url: String
+        var number: Int
+        var title: String
+        var author: String
+        var state: String
+        var headRefName: String
+        var baseRefName: String
+        var headSha: String
+        var baseSha: String
+        var owner: String
+        var repo: String
+    }
+
     func fetchContext(prURL: String) async throws -> RawPRContext {
         guard let normalized = GitHubService.normalize(prURL) else {
             throw GitHubServiceError.badURL(prURL)
         }
 
-        let fields = "url,number,title,body,author,state,headRefName,baseRefName,headRefOid," +
-                     "baseRefOid,isCrossRepository,headRepository,headRepositoryOwner," +
-                     "additions,deletions,changedFiles,files,commits,comments,reviews," +
-                     "createdAt,statusCheckRollup"
+        let json = try await Shell.run("gh", ["pr", "view", normalized, "--json", Self.prViewFields])
+        let parsed = try Self.parsePRView(json: json)
 
-        let json = try await Shell.run("gh", ["pr", "view", normalized, "--json", fields])
+        // Thread resolution takes a separate query, so start it alongside the diff fetch.
+        async let unresolved = unresolvedThreadCount(prURL: parsed.url, owner: parsed.owner, repo: parsed.repo, number: parsed.number)
+        let diff = try await Shell.run("gh", ["pr", "diff", normalized])
+
+        return Self.assembleContext(parsed: parsed, diff: diff, unresolvedThreads: await unresolved)
+    }
+
+    /// Decodes `gh pr view`'s JSON and validates every field `RawPRContext` can't do
+    /// without, including deriving owner/repo from the canonical url (so it works for forks).
+    static func parsePRView(json: String) throws -> ParsedPRView {
         guard let data = json.data(using: .utf8),
               let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw GitHubServiceError.malformedResponse(json) }
@@ -33,6 +62,20 @@ struct GHCLISource: PRSource {
             let baseSha = obj["baseRefOid"] as? String
         else { throw GitHubServiceError.malformedResponse(json) }
 
+        let (owner, repo) = try GitHubService.ownerRepo(fromCanonicalURL: url)
+
+        return ParsedPRView(
+            obj: obj, url: url, number: number, title: title, author: author, state: state,
+            headRefName: headRefName, baseRefName: baseRefName, headSha: headSha, baseSha: baseSha,
+            owner: owner, repo: repo
+        )
+    }
+
+    /// Everything that doesn't need validation beyond `parsePRView`'s: optional fields with
+    /// defaults, list mapping, and the fork-aware clone URL. Pure once its inputs (the
+    /// parsed view, the diff, and the best-effort thread count) are in hand.
+    static func assembleContext(parsed: ParsedPRView, diff: String, unresolvedThreads: Int?) -> RawPRContext {
+        let obj = parsed.obj
         let body = (obj["body"] as? String) ?? ""
         let isCross = (obj["isCrossRepository"] as? Bool) ?? false
         let additions = (obj["additions"] as? Int) ?? 0
@@ -61,15 +104,10 @@ struct GHCLISource: PRSource {
             return "\(who): \(b)"
         }
 
-        // Extract owner/repo from the canonical url so we can drive the checkout even for forks.
-        let (owner, repo) = try GitHubService.ownerRepo(fromCanonicalURL: url)
         let headRepo = obj["headRepository"] as? [String: Any]
-        let headOwnerLogin = (obj["headRepositoryOwner"] as? [String: Any])?["login"] as? String ?? owner
-        let headRepoName = (headRepo?["name"] as? String) ?? repo
+        let headOwnerLogin = (obj["headRepositoryOwner"] as? [String: Any])?["login"] as? String ?? parsed.owner
+        let headRepoName = (headRepo?["name"] as? String) ?? parsed.repo
         let headCloneURL = "https://github.com/\(headOwnerLogin)/\(headRepoName).git"
-
-        async let unresolved = unresolvedThreadCount(prURL: url, owner: owner, repo: repo, number: number)
-        let diff = try await Shell.run("gh", ["pr", "diff", normalized])
 
         let checks = ((obj["statusCheckRollup"] as? [[String: Any]]) ?? []).map {
             PRGlance.checkOutcome(status: $0["status"] as? String,
@@ -85,17 +123,41 @@ struct GHCLISource: PRSource {
             checks: PRGlance.rollUp(checks),
             approvals: tally.approvals,
             changesRequested: tally.changesRequested,
-            unresolvedThreads: await unresolved,
+            unresolvedThreads: unresolvedThreads,
             createdAt: PRGlance.date(iso8601: obj["createdAt"] as? String)
         )
 
         return RawPRContext(
-            url: url, owner: owner, repo: repo, number: number, title: title, body: body,
-            author: author, state: state, headRefName: headRefName, baseRefName: baseRefName,
-            headSha: headSha, baseSha: baseSha, isCrossRepository: isCross, headCloneURL: headCloneURL,
+            url: parsed.url, owner: parsed.owner, repo: parsed.repo, number: parsed.number,
+            title: parsed.title, body: body, author: parsed.author, state: parsed.state,
+            headRefName: parsed.headRefName, baseRefName: parsed.baseRefName, headSha: parsed.headSha,
+            baseSha: parsed.baseSha, isCrossRepository: isCross, headCloneURL: headCloneURL,
             additions: additions, deletions: deletions, changedFiles: changedFiles, files: files,
             commits: commits, comments: comments, reviews: reviews, diff: diff, glance: glance
         )
+    }
+
+    /// The `gh api graphql` argv for the unresolved-thread-count query. A GitHub Enterprise
+    /// PR has to name its host; github.com is `gh`'s own default, so it's left off there.
+    static func graphQLArgs(query: String, owner: String, repo: String, number: Int, prURL: String) -> [String] {
+        var args = ["api", "graphql", "-f", "query=\(query)",
+                    "-F", "owner=\(owner)", "-F", "repo=\(repo)", "-F", "number=\(number)"]
+        if let host = URL(string: prURL)?.host, host != "github.com" {
+            args += ["--hostname", host]
+        }
+        return args
+    }
+
+    /// Decodes the thread-count query's response. Best effort: nil on anything unexpected,
+    /// never a thrown error, since a failure here should cost the facts line one item, not
+    /// the fetch.
+    static func parseUnresolvedThreadCount(json: String) -> Int? {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pr = ((obj["data"] as? [String: Any])?["repository"] as? [String: Any])?["pullRequest"] as? [String: Any],
+              let nodes = (pr["reviewThreads"] as? [String: Any])?["nodes"] as? [[String: Any]]
+        else { return nil }
+        return nodes.filter { ($0["isResolved"] as? Bool) == false }.count
     }
 
     /// Thread resolution isn't among `gh pr view`'s fields, so it takes one GraphQL query.
@@ -109,25 +171,14 @@ struct GHCLISource: PRSource {
           }
         }
         """
-        var args = ["api", "graphql", "-f", "query=\(query)",
-                    "-F", "owner=\(owner)", "-F", "repo=\(repo)", "-F", "number=\(number)"]
-        // `gh api` defaults to github.com; a GitHub Enterprise PR has to name its host.
-        if let host = URL(string: prURL)?.host, host != "github.com" {
-            args += ["--hostname", host]
-        }
-        guard let json = try? await Shell.run("gh", args),
-              let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let pr = ((obj["data"] as? [String: Any])?["repository"] as? [String: Any])?["pullRequest"] as? [String: Any],
-              let nodes = (pr["reviewThreads"] as? [String: Any])?["nodes"] as? [[String: Any]]
-        else { return nil }
-        return nodes.filter { ($0["isResolved"] as? Bool) == false }.count
+        let args = Self.graphQLArgs(query: query, owner: owner, repo: repo, number: number, prURL: prURL)
+        guard let json = try? await Shell.run("gh", args) else { return nil }
+        return Self.parseUnresolvedThreadCount(json: json)
     }
 
-    func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {
-        guard let json = try? await Shell.run("gh", [
-            "issue", "view", number, "--repo", "\(owner)/\(repo)", "--json", "title,body,url"
-        ]) else { return nil }
+    /// Decodes `gh issue view`'s JSON. Best effort: nil rather than throwing, like every
+    /// tracker lookup.
+    static func parseIssue(json: String, owner: String, repo: String, number: String) -> RawIssue? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let title = obj["title"] as? String
@@ -137,5 +188,12 @@ struct GHCLISource: PRSource {
             body: (obj["body"] as? String) ?? "",
             url: (obj["url"] as? String) ?? "https://github.com/\(owner)/\(repo)/issues/\(number)"
         )
+    }
+
+    func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {
+        guard let json = try? await Shell.run("gh", [
+            "issue", "view", number, "--repo", "\(owner)/\(repo)", "--json", "title,body,url"
+        ]) else { return nil }
+        return Self.parseIssue(json: json, owner: owner, repo: repo, number: number)
     }
 }
