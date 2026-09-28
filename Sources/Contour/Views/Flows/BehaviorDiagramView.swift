@@ -53,6 +53,127 @@ enum BehaviorDiagramLogic {
         if kind == .external { return [5, 3] }
         return []
     }
+
+    // MARK: - Stage fill/stroke (`StageBox`)
+    //
+    // Pulled out of `StageBox`'s computed properties, which SwiftUI's implicit `@MainActor`
+    // on every `View` member — and this struct's own `private` access, scoped to this file —
+    // put out of a test's reach. These take the same inputs explicitly instead.
+
+    /// A stage's fill: the change's tint in Delta, a faint kind-based tint otherwise, both
+    /// deepening slightly on hover so the pointer's target is never ambiguous.
+    static func stageFill(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind, isHovered: Bool) -> Color {
+        if let tint = tint(mode: mode, change: change) { return tint.opacity(isHovered ? 0.14 : 0.08) }
+        switch kind {
+        case .decision: return Color.secondary.opacity(isHovered ? 0.1 : 0.05)
+        case .outcome: return Color.secondary.opacity(isHovered ? 0.12 : 0.07)
+        default: return Color(nsColor: .controlBackgroundColor).opacity(isHovered ? 0.9 : 1)
+        }
+    }
+
+    /// A stage's outline: selection always wins, then the change's tint, then an external
+    /// call's own purple, then a plain neutral border.
+    static func stageStroke(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind, isSelected: Bool) -> Color {
+        if isSelected { return .accentColor }
+        if let tint = tint(mode: mode, change: change) { return tint.opacity(0.85) }
+        if kind == .external { return .purple.opacity(0.55) }
+        return Color.secondary.opacity(0.4)
+    }
+
+    static func stageStrokeWidth(isSelected: Bool, isTinted: Bool) -> CGFloat {
+        isSelected ? 2.4 : (isTinted ? 1.8 : 1)
+    }
+
+    /// The small kind label above a stage's text ("EXTERNAL", "STORAGE", "SHARED FLOW ↗");
+    /// nil for a plain step, trigger, decision or outcome, which need no extra label.
+    static func stageCaption(kind: FlowNodeKind, subflowTitle: String?) -> (text: String, symbol: String, color: Color)? {
+        switch kind {
+        case .external: return ("EXTERNAL", "globe", .purple)
+        case .datastore: return ("STORAGE", "cylinder.split.1x2", .secondary)
+        case .subflow: return ("SHARED FLOW" + (subflowTitle == nil ? "" : " ↗"), "arrow.triangle.merge", .secondary)
+        default: return nil
+        }
+    }
+
+    /// A stage's tooltip: its detail sentence, its change (if any), an uncertainty note, then
+    /// the standing hint on how to interact with it.
+    static func stageHelpText(detail: String?, change: FlowChange, isUncertain: Bool) -> String {
+        var parts: [String] = []
+        if let detail { parts.append(detail) }
+        if change != .existing { parts.append(PRGraph.flowChangeLabel(change)) }
+        if isUncertain { parts.append("Inferred, not traced in the code") }
+        parts.append("Click to inspect · double-click to go deeper · right-click to ask")
+        return parts.joined(separator: "\n")
+    }
+
+    /// What a changed stage's detail area shows: both sides in Delta (when either survived),
+    /// one side in Before/After, nothing for an unchanged stage or a changed one with no
+    /// recorded before/after text for the mode on screen.
+    enum ChangeDetailContent: Equatable {
+        case beforeAndAfter(before: String?, after: String?)
+        case beforeOnly(String)
+        case afterOnly(String)
+        case none
+    }
+
+    static func changeDetailContent(mode: DiagramMode, change: FlowChange, before: String?, after: String?) -> ChangeDetailContent {
+        guard change == .changed else { return .none }
+        switch mode {
+        case .delta where before != nil || after != nil: return .beforeAndAfter(before: before, after: after)
+        case .before where before != nil: return .beforeOnly(before!)
+        case .after where after != nil: return .afterOnly(after!)
+        default: return .none
+        }
+    }
+
+    // MARK: - Hover
+
+    /// The next hovered id on a pointer-enter/leave: entering a stage always claims it; leaving
+    /// clears it only if it's still the one that was hovered, so a stale "exit" from a stage the
+    /// pointer already left can never clobber whatever's hovered now.
+    static func hoverUpdate(current: String?, id: String, isHovering: Bool) -> String? {
+        isHovering ? id : (current == id ? nil : current)
+    }
+
+    // MARK: - Boundaries
+
+    /// Whether a boundary draws as "outside" (dashed, brighter border) and its tint: a trust
+    /// boundary is orange, another outside system purple, everything else neutral.
+    static func boundaryStyle(kind: BoundaryKind) -> (outside: Bool, tint: Color) {
+        let outside = kind == .external || kind == .trust
+        return (outside, kind == .trust ? .orange : (outside ? .purple : .secondary))
+    }
+
+    static func boundaryLabelText(kind: BoundaryKind, label: String) -> String {
+        (boundaryStyle(kind: kind).outside ? "External · " : "") + label.uppercased()
+    }
+
+    // MARK: - Edges
+
+    static func edgeOpacity(mode: DiagramMode, change: FlowChange) -> Double {
+        fades(mode: mode, change: change) ? 0.35 : (change == .existing ? 0.6 : 0.95)
+    }
+
+    /// Async dashes short; a removed edge dashes shorter still and wins when both apply, so a
+    /// removed async call reads as "gone", not "was async".
+    static func edgeDash(flow: EdgeFlow, change: FlowChange) -> [CGFloat] {
+        var dash: [CGFloat] = []
+        if flow == .async { dash = [6, 4] }
+        if change == .removed { dash = [3, 3] }
+        return dash
+    }
+
+    static func edgeWidth(change: FlowChange) -> CGFloat { change == .existing ? 1.3 : 2.2 }
+
+    static func edgeArrowSize(change: FlowChange) -> CGFloat { change == .existing ? 8 : 10 }
+
+    /// The two back corners of an arrowhead pointing from `from` to `tip`, `size` long.
+    static func arrowHeadWings(from: CGPoint, tip: CGPoint, size: CGFloat) -> (left: CGPoint, right: CGPoint) {
+        let angle = atan2(tip.y - from.y, tip.x - from.x)
+        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
+        return (CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)),
+                CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
+    }
 }
 
 /// A flow drawn as runtime behavior (§4.6): trigger at the top, stages below, branches side by
@@ -111,7 +232,7 @@ struct BehaviorDiagramView: View {
                             .position(x: placed.frame.midX, y: placed.frame.midY)
                             .onTapGesture(count: 2) { onDrill(placed.node) }
                             .onTapGesture { onSelect(placed.node) }
-                            .onHover { hoveredId = $0 ? placed.id : (hoveredId == placed.id ? nil : hoveredId) }
+                            .onHover { hoveredId = BehaviorDiagramLogic.hoverUpdate(current: hoveredId, id: placed.id, isHovering: $0) }
                             .reviewContextMenu(.flowNode(flowId: flowId, nodeId: placed.id)) {
                                 Button("Show Implementation") { onShowImplementation(placed.node) }
                                 if let sub = placed.node.subflowId, let title = subflowTitle(sub) {
@@ -163,24 +284,21 @@ struct BehaviorDiagramView: View {
     private func drawEdge(_ placed: BehaviorDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
         let e = placed.edge
         guard placed.points.count >= 2 else { return }
-        let color = e.change.color.opacity(fades(e.change) ? 0.35 : (e.change == .existing ? 0.6 : 0.95))
+        let color = e.change.color.opacity(BehaviorDiagramLogic.edgeOpacity(mode: mode, change: e.change))
         var path = Path()
         path.addLines(placed.points)
-        var dash: [CGFloat] = []
-        if e.flow == .async { dash = [6, 4] }
-        if e.change == .removed { dash = [3, 3] }
-        let width: CGFloat = e.change == .existing ? 1.3 : 2.2
+        let dash = BehaviorDiagramLogic.edgeDash(flow: e.flow, change: e.change)
+        let width = BehaviorDiagramLogic.edgeWidth(change: e.change)
         context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round, dash: dash))
 
         let tip = placed.points[placed.points.count - 1]
         let from = placed.points[placed.points.count - 2]
-        let angle = atan2(tip.y - from.y, tip.x - from.x)
-        let size: CGFloat = e.change == .existing ? 8 : 10
-        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
+        let size = BehaviorDiagramLogic.edgeArrowSize(change: e.change)
+        let wings = BehaviorDiagramLogic.arrowHeadWings(from: from, tip: tip, size: size)
         var arrow = Path()
         arrow.move(to: tip)
-        arrow.addLine(to: CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)))
-        arrow.addLine(to: CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
+        arrow.addLine(to: wings.left)
+        arrow.addLine(to: wings.right)
         arrow.closeSubpath()
         context.fill(arrow, with: .color(color))
     }
@@ -217,15 +335,14 @@ struct BehaviorDiagramView: View {
 
     private func boundaryBox(_ placed: BehaviorDiagramLayout.PlacedBoundary) -> some View {
         let b = placed.boundary
-        let outside = b.kind == .external || b.kind == .trust
-        let tint: Color = b.kind == .trust ? .orange : (outside ? .purple : .secondary)
+        let (outside, tint) = BehaviorDiagramLogic.boundaryStyle(kind: b.kind)
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 14).fill(tint.opacity(0.04))
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(tint.opacity(outside ? 0.55 : 0.35), style: StrokeStyle(lineWidth: 1.2, dash: outside ? [6, 4] : []))
             HStack(spacing: 4) {
                 Image(systemName: Self.glyph(b.kind)).font(.caption2)
-                Text((outside ? "External · " : "") + b.label.uppercased()).font(.caption2.weight(.bold)).tracking(0.5)
+                Text(BehaviorDiagramLogic.boundaryLabelText(kind: b.kind, label: b.label)).font(.caption2.weight(.bold)).tracking(0.5)
             }
             .foregroundStyle(tint)
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -392,72 +509,52 @@ private struct StageBox: View {
     /// What changed, inside the stage: both sides in Delta, one side in Before/After.
     @ViewBuilder
     private var changeDetail: some View {
-        if node.change == .changed {
-            switch mode {
-            case .delta where node.before != nil || node.after != nil:
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 2) {
-                    if let before = node.before {
-                        GridRow {
-                            Text("BEFORE").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
-                            Text(before).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    if let after = node.after {
-                        GridRow {
-                            Text("AFTER").font(.system(size: 9, weight: .bold)).foregroundStyle(node.change.color)
-                            Text(after).font(.caption.weight(.semibold)).lineLimit(1)
-                        }
+        switch BehaviorDiagramLogic.changeDetailContent(mode: mode, change: node.change, before: node.before, after: node.after) {
+        case let .beforeAndAfter(before, after):
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 2) {
+                if let before {
+                    GridRow {
+                        Text("BEFORE").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                        Text(before).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
-                .padding(.top, 2)
-            case .before where node.before != nil:
-                Text(node.before!).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            case .after where node.after != nil:
-                Text(node.after!).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            default:
-                EmptyView()
+                if let after {
+                    GridRow {
+                        Text("AFTER").font(.system(size: 9, weight: .bold)).foregroundStyle(node.change.color)
+                        Text(after).font(.caption.weight(.semibold)).lineLimit(1)
+                    }
+                }
             }
+            .padding(.top, 2)
+        case let .beforeOnly(before):
+            Text(before).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        case let .afterOnly(after):
+            Text(after).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        case .none:
+            EmptyView()
         }
     }
 
     private var caption: (text: String, symbol: String, color: Color)? {
-        switch node.kind {
-        case .external: return ("EXTERNAL", "globe", .purple)
-        case .datastore: return ("STORAGE", "cylinder.split.1x2", .secondary)
-        case .subflow: return ("SHARED FLOW" + (subflowTitle == nil ? "" : " ↗"), "arrow.triangle.merge", .secondary)
-        default: return nil
-        }
+        BehaviorDiagramLogic.stageCaption(kind: node.kind, subflowTitle: subflowTitle)
     }
 
     private var tint: Color? { BehaviorDiagramLogic.tint(mode: mode, change: node.change) }
 
     private var fill: Color {
-        if let tint { return tint.opacity(isHovered ? 0.14 : 0.08) }
-        switch node.kind {
-        case .decision: return Color.secondary.opacity(isHovered ? 0.1 : 0.05)
-        case .outcome: return Color.secondary.opacity(isHovered ? 0.12 : 0.07)
-        default: return Color(nsColor: .controlBackgroundColor).opacity(isHovered ? 0.9 : 1)
-        }
+        BehaviorDiagramLogic.stageFill(mode: mode, change: node.change, kind: node.kind, isHovered: isHovered)
     }
 
     private var stroke: Color {
-        if isSelected { return .accentColor }
-        if let tint { return tint.opacity(0.85) }
-        if node.kind == .external { return .purple.opacity(0.55) }
-        return Color.secondary.opacity(0.4)
+        BehaviorDiagramLogic.stageStroke(mode: mode, change: node.change, kind: node.kind, isSelected: isSelected)
     }
 
-    private var strokeWidth: CGFloat { isSelected ? 2.4 : (tint != nil ? 1.8 : 1) }
+    private var strokeWidth: CGFloat { BehaviorDiagramLogic.stageStrokeWidth(isSelected: isSelected, isTinted: tint != nil) }
 
     private var dash: [CGFloat] { BehaviorDiagramLogic.dash(mode: mode, change: node.change, kind: node.kind) }
 
     private var helpText: String {
-        var parts: [String] = []
-        if let detail = node.detail { parts.append(detail) }
-        if node.change != .existing { parts.append(PRGraph.flowChangeLabel(node.change)) }
-        if node.isUncertain { parts.append("Inferred, not traced in the code") }
-        parts.append("Click to inspect · double-click to go deeper · right-click to ask")
-        return parts.joined(separator: "\n")
+        BehaviorDiagramLogic.stageHelpText(detail: node.detail, change: node.change, isUncertain: node.isUncertain)
     }
 }
 
