@@ -16,7 +16,8 @@ struct WindowAccessorTests {
         #expect(coordinator.didEnterFullScreen)
     }
 
-    @Test func makeCoordinatorReturnsAFreshInstanceEachCall() {
+    /// `makeCoordinator()` is a `NSViewRepresentable` requirement, implicitly `@MainActor`.
+    @Test @MainActor func makeCoordinatorReturnsAFreshInstanceEachCall() {
         let accessor = WindowAccessor(entersFullScreen: true)
         let first = accessor.makeCoordinator()
         let second = accessor.makeCoordinator()
