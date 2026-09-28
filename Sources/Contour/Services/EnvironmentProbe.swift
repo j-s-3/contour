@@ -49,12 +49,31 @@ struct ToolStatus: Identifiable, Sendable {
     var isUsable: Bool { isInstalled && (authenticated ?? true) }
 }
 
+/// The raw, side-effecting operations `EnvironmentProbe` needs from the outside world:
+/// locating a binary and running it to completion. Exists so tests can supply canned
+/// results instead of depending on which tools happen to be installed and authenticated
+/// on the machine running the test suite — the same seam `PRSource` gives `GitHubService`.
+struct EnvironmentProbeOperations: Sendable {
+    var which: @Sendable (String) -> String?
+    var run: @Sendable (String, [String]) async throws -> String
+
+    static let live = EnvironmentProbeOperations(
+        which: { Shell.which($0) },
+        run: { try await Shell.run($0, $1) }
+    )
+}
+
 /// Resolves which external tools are actually present and usable.
 ///
 /// Exists so both the wizard and Settings show the same truth, and so a missing or
 /// unauthenticated tool surfaces before a run instead of as a failure several minutes
 /// into the pipeline.
 actor EnvironmentProbe {
+    private let operations: EnvironmentProbeOperations
+
+    init(operations: EnvironmentProbeOperations = .live) {
+        self.operations = operations
+    }
 
     func probeAll() async -> [ExternalTool: ToolStatus] {
         var result: [ExternalTool: ToolStatus] = [:]
@@ -67,7 +86,7 @@ actor EnvironmentProbe {
     }
 
     func probe(_ tool: ExternalTool) async -> ToolStatus {
-        guard let path = Shell.which(tool.rawValue) else {
+        guard let path = operations.which(tool.rawValue) else {
             return ToolStatus(tool: tool, path: nil, version: nil, authenticated: nil,
                               detail: "Not installed")
         }
@@ -102,7 +121,7 @@ actor EnvironmentProbe {
     }
 
     private func version(of tool: ExternalTool, at path: String) async -> String? {
-        guard let raw = try? await Shell.run(path, ["--version"]) else { return nil }
+        guard let raw = try? await operations.run(path, ["--version"]) else { return nil }
         return raw
             .components(separatedBy: "\n")
             .first?
@@ -110,13 +129,13 @@ actor EnvironmentProbe {
     }
 
     private func isGitHubAuthenticated() async -> Bool {
-        // `gh auth status` exits non-zero when no account is logged in, which Shell.run
-        // surfaces as a throw.
-        (try? await Shell.run("gh", ["auth", "status"])) != nil
+        // `gh auth status` exits non-zero when no account is logged in, which the `run`
+        // operation surfaces as a throw.
+        (try? await operations.run("gh", ["auth", "status"])) != nil
     }
 
     private func isJiraAuthenticated() async -> Bool {
-        (try? await Shell.run("acli", ["jira", "auth", "status"])) != nil
+        (try? await operations.run("acli", ["jira", "auth", "status"])) != nil
     }
 }
 
