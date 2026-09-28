@@ -51,7 +51,9 @@ jobs:
         # a `@MainActor` test. Fail here so new instances don't pile up silently again.
         run: |
           PATTERN="main actor-isolated .* in a (synchronous )?nonisolated context"
-          grep -E "$PATTERN" test-output.log | sed -E "s|^$GITHUB_WORKSPACE/||" | sort -u > isolation-warnings.txt || true
+          # Strip color codes and OSC-8 links so the list reads cleanly in the annotation.
+          perl -pe 's/\e\[[0-9;]*m//g; s/\e\]8;;.*?\e\\//g' test-output.log \
+            | grep -E "$PATTERN" | sed -E "s|^$GITHUB_WORKSPACE/||" | sort -u > isolation-warnings.txt || true
           if [ -s isolation-warnings.txt ]; then
             cat isolation-warnings.txt
             # One annotation carrying the whole list, so it's readable from the checks API too.
