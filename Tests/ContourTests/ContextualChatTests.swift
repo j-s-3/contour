@@ -544,6 +544,50 @@ struct ContextualChatTests {
         #expect(store.current == .summary)
     }
 
+    // MARK: - Pure view logic pulled out of ContextualChatView's body
+
+    /// A code range has no title of its own, so both places `ContextualChatView` writes
+    /// "Ask about …" (the suggestions header and the composer placeholder) fall back to a
+    /// generic phrase for it instead of showing an empty or nonsensical string.
+    @Test func subjectPhraseFallsBackForCodeAndUsesTheTitleOtherwise() {
+        #expect(ContextualChatView.subjectPhrase(for: stub(.code)) == "this code")
+        #expect(ContextualChatView.subjectPhrase(for: stub(.decision)) == "t")
+    }
+
+    /// The send button (and its enabled state) both hinge on this: whitespace-only text is
+    /// not something the reviewer meant to submit. `canSend` trims with `.whitespaces`
+    /// (preserved unchanged from the original inline check), which strips spaces and tabs
+    /// but not newlines — so a draft of only newlines is, perhaps surprisingly, sendable.
+    @Test func canSendRejectsWhitespaceOnlyDraftsAndAcceptsRealText() {
+        #expect(!ContextualChatView.canSend(""))
+        #expect(!ContextualChatView.canSend("   \t"))
+        #expect(ContextualChatView.canSend("Why?"))
+        #expect(ContextualChatView.canSend("  Why?  "))
+    }
+
+    /// `evidenceToOffer` gates the "Include the code you're viewing" button on three
+    /// things: the reviewer must actually be looking at a code reference, it must not
+    /// already be pinned to this thread, and it must not already be this thread's own
+    /// subject — each of those would make the button either meaningless or redundant.
+    @Test func evidenceToOfferGatesOnLookingAtCodeNotAlreadyPinnedAndNotTheThreadsOwnSubject() {
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
+        #expect(ContextualChatView.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
+        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
+        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
+    }
+
+    /// The pinned/expansion chip row under "You are discussing" must not draw once there is
+    /// neither a pinned ref nor an available expansion to show — an empty `FlowLayout` would
+    /// otherwise still reserve its top padding for nothing.
+    @Test func showsContextChipsIsFalseOnlyWhenBothExpansionsAndPinsAreEmpty() {
+        #expect(!ContextualChatView.showsContextChips(expansions: [], pinnedRefs: []))
+        #expect(ContextualChatView.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
+        #expect(ContextualChatView.showsContextChips(
+            expansions: [], pinnedRefs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
+        ))
+    }
+
     /// `citedPaths` pools refs from every source the review model can cite from — a source
     /// left out here means a model's bare-filename citation from that source can never
     /// resolve to a real path.

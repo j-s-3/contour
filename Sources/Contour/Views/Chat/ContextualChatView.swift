@@ -158,7 +158,7 @@ struct ContextualChatView: View {
                 }
             }
             let expansions = ChatContextBuilder.availableExpansions(for: resolved)
-            if !expansions.isEmpty || !conversation.pinnedRefs.isEmpty {
+            if Self.showsContextChips(expansions: expansions, pinnedRefs: conversation.pinnedRefs) {
                 FlowLayout(spacing: 6) {
                     ForEach(conversation.pinnedRefs) { ref in
                         chip("\(ref.display)", symbol: "pin.fill", on: true) {
@@ -199,7 +199,7 @@ struct ContextualChatView: View {
 
     private func suggestions(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Ask about \(resolved.kind == .code ? "this code" : resolved.title)")
+            Text("Ask about \(Self.subjectPhrase(for: resolved))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -261,7 +261,7 @@ struct ContextualChatView: View {
 
     private func composer(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if case .evidence(let ref) = store.current, !conversation.pinnedRefs.contains(ref), conversation.subject != .codeRef(ref) {
+            if let ref = Self.evidenceToOffer(current: store.current, pinnedRefs: conversation.pinnedRefs, subject: conversation.subject) {
                 Button { conversations.pin(ref, in: conversation) } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
@@ -274,7 +274,7 @@ struct ContextualChatView: View {
                 .foregroundStyle(Color.accentColor)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask about \(resolved.kind == .code ? "this code" : resolved.title)…",
+                TextField("Ask about \(Self.subjectPhrase(for: resolved))…",
                           text: Binding(get: { conversation.draft }, set: { conversation.draft = $0 }),
                           axis: .vertical)
                     .textFieldStyle(.plain)
@@ -294,8 +294,8 @@ struct ContextualChatView: View {
                         Image(systemName: "arrow.up.circle.fill").font(.title3)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(conversation.draft.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : Color.accentColor)
-                    .disabled(conversation.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .foregroundStyle(Self.canSend(conversation.draft) ? Color.accentColor : Color.secondary)
+                    .disabled(!Self.canSend(conversation.draft))
                     .help("Send (↩)")
                 }
             }
@@ -304,6 +304,38 @@ struct ContextualChatView: View {
             .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.separator))
         }
         .padding(12)
+    }
+
+    // MARK: - Pure view logic
+
+    /// The noun used in "Ask about …" prompts: a code range has no title of its own, so
+    /// the composer and the suggestions header both fall back to a generic phrase for it.
+    /// Pulled out because it was duplicated verbatim in two `body`-adjacent view builders.
+    nonisolated static func subjectPhrase(for resolved: ResolvedSubject) -> String {
+        resolved.kind == .code ? "this code" : resolved.title
+    }
+
+    /// Whether the composer's send affordance is enabled — a draft that's only whitespace
+    /// has nothing to send. Pulled out because the same emptiness check drove both the
+    /// button's color and its `disabled` state, previously computed twice inline.
+    nonisolated static func canSend(_ draft: String) -> Bool {
+        !draft.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The code reference to offer pinning via "Include the code you're viewing", if any.
+    /// Only offered when the reviewer is currently looking at evidence that (a) isn't
+    /// already pinned to this thread and (b) isn't already this thread's own subject —
+    /// asking about a code range and being offered to "include" that same range would be
+    /// a dead, redundant button.
+    nonisolated static func evidenceToOffer(current: NavigationTarget, pinnedRefs: [CodeRef], subject: ReviewSubject) -> CodeRef? {
+        guard case .evidence(let ref) = current, !pinnedRefs.contains(ref), subject != .codeRef(ref) else { return nil }
+        return ref
+    }
+
+    /// Whether the pinned-refs / expansion chip row under "You are discussing" has
+    /// anything to show — there is nothing to render once both are empty.
+    nonisolated static func showsContextChips(expansions: [ContextExpansion], pinnedRefs: [CodeRef]) -> Bool {
+        !expansions.isEmpty || !pinnedRefs.isEmpty
     }
 
     // MARK: - Links
