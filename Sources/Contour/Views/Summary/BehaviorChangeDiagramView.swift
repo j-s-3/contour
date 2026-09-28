@@ -87,7 +87,7 @@ private struct StageBox: View {
     @State private var hovered = false
 
     /// A step this PR introduces (in After) or removes (in Before).
-    private var isDelta: Bool { isAfter ? stage.tag == .afterOnly : stage.tag == .beforeOnly }
+    private var isDelta: Bool { StageBoxLogic.isDelta(isAfter: isAfter, tag: stage.tag) }
 
     var body: some View {
         Button(action: action) {
@@ -133,29 +133,47 @@ private struct StageBox: View {
         }
     }
 
-    private var tint: Color? {
-        switch stage.outcome {
+    private var tint: Color? { StageBoxLogic.tint(outcome: stage.outcome, isAfter: isAfter, isDelta: isDelta) }
+
+    private var fill: Color { StageBoxLogic.fill(tint: tint, hovered: hovered, isAfter: isAfter) }
+
+    private var stroke: Color { StageBoxLogic.stroke(tint: tint, isAfter: isAfter) }
+
+    private var helpText: String { StageBoxLogic.helpText(isDelta: isDelta, isAfter: isAfter, outcome: stage.outcome) }
+}
+
+/// The delta/tint/help-text derivation CLAUDE.md calls out for this file, pulled out of
+/// `StageBox`'s body so it's directly testable against plain `BehaviorStageTag`/
+/// `BehaviorOutcome` fixtures rather than through the SwiftUI `body`.
+enum StageBoxLogic {
+    /// A step this PR introduces (in After) or removes (in Before).
+    static func isDelta(isAfter: Bool, tag: BehaviorStageTag) -> Bool {
+        isAfter ? tag == .afterOnly : tag == .beforeOnly
+    }
+
+    static func tint(outcome: BehaviorOutcome?, isAfter: Bool, isDelta: Bool) -> Color? {
+        switch outcome {
         case .failure: return .red
         case .success: return .green
         case nil: return isAfter && isDelta ? .green : nil
         }
     }
 
-    private var fill: Color {
+    static func fill(tint: Color?, hovered: Bool, isAfter: Bool) -> Color {
         if let tint { return tint.opacity(hovered ? 0.16 : 0.1) }
         return Color.secondary.opacity(hovered ? 0.12 : (isAfter ? 0.07 : 0.04))
     }
 
-    private var stroke: Color {
+    static func stroke(tint: Color?, isAfter: Bool) -> Color {
         if let tint { return tint.opacity(0.55) }
         return Color.secondary.opacity(isAfter ? 0.3 : 0.25)
     }
 
-    private var helpText: String {
+    static func helpText(isDelta: Bool, isAfter: Bool, outcome: BehaviorOutcome?) -> String {
         var parts: [String] = []
         if isDelta { parts.append(isAfter ? "New in this PR" : "No longer happens") }
-        if stage.outcome == .failure { parts.append("Fails") }
-        if stage.outcome == .success { parts.append("Succeeds") }
+        if outcome == .failure { parts.append("Fails") }
+        if outcome == .success { parts.append("Succeeds") }
         parts.append("Click to open · right-click to ask about it")
         return parts.joined(separator: " · ")
     }
