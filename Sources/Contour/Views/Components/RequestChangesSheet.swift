@@ -22,7 +22,7 @@ struct RequestChangesSheet: View {
                 .frame(minHeight: 120)
                 .scrollContentBackground(.hidden)
                 .overlay(alignment: .topLeading) {
-                    if comment.isEmpty {
+                    if Self.showsPlaceholder(comment: comment) {
                         Text("What should change?")
                             .foregroundStyle(.tertiary)
                             .padding(.leading, 5)
@@ -55,5 +55,13 @@ struct RequestChangesSheet: View {
     static func submit(comment: String, onSubmit: (String) -> Void, dismiss: () -> Void) {
         onSubmit(comment)
         dismiss()
+    }
+
+    /// Whether the "What should change?" placeholder shows over the empty editor. Pulled
+    /// out alongside `submit` so both bits of this file's own logic are directly testable;
+    /// everything else below is declarative SwiftUI layout with no hosting environment to
+    /// exercise it under `swift test` (see `RequestChangesSheetTests.swift`).
+    static func showsPlaceholder(comment: String) -> Bool {
+        comment.isEmpty
     }
 }
