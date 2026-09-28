@@ -63,10 +63,10 @@ struct DiffView: View {
                 Button {
                     collapsed = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: collapsed)
                 } label: {
-                    Image(systemName: collapsed.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                    Image(systemName: DiffViewLogic.collapseAllSymbol(collapsed: collapsed))
                 }
                 .buttonStyle(.plain)
-                .help(collapsed.isEmpty ? "Collapse all files" : "Expand all files")
+                .help(DiffViewLogic.collapseAllHelp(collapsed: collapsed))
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
             Divider()
@@ -92,7 +92,7 @@ struct DiffView: View {
                 }
                 .buttonStyle(.plain)
                 .help(file.path)
-                .listRowBackground(currentFile == file.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                .listRowBackground(DiffViewLogic.rowBackground(fileID: file.id, current: currentFile))
             }
             .listStyle(.plain)
         }
@@ -130,7 +130,7 @@ struct DiffView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.right")
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .rotationEffect(.degrees(DiffViewLogic.chevronRotation(isCollapsed: isCollapsed)))
                     .foregroundStyle(.secondary)
                     .frame(width: 12)
                 Group {
@@ -142,7 +142,7 @@ struct DiffView: View {
                 }
                 .font(.system(.callout, design: .monospaced).weight(.medium))
                 .lineLimit(1).truncationMode(.middle)
-                if file.status != .modified {
+                if DiffViewLogic.showsStatusBadge(file) {
                     Text(file.status.label)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(file.status.color)
@@ -158,7 +158,7 @@ struct DiffView: View {
         .buttonStyle(.plain)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
-        .help(isCollapsed ? "Expand file" : "Collapse file")
+        .help(DiffViewLogic.fileToggleHelp(isCollapsed: isCollapsed))
         .id(fileAnchor(file))
     }
 
@@ -210,18 +210,18 @@ struct DiffView: View {
 
     private func lineRow(_ line: DiffLine, in file: DiffFile, gutter: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            Text(line.oldLine.map(String.init) ?? "")
+            Text(DiffViewLogic.lineNumberText(line.oldLine))
                 .frame(width: gutter, alignment: .trailing)
                 .foregroundStyle(.tertiary)
-            Text(line.newLine.map(String.init) ?? "")
+            Text(DiffViewLogic.lineNumberText(line.newLine))
                 .frame(width: gutter, alignment: .trailing)
                 .foregroundStyle(.tertiary)
             Text(DiffViewLogic.marker(line.kind))
                 .frame(width: 22, alignment: .center)
                 .foregroundStyle(DiffViewLogic.markerColor(line.kind))
-            Text(line.text.isEmpty ? " " : line.text)
-                .foregroundStyle(line.kind == .noNewlineMarker ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .italic(line.kind == .noNewlineMarker)
+            Text(DiffViewLogic.displayText(line))
+                .foregroundStyle(DiffViewLogic.isMuted(line) ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .italic(DiffViewLogic.isMuted(line))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -347,6 +347,54 @@ enum DiffViewLogic {
         return (nil, file.path)
     }
 
+    static func collapseAllSymbol(collapsed: Set<Int>) -> String {
+        collapsed.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical"
+    }
+
+    static func collapseAllHelp(collapsed: Set<Int>) -> String {
+        collapsed.isEmpty ? "Collapse all files" : "Expand all files"
+    }
+
+    /// The file list highlights the row of the file the view last jumped or landed on.
+    static func rowBackground(fileID: Int, current: Int?) -> Color {
+        current == fileID ? Color.accentColor.opacity(0.15) : Color.clear
+    }
+
+    /// Disclosure chevron: pointing right when collapsed, down when open.
+    static func chevronRotation(isCollapsed: Bool) -> Double { isCollapsed ? 0 : 90 }
+
+    static func fileToggleHelp(isCollapsed: Bool) -> String { isCollapsed ? "Expand file" : "Collapse file" }
+
+    /// Only non-modified files get a status pill next to their name.
+    static func showsStatusBadge(_ file: DiffFile) -> Bool { file.status != .modified }
+
+    /// A gutter cell: the line number, or blank on the side the line doesn't exist.
+    static func lineNumberText(_ number: Int?) -> String { number.map(String.init) ?? "" }
+
+    /// An empty line still needs a space so its row keeps a line's height.
+    static func displayText(_ line: DiffLine) -> String { line.text.isEmpty ? " " : line.text }
+
+    /// The "no newline at end of file" marker is drawn secondary and italic, not as code.
+    static func isMuted(_ line: DiffLine) -> Bool { line.kind == .noNewlineMarker }
+
+    static func statusSymbol(_ status: DiffFileStatus) -> String {
+        switch status {
+        case .modified: return "pencil.circle"
+        case .added: return "plus.circle"
+        case .deleted: return "minus.circle"
+        case .renamed: return "arrow.right.circle"
+        case .copied: return "doc.on.doc"
+        }
+    }
+
+    static func citationSymbol(_ kind: DiffCitation.Kind) -> String {
+        kind == .decision ? "checklist" : "arrow.triangle.branch"
+    }
+
+    static func citationHelp(_ citation: DiffCitation) -> String {
+        (citation.kind == .decision ? "Decision: " : "Flow stage: ") + citation.title
+    }
+
     /// The citations shown inline on a hunk header versus rolled into the "+N" overflow menu.
     static func visibleCitations(_ citations: [DiffCitation], max: Int = 3) -> (shown: [DiffCitation], overflow: [DiffCitation]) {
         guard citations.count > max else { return (citations, []) }
@@ -375,15 +423,7 @@ private struct StatusGlyph: View {
             .frame(width: 14)
             .help(status.label)
     }
-    private var symbol: String {
-        switch status {
-        case .modified: return "pencil.circle"
-        case .added: return "plus.circle"
-        case .deleted: return "minus.circle"
-        case .renamed: return "arrow.right.circle"
-        case .copied: return "doc.on.doc"
-        }
-    }
+    private var symbol: String { DiffViewLogic.statusSymbol(status) }
 }
 
 /// A decision or flow stage that cites this hunk — one click back up to the concept.
@@ -393,7 +433,7 @@ private struct CitationBadge: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Image(systemName: citation.kind == .decision ? "checklist" : "arrow.triangle.branch")
+                Image(systemName: DiffViewLogic.citationSymbol(citation.kind))
                 Text(citation.title).lineLimit(1)
             }
             .font(.caption)
@@ -403,7 +443,7 @@ private struct CitationBadge: View {
         .foregroundStyle(.blue)
         .padding(.horizontal, 6).padding(.vertical, 2)
         .background(Color.blue.opacity(0.08), in: Capsule())
-        .help((citation.kind == .decision ? "Decision: " : "Flow stage: ") + citation.title)
+        .help(DiffViewLogic.citationHelp(citation))
     }
 }
 
