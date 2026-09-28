@@ -1,0 +1,41 @@
+name: Quick coverage check (scratch, temporary)
+
+on:
+  push:
+    branches: [scratch/quick-coverage-check]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage only
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 27
+        run: sudo xcode-select -s /Applications/Xcode_27.app
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test --enable-code-coverage
+
+      - name: Code coverage report
+        run: |
+          TEST_BINARY="$(find .build -type f -path '*.xctest/Contents/MacOS/*' -print -quit)"
+          PROFDATA="$(find .build -type f -name 'default.profdata' -print -quit)"
+
+          if [ -z "$TEST_BINARY" ] || [ -z "$PROFDATA" ]; then
+            echo "::error::Could not locate test binary or coverage profile under .build"
+            find .build \( -iname '*.xctest' -o -iname '*.profdata' \)
+            exit 1
+          fi
+
+          xcrun llvm-cov report "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            -ignore-filename-regex='\.build|Tests/'
