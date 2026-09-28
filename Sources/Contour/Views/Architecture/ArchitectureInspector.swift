@@ -33,7 +33,7 @@ struct ArchitectureInspector: View {
 
     @ViewBuilder
     private func partDetail(_ part: ComponentNode) -> some View {
-        header(eyebrow: eyebrow(for: part), title: part.title, subject: .component(part.id))
+        header(eyebrow: Self.eyebrow(for: part, in: graph), title: part.title, subject: .component(part.id))
 
         if let purpose = part.summary {
             section("Purpose") { statement(purpose) }
@@ -86,7 +86,9 @@ struct ArchitectureInspector: View {
         askButton(.component(part.id))
     }
 
-    private func eyebrow(for part: ComponentNode) -> String {
+    /// Pulled out of the view (static, taking `graph` explicitly) so it's directly
+    /// testable, per the "extract inspector content-selection/formatting logic" guidance.
+    static func eyebrow(for part: ComponentNode, in graph: PRGraph) -> String {
         let kind = part.parentId.flatMap(graph.component).map { "Part of \($0.title)" } ?? "Part"
         switch part.changeKind {
         case .new: return "\(kind) · New"
@@ -96,7 +98,7 @@ struct ArchitectureInspector: View {
         }
     }
 
-    private func unchangedLine(_ part: ComponentNode) -> String {
+    static func unchangedLine(_ part: ComponentNode) -> String {
         switch part.changeKind {
         case .new: return "Added by this PR."
         case .removed: return "Removed by this PR."
@@ -176,7 +178,7 @@ struct ArchitectureInspector: View {
         askButton(.relationship(e.id))
     }
 
-    private func properties(_ e: ArchitectureEdge) -> String {
+    static func properties(_ e: ArchitectureEdge) -> String {
         var parts = [e.flow == .async ? "Asynchronous" : "Synchronous"]
         if e.isTrustBoundary { parts.append("crosses a trust boundary") }
         if e.onCriticalPath { parts.append("on a critical path") }
