@@ -56,6 +56,14 @@ enum AnalysisResolution {
         let step = (target - current) * min(max(dt, 0) / 0.5, 1)
         return min(current + step, target)
     }
+
+    /// The resolution Reduce Motion draws: `target(stage:elapsed:)` quantized down to
+    /// whole ring-steps, so a ring fades in all at once (via `.animation`) instead of
+    /// animating a line growing across it.
+    static func steppedTarget(stage: PipelineStage, elapsed: TimeInterval, ringCount: Int) -> Double {
+        let steps = Double(ringCount + 1)
+        return (target(stage: stage, elapsed: elapsed) * steps).rounded(.down) / steps
+    }
 }
 
 /// The large mark shown while a PR is analyzed, resolving as the pipeline advances.
@@ -70,8 +78,8 @@ struct AnalyzingMark: View {
         Group {
             if reduceMotion {
                 // No drawing motion: whole rings fade in, one at a time, as stages complete.
-                let rings = Double(ContourMarkGeometry.ringCount + 1)
-                let stepped = (AnalysisResolution.target(stage: stage, elapsed: 0) * rings).rounded(.down) / rings
+                let stepped = AnalysisResolution.steppedTarget(stage: stage, elapsed: 0,
+                                                                ringCount: ContourMarkGeometry.ringCount)
                 ContourMarkView(resolution: stepped, drawsProgressively: false)
                     .animation(.easeInOut(duration: 0.8), value: stepped)
             } else {
