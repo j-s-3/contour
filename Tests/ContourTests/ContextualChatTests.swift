@@ -446,6 +446,44 @@ struct ContextualChatTests {
         ])
     }
 
+    @Test func everyBulletMarkerIsRecognized() {
+        #expect(ChatMarkdownView.blocks("- dash") == [.bullet("dash")])
+        #expect(ChatMarkdownView.blocks("* star") == [.bullet("star")])
+        #expect(ChatMarkdownView.blocks("• dot") == [.bullet("dot")])
+    }
+
+    /// Blank lines separate paragraphs; consecutive plain lines within one join with a
+    /// space rather than staying as separate lines.
+    @Test func blankLinesSeparateParagraphsAndJoinLinesWithinOne() {
+        let blocks = ChatMarkdownView.blocks("First line\nsecond line\n\nSecond paragraph")
+        #expect(blocks == [.paragraph("First line second line"), .paragraph("Second paragraph")])
+    }
+
+    /// An unterminated code fence at the end of the text still renders as code, per the
+    /// comment on `blocks(_:)` — it must not silently vanish.
+    @Test func anUnterminatedCodeFenceAtTheEndStillRendersAsCode() {
+        let blocks = ChatMarkdownView.blocks("Before\n```\nlet x = 1\nlet y = 2")
+        #expect(blocks == [.paragraph("Before"), .code("let x = 1\nlet y = 2")])
+    }
+
+    @Test func headingStripsAnyNumberOfHashesAndSurroundingWhitespace() {
+        #expect(ChatMarkdownView.blocks("### Title") == [.heading("Title")])
+        #expect(ChatMarkdownView.blocks("#No space") == [.heading("No space")])
+    }
+
+    /// A numbered marker needs digits before the dot and a space after it — "1.5" or a
+    /// trailing dot with no following space isn't a list item.
+    @Test func numberedMarkerRequiresDigitsThenDotThenSpace() {
+        #expect(ChatMarkdownView.blocks("1. first") == [.numbered("1.", "first")])
+        #expect(ChatMarkdownView.blocks("Version 1.5 shipped") == [.paragraph("Version 1.5 shipped")])
+        #expect(ChatMarkdownView.blocks("abc. not numbered") == [.paragraph("abc. not numbered")])
+    }
+
+    @Test func emptyTextProducesNoBlocks() {
+        #expect(ChatMarkdownView.blocks("") == [])
+        #expect(ChatMarkdownView.blocks("   \n\n  ") == [])
+    }
+
     // MARK: - Review progress
 
     /// Only a thread the reviewer wrote in counts as talking a question through — opening
