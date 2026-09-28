@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import Contour
 
@@ -7,6 +8,17 @@ import Testing
 /// additionally takes `graph` explicitly instead of reading `self.graph`) so it's directly
 /// testable. The view's `body` and its section/row builders read `GraphStore`/render real
 /// SwiftUI content and stay untested here.
+///
+/// Issue #104 reopened this file at 7.08% after that first pass, because the pass only
+/// covered `eyebrow`/`unchangedLine`/`properties`/`changeWord` and the view had grown a
+/// "Connections", "Also between these parts" and "Implementation" section since. This
+/// second pass pulls those sections' derivation/formatting logic out the same way:
+/// `showsUnchangedNote`, the `connection*` row helpers, `relationshipEyebrow`,
+/// `crossesLabel`, `relationshipThisPRNote`, `foldedEdgeLine`, `sharedFlows`,
+/// `implementationCountLabel` and `mergedRefs`. What's left in the view body — `ScrollView`,
+/// `VStack`, `ForEach`, `section`/`header`/`linkRow` builders reading `GraphStore` and
+/// `@Environment(\.reviewActions)` — renders real SwiftUI content with no UI-testing
+/// infrastructure in this suite, and stays untested here as in the first pass.
 struct ArchitectureInspectorTests {
 
     private func minimalGraph(components: [ComponentNode]) -> PRGraph {
@@ -77,5 +89,146 @@ struct ArchitectureInspectorTests {
         #expect(ArchitectureInspector.changeWord(.changed) == "Changed" && EdgeChange.changed.color == .blue)
         #expect(ArchitectureInspector.changeWord(.existing) == "Existing" && EdgeChange.existing.color == .secondary)
         #expect(ArchitectureInspector.changeWord(.removed) == "Removed" && EdgeChange.removed.color == .red)
+    }
+
+    // MARK: - showsUnchangedNote
+
+    @Test func showsUnchangedNoteWhenThereIsNoDeltaAtAll() {
+        let part = ComponentNode(id: "p", title: "P", changeKind: .unchanged)
+        #expect(ArchitectureInspector.showsUnchangedNote(part))
+    }
+
+    @Test func showsUnchangedNoteWhenOnlyOneSideOfBeforeAfterIsPresent() {
+        let onlyBefore = ComponentNode(id: "p", title: "P", changeKind: .changed,
+                                        delta: ResponsibilityDelta(before: "old", after: nil))
+        let onlyAfter = ComponentNode(id: "p", title: "P", changeKind: .changed,
+                                       delta: ResponsibilityDelta(before: nil, after: "new"))
+        #expect(ArchitectureInspector.showsUnchangedNote(onlyBefore))
+        #expect(ArchitectureInspector.showsUnchangedNote(onlyAfter))
+    }
+
+    @Test func doesNotShowUnchangedNoteWithASummaryOrACompleteBeforeAfterPair() {
+        let withSummary = ComponentNode(id: "p", title: "P", changeKind: .changed,
+                                         delta: ResponsibilityDelta(summary: Statement(text: "x", provenance: .fact)))
+        let withPair = ComponentNode(id: "p", title: "P", changeKind: .changed,
+                                      delta: ResponsibilityDelta(before: "old", after: "new"))
+        #expect(!ArchitectureInspector.showsUnchangedNote(withSummary))
+        #expect(!ArchitectureInspector.showsUnchangedNote(withPair))
+    }
+
+    // MARK: - Connection row content
+
+    @Test func connectionIconPointsDownForIncomingAndUpForOutgoing() {
+        #expect(ArchitectureInspector.connectionIcon(direction: "from") == "arrow.down.right")
+        #expect(ArchitectureInspector.connectionIcon(direction: "to") == "arrow.up.right")
+    }
+
+    @Test func connectionLabelFallsBackToAnEmDashWhenUnlabeled() {
+        #expect(ArchitectureInspector.connectionLabel(edge(flow: .sync)) == "l")
+        #expect(ArchitectureInspector.connectionLabel(
+            ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "—")
+    }
+
+    @Test func connectionLabelWeightAndColorAreQuietOnlyForExisting() {
+        #expect(ArchitectureInspector.connectionLabelWeight(.existing) == .regular)
+        #expect(ArchitectureInspector.connectionLabelColor(.existing) == .primary)
+        #expect(ArchitectureInspector.connectionLabelWeight(.new) == .semibold)
+        #expect(ArchitectureInspector.connectionLabelColor(.new) == EdgeChange.new.color)
+    }
+
+    @Test func connectionCaptionJoinsDirectionAndTitle() {
+        #expect(ArchitectureInspector.connectionCaption(direction: "from", otherTitle: "Indexer") == "from Indexer")
+    }
+
+    // MARK: - relationshipEyebrow / crossesLabel / relationshipThisPRNote
+
+    @Test func relationshipEyebrowIsUnqualifiedOnlyForExisting() {
+        #expect(ArchitectureInspector.relationshipEyebrow(.existing) == "Relationship")
+        #expect(ArchitectureInspector.relationshipEyebrow(.new) == "Relationship · New")
+        #expect(ArchitectureInspector.relationshipEyebrow(.changed) == "Relationship · Changed")
+        #expect(ArchitectureInspector.relationshipEyebrow(.removed) == "Relationship · Removed")
+    }
+
+    @Test func crossesLabelFallsBackToNotLabeled() {
+        #expect(ArchitectureInspector.crossesLabel(edge(flow: .sync)) == "l")
+        #expect(ArchitectureInspector.crossesLabel(ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "Not labeled")
+    }
+
+    @Test func relationshipThisPRNotePrefersANonEmptyNote() {
+        var e = edge(flow: .sync)
+        e.note = "Now buffers the upload."
+        e.change = .existing
+        let note = ArchitectureInspector.relationshipThisPRNote(e)
+        #expect(note?.text == "Now buffers the upload.")
+        #expect(note?.isFallback == false)
+    }
+
+    @Test func relationshipThisPRNoteFallsBackForAnExistingRelationshipWithNoNote() {
+        var e = edge(flow: .sync)
+        e.note = nil
+        e.change = .existing
+        let note = ArchitectureInspector.relationshipThisPRNote(e)
+        #expect(note?.text == "Not changed by this PR — drawn for context.")
+        #expect(note?.isFallback == true)
+    }
+
+    @Test func relationshipThisPRNoteIsNilForANewRelationshipWithNoNote() {
+        var e = edge(flow: .sync)
+        e.note = nil
+        e.change = .new
+        #expect(ArchitectureInspector.relationshipThisPRNote(e) == nil)
+    }
+
+    @Test func relationshipThisPRNoteTreatsAnEmptyNoteAsAbsent() {
+        var e = edge(flow: .sync)
+        e.note = ""
+        e.change = .new
+        #expect(ArchitectureInspector.relationshipThisPRNote(e) == nil)
+    }
+
+    // MARK: - foldedEdgeLine / sharedFlows
+
+    @Test func foldedEdgeLineFormatsAnArrowBetweenTitles() {
+        #expect(ArchitectureInspector.foldedEdgeLine(fromTitle: "Web", toTitle: "API", label: "request")
+                == "Web → API: request")
+    }
+
+    @Test func sharedFlowsKeepsOnlyFlowsPresentOnBothSidesInToFlowsOrder() {
+        let f1 = FlowNode(id: "f1", title: "Checkout")
+        let f2 = FlowNode(id: "f2", title: "Search")
+        let f3 = FlowNode(id: "f3", title: "Signup")
+        let shared = ArchitectureInspector.sharedFlows([f2, f1], [f3, f1, f2])
+        #expect(shared.map(\.id) == ["f1", "f2"])
+    }
+
+    @Test func sharedFlowsIsEmptyWithNoOverlap() {
+        let f1 = FlowNode(id: "f1", title: "Checkout")
+        let f2 = FlowNode(id: "f2", title: "Search")
+        #expect(ArchitectureInspector.sharedFlows([f1], [f2]).isEmpty)
+    }
+
+    // MARK: - implementationCountLabel / mergedRefs
+
+    @Test func implementationCountLabelIsNilWhenThereIsNothingToCount() {
+        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 0, nameCount: 0) == nil)
+    }
+
+    @Test func implementationCountLabelIsSingularForExactlyOne() {
+        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 1, nameCount: 0) == "1 implementation component")
+        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 0, nameCount: 1) == "1 implementation component")
+    }
+
+    @Test func implementationCountLabelIsPluralForMoreThanOneAndSumsBothCounts() {
+        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 2, nameCount: 1) == "3 implementation components")
+    }
+
+    @Test func mergedRefsDeduplicatesPartAndImplementationRefsInOrder() {
+        let a = CodeRef(path: "a.swift", startLine: 1, endLine: 1)
+        let b = CodeRef(path: "b.swift", startLine: 2, endLine: 2)
+        #expect(ArchitectureInspector.mergedRefs(partRefs: [a, b], implRefs: [b, a]) == [a, b])
+    }
+
+    @Test func mergedRefsIsEmptyWhenBothSidesAreEmpty() {
+        #expect(ArchitectureInspector.mergedRefs(partRefs: [], implRefs: []).isEmpty)
     }
 }
