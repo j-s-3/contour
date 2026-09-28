@@ -658,4 +658,32 @@ struct ContextualChatTests {
         store.send("   \n  ", in: conversation, graph: graph, checkout: nil, harnessID: nil)
         #expect(conversation.messages.isEmpty)
     }
+
+    /// With everything resolvable and `CONTOUR_MOCK_ANALYSIS=1`, `send` runs its real
+    /// streaming path end to end: it builds the context document, starts the background
+    /// task, and folds `.activity`/`.delta`/`.final` events into the placeholder reply —
+    /// exactly what a reviewer sees while an answer streams in, without a real harness.
+    @Test @MainActor func sendStreamsAMockAnswerIntoThePlaceholderReply() async throws {
+        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
+        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
+
+        let store = ConversationStore()
+        let checkout = RepoCheckout(rootDir: URL(fileURLWithPath: "/tmp"), headSha: "a", baseSha: "b")
+        let conversation = store.open(.decision("index-on-publish"))
+        store.send("Why retries?", in: conversation, graph: graph, checkout: checkout, harnessID: .claude)
+
+        #expect(conversation.isResponding, "the task starts synchronously")
+        for _ in 0..<50 {
+            if !conversation.isResponding { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(!conversation.isResponding, "the mock stream finishes on its own")
+        #expect(conversation.activity == nil)
+
+        let reply = try #require(conversation.messages.last)
+        #expect(reply.role == .assistant)
+        #expect(!reply.isStreaming)
+        #expect(reply.error == nil)
+        #expect(reply.text.contains("Why retries?"))
+    }
 }
