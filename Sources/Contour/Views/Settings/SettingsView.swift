@@ -79,16 +79,7 @@ struct SettingsView: View {
     }
 
     private func label(for id: HarnessID) -> String {
-        guard let status = statuses[harnessTool(id)] else { return id.displayName }
-        guard status.isInstalled else { return "\(id.displayName) — not installed" }
-        return status.version.map { "\(id.displayName) — \($0)" } ?? id.displayName
-    }
-
-    private func harnessTool(_ id: HarnessID) -> ExternalTool {
-        switch id {
-        case .pi: return .pi
-        case .claude: return .claude
-        }
+        SettingsViewLogic.label(for: id, statuses: statuses)
     }
 
     // MARK: - Sources
@@ -158,20 +149,9 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var githubFooter: String {
-        switch preferences.resolvedGitHubAccess {
-        case .auto:
-            return "Uses gh when it's installed and signed in (private repos, 5000 requests/hour); otherwise the anonymous API, which reads public PRs with no setup at all."
-        case .gh:
-            return "Always uses gh. Public PRs will fail if gh isn't signed in."
-        case .anonymous:
-            return "Always uses the anonymous API: public PRs only, 60 requests/hour. Useful for checking that the no-setup path still works."
-        }
-    }
+    private var githubFooter: String { SettingsViewLogic.githubFooter(for: preferences.resolvedGitHubAccess) }
 
-    private var jiraLabel: String {
-        preferences.jiraAvailable ? TrackerID.jira.displayName : "Jira — acli not found"
-    }
+    private var jiraLabel: String { SettingsViewLogic.jiraLabel(jiraAvailable: preferences.jiraAvailable) }
 
     // MARK: - Window
 
@@ -229,7 +209,55 @@ struct ToolStatusRow: View {
         }
     }
 
-    private var symbol: String {
+    private var symbol: String { SettingsViewLogic.symbol(for: status, tool: tool) }
+
+    /// Optional tools that are simply absent are grey, not red: their absence is a
+    /// feature Contour does without, not a failure.
+    private var tint: Color { SettingsViewLogic.tint(for: status, tool: tool) }
+}
+
+/// The status-derivation and precedence-aware footer logic CLAUDE.md calls out for this
+/// file, pulled out of `SettingsView`/`ToolStatusRow`'s bodies so it's directly testable
+/// against plain `ToolStatus`/`ExternalTool`/`HarnessID` fixtures rather than through the
+/// SwiftUI `body`.
+enum SettingsViewLogic {
+    /// The harness a picker row maps to.
+    static func harnessTool(_ id: HarnessID) -> ExternalTool {
+        switch id {
+        case .pi: return .pi
+        case .claude: return .claude
+        }
+    }
+
+    /// A harness picker row's label: its name alone, "not installed", or its detected
+    /// version, depending on what the probe found.
+    static func label(for id: HarnessID, statuses: [ExternalTool: ToolStatus]) -> String {
+        guard let status = statuses[harnessTool(id)] else { return id.displayName }
+        guard status.isInstalled else { return "\(id.displayName) — not installed" }
+        return status.version.map { "\(id.displayName) — \($0)" } ?? id.displayName
+    }
+
+    /// What each GitHub access mode means for the reviewer, shown under the picker.
+    static func githubFooter(for mode: GitHubAccessMode) -> String {
+        switch mode {
+        case .auto:
+            return "Uses gh when it's installed and signed in (private repos, 5000 requests/hour); otherwise the anonymous API, which reads public PRs with no setup at all."
+        case .gh:
+            return "Always uses gh. Public PRs will fail if gh isn't signed in."
+        case .anonymous:
+            return "Always uses the anonymous API: public PRs only, 60 requests/hour. Useful for checking that the no-setup path still works."
+        }
+    }
+
+    /// The Jira picker row's label — plain when acli is available, else the reason it's
+    /// disabled.
+    static func jiraLabel(jiraAvailable: Bool) -> String {
+        jiraAvailable ? TrackerID.jira.displayName : "Jira — acli not found"
+    }
+
+    /// A detected-tool row's glyph: unknown (still probing), usable, installed but not
+    /// usable, or absent — red only when the tool is required.
+    static func symbol(for status: ToolStatus?, tool: ExternalTool) -> String {
         guard let status else { return "circle.dotted" }
         if status.isUsable { return "checkmark.circle.fill" }
         if status.isInstalled { return "exclamationmark.triangle.fill" }
@@ -238,7 +266,7 @@ struct ToolStatusRow: View {
 
     /// Optional tools that are simply absent are grey, not red: their absence is a
     /// feature Contour does without, not a failure.
-    private var tint: Color {
+    static func tint(for status: ToolStatus?, tool: ExternalTool) -> Color {
         guard let status else { return .secondary }
         if status.isUsable { return .green }
         if status.isInstalled { return .orange }
