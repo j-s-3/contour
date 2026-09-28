@@ -55,15 +55,15 @@ struct AnalysisMetricsTests {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("metrics.jsonl")
-        let metrics = AnalysisMetrics(pr: "acme/repo#1", startedAt: Date(timeIntervalSince1970: 0))
 
-        metrics.append(to: url)
-        metrics.append(to: url)
+        AnalysisMetrics(pr: "acme/repo#1", startedAt: Date(timeIntervalSince1970: 0)).append(to: url)
+        AnalysisMetrics(pr: "acme/repo#2", startedAt: Date(timeIntervalSince1970: 0)).append(to: url)
 
         let contents = try String(contentsOf: url, encoding: .utf8)
         let lines = contents.split(separator: "\n")
-        #expect(lines.count == 2)
-        #expect(lines.allSatisfy { $0.contains("acme/repo#1") })
+        #expect(lines.count == 2, "got: \(contents)")
+        #expect(lines.first?.contains("acme/repo#1") == true, "got: \(contents)")
+        #expect(lines.last?.contains("acme/repo#2") == true, "got: \(contents)")
     }
 
     @Test func fileURLPointsAtMetricsJSONLUnderContourSupport() {
