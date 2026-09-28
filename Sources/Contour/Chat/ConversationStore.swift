@@ -14,7 +14,12 @@ struct ChatMessage: Identifiable, Hashable, Sendable {
 /// One contextual thread, anchored to the thing it was opened on. The subject never
 /// changes — asking about something else opens (or returns to) that thing's own thread —
 /// so every conversation keeps the context it started with.
+/// `@MainActor` for the same reason as `GraphStore`: `send(_:in:...)`'s background `Task`
+/// and this store's other mutating methods (`open`, `remove`, `pin`, ...) touch the same
+/// stored properties, so leaving only `send` isolated is a real cross-thread race once
+/// anything drives both concurrently, not just a theoretical one.
 @Observable
+@MainActor
 final class Conversation: Identifiable {
     let id = UUID()
     let subject: ReviewSubject
@@ -39,6 +44,7 @@ final class Conversation: Identifiable {
 /// session (reset when a new PR loads), independent of navigation — moving around the
 /// review, opening code, and coming back never loses a thread.
 @Observable
+@MainActor
 final class ConversationStore {
     private(set) var conversations: [Conversation] = []
     var activeId: UUID?

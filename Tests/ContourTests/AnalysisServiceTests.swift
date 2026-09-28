@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import Contour
 
@@ -72,14 +73,16 @@ struct AnalysisServiceMockPathTests {
     /// on to tell a reviewer why analysis finished suspiciously fast.
     @Test func mockPathReturnsCannedFixtureImmediatelyWhenUnscaled() async throws {
         let service = AnalysisService(harness: PiHarness(), mock: AnalysisService.MockOptions())
-        var progressLines: [String] = []
+        // `onProgress` is `@Sendable`, so the lines it collects need a lock rather than a
+        // captured `var`.
+        let progressLines = OSAllocatedUnfairLock(initialState: [String]())
         let result = try await service.runStage(
             prompt: "analyze", cwd: URL(fileURLWithPath: NSTemporaryDirectory()),
             tier: .fast, stage: .understanding,
-            onProgress: { progressLines.append($0.detail) }
+            onProgress: { progress in progressLines.withLock { $0.append(progress.detail) } }
         )
         #expect(result["intent"] != nil)
-        #expect(progressLines == ["using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"])
+        #expect(progressLines.withLock { $0 } == ["using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"])
     }
 
     /// `CONTOUR_MOCK_LATENCY` makes a mock stage take real (scaled) time and, for a streamed

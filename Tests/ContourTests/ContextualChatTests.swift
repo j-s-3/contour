@@ -6,6 +6,7 @@ import SwiftUI
 /// The contract behind "the reviewer never has to explain what they are looking at":
 /// clicking a thing resolves to that thing plus its parents and neighbors, and the answer's
 /// citations come back as clickable links.
+@MainActor
 struct ContextualChatTests {
     let graph = ContourSampleData.publishTriggeredReindex
 

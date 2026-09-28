@@ -7,14 +7,12 @@ import Foundation
 /// earlier attempt (#169) drove that with a synthetic `NSItemProvider` from a synchronous
 /// `@Test` and crashed the CI test process — the completion handler fires on a background
 /// queue, and returning from a synchronous test before it runs raced its teardown. Awaiting
-/// delivery through `withCheckedContinuation` from an `async` `@Test`, as done below,
-/// keeps the test alive until the handler actually resumes it, which is the documented
+/// delivery from an `async` `@Test` (`loadPullRequest` bridges the handler through
+/// `withCheckedContinuation` itself) keeps the test alive until the handler actually resumes it, which is the documented
 /// way to drive this API outside a real drag session.
 struct PRDropTargetTests {
-    @MainActor
-    @Test func completesWithNilWhenTheProviderCarriesNeitherAURLNorText() {
-        var result: String? = "not yet completed"
-        PRDropTarget.loadPullRequest(from: NSItemProvider()) { result = $0 }
+    @Test func completesWithNilWhenTheProviderCarriesNeitherAURLNorText() async {
+        let result = await PRDropTarget.loadPullRequest(from: NSItemProvider())
         #expect(result == nil)
     }
 
@@ -22,7 +20,7 @@ struct PRDropTargetTests {
     /// `PRLink.pullRequestURL` to the canonical form.
     @Test func aPullRequestURLProviderResolvesToTheCanonicalLink() async {
         let provider = NSItemProvider(object: URL(string: "https://github.com/sharkdp/bat/pull/3877")! as NSURL)
-        let result = await Self.loadPullRequest(from: provider)
+        let result = await PRDropTarget.loadPullRequest(from: provider)
         #expect(result == "https://github.com/sharkdp/bat/pull/3877")
     }
 
@@ -30,7 +28,7 @@ struct PRDropTargetTests {
     /// opening an unrelated page as a review.
     @Test func aNonPullRequestURLProviderCompletesWithNil() async {
         let provider = NSItemProvider(object: URL(string: "https://example.com/sharkdp/bat")! as NSURL)
-        let result = await Self.loadPullRequest(from: provider)
+        let result = await PRDropTarget.loadPullRequest(from: provider)
         #expect(result == nil)
     }
 
@@ -38,22 +36,14 @@ struct PRDropTargetTests {
     /// searches the whole string rather than requiring it to be nothing but the URL.
     @Test func aTextProviderWithSurroundingProseFindsTheLink() async {
         let provider = NSItemProvider(object: "please review https://github.com/sharkdp/bat/pull/3877 today" as NSString)
-        let result = await Self.loadPullRequest(from: provider)
+        let result = await PRDropTarget.loadPullRequest(from: provider)
         #expect(result == "https://github.com/sharkdp/bat/pull/3877")
     }
 
     /// Plain text carrying no pull request link at all completes with nil.
     @Test func aTextProviderWithNoLinkCompletesWithNil() async {
         let provider = NSItemProvider(object: "just some unrelated words" as NSString)
-        let result = await Self.loadPullRequest(from: provider)
+        let result = await PRDropTarget.loadPullRequest(from: provider)
         #expect(result == nil)
-    }
-
-    /// Wraps `PRDropTarget.loadPullRequest`'s completion-handler API in `async` so each
-    /// `@Test` above can `await` real delivery instead of racing it.
-    private static func loadPullRequest(from provider: NSItemProvider) async -> String? {
-        await withCheckedContinuation { continuation in
-            PRDropTarget.loadPullRequest(from: provider) { continuation.resume(returning: $0) }
-        }
     }
 }

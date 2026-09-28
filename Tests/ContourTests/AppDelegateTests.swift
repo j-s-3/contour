@@ -13,6 +13,7 @@ struct AppDelegateTests {
     /// real launch, so referencing it here is also what makes the line count as exercised
     /// rather than dead code. It must resolve (or cleanly return nil) without crashing
     /// regardless of whether the icon asset is present in the test run's resource bundle.
+    @MainActor
     @Test func appIconResolvesFromTheBundleWithoutCrashing() {
         _ = AppDelegate.appIcon
     }

@@ -11,7 +11,7 @@ let package = Package(
             // No .app bundle under `swift run`, so the Dock icon is set at launch from here.
             resources: [.copy("Resources/AppIcon.icns")],
             swiftSettings: [
-                .swiftLanguageMode(.v5) // Observation + async UI code; keep migration friction low for MVP
+                .swiftLanguageMode(.v6)
             ]
         ),
         .testTarget(

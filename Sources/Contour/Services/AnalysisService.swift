@@ -140,7 +140,7 @@ struct AnalysisService {
         stage: PipelineStage,
         streaming: String? = nil,
         onElement: @escaping @Sendable ([String: Any]) -> Void = { _ in },
-        onProgress: @escaping (AnalysisProgress) -> Void
+        onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         do {
             return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage,
@@ -159,7 +159,7 @@ struct AnalysisService {
         stage: PipelineStage,
         streaming: String?,
         onElement: @escaping @Sendable ([String: Any]) -> Void,
-        onProgress: @escaping (AnalysisProgress) -> Void
+        onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         // Manual-testing escape hatch (see MockAnalysisFixtures): skip the real harness
         // invocation entirely and return a canned response for this stage. The checkout

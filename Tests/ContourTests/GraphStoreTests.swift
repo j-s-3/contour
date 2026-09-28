@@ -18,6 +18,7 @@ import Foundation
 /// `nil` in that state, which is exactly the branch every one of those guards takes first.
 /// This second block of tests drives those guard-only paths, plus the navigation-adjacent
 /// `hasOpenPR`/`pullRequestURL` computed properties and the contextual-chat entry points.
+@MainActor
 struct GraphStoreTests {
 
     private var sampleGraph: PRGraph { ContourSampleData.publishTriggeredReindex }

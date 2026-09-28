@@ -421,7 +421,7 @@ actor AnalysisPipeline {
 
     private func perform(_ stage: PipelineStage, analysis: AnalysisService, cwd: URL) async throws -> StageResult {
         let label = stage.rawValue
-        let progress: (AnalysisProgress) -> Void = { [continuation] p in
+        let progress: @Sendable (AnalysisProgress) -> Void = { [continuation] p in
             continuation.yield(.log(PipelineProgressEntry(stage: label, detail: p.detail)))
         }
         func run(_ prompt: String, _ tier: AnalysisTier) async throws -> [String: Any] {
@@ -473,7 +473,7 @@ actor AnalysisPipeline {
     /// after — and duplicate — the stage's final, authoritative result.
     private func streamed<Element: Decodable & Sendable & Identifiable>(
         _ stage: PipelineStage, key: String, as: Element.Type, analysis: AnalysisService, cwd: URL,
-        prompt: String, tier: AnalysisTier, progress: @escaping (AnalysisProgress) -> Void
+        prompt: String, tier: AnalysisTier, progress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] where Element.ID == String {
         let (elements, sink) = AsyncStream.makeStream(of: Element.self)
         let applier = Task { for await element in elements { self.appendStreamed(element, to: stage) } }

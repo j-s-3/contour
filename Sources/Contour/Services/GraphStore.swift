@@ -47,7 +47,14 @@ enum NavigationTarget: Hashable {
 /// Holds one PR's knowledge graph plus all reviewer-session state (selection stack,
 /// reviewer marks, progress log). This is the single source of truth the whole UI reads
 /// (§12 "GraphStore, single source of truth").
+/// `@MainActor`, not just its individual mutating methods: every stored property here
+/// (`graph`, `path`, `analysis`, ...) is written both by `handle(_:)` — driven by `load()`'s
+/// background `Task` — and by plain reviewer actions (`navigate`, `setReviewerState`, ...).
+/// Isolating only some of those methods left the rest callable from any thread, a real,
+/// unsynchronized race across the two groups that Swift 5 mode didn't catch and Swift 6
+/// mode's codegen turns into a reliably reproducing crash under concurrent test drivers.
 @Observable
+@MainActor
 final class GraphStore {
     private(set) var graph: PRGraph?
     private(set) var checkout: RepoCheckout?
