@@ -131,6 +131,20 @@ struct OnboardingViewTests {
         #expect(OnboardingViewLogic.resolveClipboardRead(nil) == .doNothing)
     }
 
+    // MARK: - OnboardingViewLogic.resolvedPasteText
+
+    /// Pasting (via ⌘V or the clipboard toolbar button) canonicalizes a recognized PR link
+    /// rather than dropping the raw pasted sentence into the field.
+    @Test func resolvedPasteTextCanonicalizesARecognizedPullRequestLink() {
+        #expect(OnboardingViewLogic.resolvedPasteText("see github.com/acme/shop/pull/3 for details")
+                == "https://github.com/acme/shop/pull/3")
+    }
+
+    /// Non-PR text is left exactly as typed, so the reviewer can see and correct it.
+    @Test func resolvedPasteTextLeavesNonPRTextUnchanged() {
+        #expect(OnboardingViewLogic.resolvedPasteText("not a link") == "not a link")
+    }
+
     // MARK: - OnboardingViewLogic.visibleRequests
 
     /// The review-requested list is capped at the row limit the start screen has room for,

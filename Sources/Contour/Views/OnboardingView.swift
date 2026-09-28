@@ -76,13 +76,13 @@ struct OnboardingView: View {
                         guard let provider = providers.first else { return }
                         _ = provider.loadObject(ofClass: String.self) { text, _ in
                             guard let text else { return }
-                            DispatchQueue.main.async { urlText = PRLink.extract(from: text) ?? text }
+                            DispatchQueue.main.async { urlText = OnboardingViewLogic.resolvedPasteText(text) }
                         }
                     }
                 // Fallback that never depends on keyboard-shortcut routing at all.
                 Button {
                     if let clip = NSPasteboard.general.string(forType: .string) {
-                        urlText = PRLink.extract(from: clip) ?? clip
+                        urlText = OnboardingViewLogic.resolvedPasteText(clip)
                     }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
@@ -303,6 +303,13 @@ enum OnboardingViewLogic {
         guard let clip else { return .doNothing }
         if let url = PRLink.extract(from: clip) { return .open(url) }
         return .fillField(clip)
+    }
+
+    /// What pasted (or clipboard-button) text becomes in the URL field: a recognized PR
+    /// link is canonicalized, anything else is left as typed so the reviewer can see and
+    /// correct it.
+    static func resolvedPasteText(_ text: String) -> String {
+        PRLink.extract(from: text) ?? text
     }
 
     /// The review-requested PRs to show, capped at the number of rows the start screen has
