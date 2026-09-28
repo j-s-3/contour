@@ -179,6 +179,92 @@ struct AnonymousAPISourceTests {
         } catch { Issue.record("wrong error: \(error)") }
     }
 
+    /// `fetchContext`'s own guard (distinct from `getJSONObject`'s "not an object" check)
+    /// fires when the PR object decodes but is missing a field the rest of the function
+    /// assumes exists — a shape GitHub has never actually sent, but the guard exists
+    /// precisely so a future field rename fails closed with a clear error instead of a
+    /// force-unwrap crash.
+    @Test func aWellFormedButIncompletePRObjectIsAMalformedResponse() async {
+        MockURLProtocol.handler = { request in
+            request.url!.path.hasSuffix("/diff") || request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.v3.diff"
+                ? .init(status: 200, body: Data())
+                : .init(status: 200, body: json(["title": "No head or base"]))
+        }
+        defer { MockURLProtocol.handler = nil }
+        do {
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected malformedResponse")
+        } catch GitHubServiceError.malformedResponse(_) {
+            // expected
+        } catch { Issue.record("wrong error: \(error)") }
+    }
+
+    /// Any HTTP status this file doesn't special-case (403/429/404) falls through to the
+    /// same `malformedResponse`, with the status code and body folded into the message so
+    /// an unexpected 500 is diagnosable rather than swallowed as "private repository".
+    @Test func anUnrecognizedStatusCodeIsAMalformedResponse() async {
+        MockURLProtocol.handler = { _ in .init(status: 500, body: Data("server exploded".utf8)) }
+        defer { MockURLProtocol.handler = nil }
+        do {
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected malformedResponse")
+        } catch GitHubServiceError.malformedResponse(let detail) {
+            #expect(detail.contains("500") && detail.contains("server exploded"))
+        } catch { Issue.record("wrong error: \(error)") }
+    }
+
+    /// The CI rollup is best-effort (`try?` around both the check-runs and status calls in
+    /// `checks(owner:repo:sha:)`): one endpoint failing must not fail the whole fetch, and
+    /// the rollup should still reflect whatever the other endpoint returned.
+    @Test func aFailingChecksEndpointDegradesToTheOtherOneRatherThanFailingTheFetch() async throws {
+        let pr: [String: Any] = [
+            "title": "t", "state": "open",
+            "head": ["sha": "h", "ref": "f"], "base": ["sha": "b", "ref": "main"],
+        ]
+        let prData = json(pr)
+        let statuses: [String: Any] = ["statuses": [["state": "success"]]]
+        let statusesData = json(statuses)
+        MockURLProtocol.handler = { request in
+            let path = request.url!.path
+            let accept = request.value(forHTTPHeaderField: "Accept")
+            if accept == "application/vnd.github.v3.diff" { return .init(status: 200, body: Data()) }
+            if path.hasSuffix("/check-runs") { return .init(status: 500, body: Data()) }
+            if path.hasSuffix("/status") { return .init(status: 200, body: statusesData) }
+            if path == "/repos/acme/shop/pulls/5" { return .init(status: 200, body: prData) }
+            return .init(status: 200, body: json([[String: Any]]()))
+        }
+        defer { MockURLProtocol.handler = nil }
+        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+        #expect(context.glance.checks == .passing, "the failing check-runs call is swallowed; the status call alone still rolls up")
+    }
+
+    /// `getJSONArray` walks `?page=` until a short page comes back — a full page (exactly
+    /// `per_page` items) means there might be more, so it must fetch page 2 even though
+    /// nothing here needs more than the first item's data.
+    @Test func paginationWalksToASecondPageWhenTheFirstIsFull() async throws {
+        let pr: [String: Any] = [
+            "title": "t", "state": "open",
+            "head": ["sha": "h", "ref": "f"], "base": ["sha": "b", "ref": "main"],
+        ]
+        let prData = json(pr)
+        let fullPage = json((1...100).map { ["filename": "file\($0).swift"] })
+        let secondPage = json([["filename": "file101.swift"]])
+        MockURLProtocol.handler = { request in
+            let path = request.url!.path
+            let accept = request.value(forHTTPHeaderField: "Accept")
+            if accept == "application/vnd.github.v3.diff" { return .init(status: 200, body: Data()) }
+            if path == "/repos/acme/shop/pulls/5" { return .init(status: 200, body: prData) }
+            if path == "/repos/acme/shop/pulls/5/files" {
+                let page = request.url!.query?.contains("page=2") == true
+                return .init(status: 200, body: page ? secondPage : fullPage)
+            }
+            return .init(status: 200, body: json([[String: Any]]()))
+        }
+        defer { MockURLProtocol.handler = nil }
+        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+        #expect(context.files.count == 101, "a full first page (100) must fetch page 2 for the 101st file")
+    }
+
     @Test func fetchIssueReturnsNilWhenTheResponseHasNoTitleAndAValueOtherwise() async {
         let source = AnonymousAPISource(session: mockSession())
 
