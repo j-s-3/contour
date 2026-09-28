@@ -104,34 +104,66 @@ struct AnalysisIndicator: View {
             ContourMarkView(resolution: AnalysisResolution.target(state: state))
                 .frame(height: 13)
                 .animation(.easeInOut(duration: 0.8), value: AnalysisResolution.target(state: state))
-            if !state.isComplete {
-                Text(state.revalidatingFrom != nil ? "Updating analysis…" : "Analyzing PR…")
-                    .font(.callout)
-                let remaining = state.remainingCount
+            switch AnalysisIndicatorLabel.compute(state: state, settled: settled) {
+            case .analyzing(let text, let remaining):
+                Text(text).font(.callout)
                 if remaining > 0 {
                     Text(verbatim: "\(remaining) remaining")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-            } else if !state.stoppedSections.isEmpty {
+            case .stopped:
                 // Stopping is the reviewer's own, most recent act, so it's what the
                 // indicator reports even if a section had also failed.
                 StageStatusGlyph(status: .stopped)
                 Text("Analysis stopped").font(.callout)
-            } else if !state.failedSections.isEmpty {
+            case .failed(let text):
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                let n = state.failedSections.count
-                Text(verbatim: "\(n) \(n == 1 ? "section" : "sections") couldn't be analyzed").font(.callout)
-            } else if !settled {
-                Text(state.fromCache ? "Opened saved analysis" : "Analysis complete")
+                Text(verbatim: text).font(.callout)
+            case .complete(let text):
+                Text(text)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize()
                     .transition(.opacity)
+            case .none:
+                EmptyView()
             }
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// What `AnalysisIndicator`'s label shows for a given state, decided once so the view body
+/// only has to draw it. `settled` is the indicator's own local fade-out timer: true once
+/// "Analysis complete" has had its few seconds on screen and is receding to the bare mark.
+enum AnalysisIndicatorLabel: Equatable {
+    case analyzing(text: String, remaining: Int)
+    case stopped
+    case failed(text: String)
+    case complete(text: String)
+    case none
+
+    /// Stopping is the reviewer's own, most recent act, so it's reported even if a section
+    /// also failed; a failure otherwise outranks the transient "complete" message, which
+    /// itself only shows before `settled` fades it back to the bare mark.
+    nonisolated static func compute(state: AnalysisState, settled: Bool) -> AnalysisIndicatorLabel {
+        if !state.isComplete {
+            let text = state.revalidatingFrom != nil ? "Updating analysis…" : "Analyzing PR…"
+            return .analyzing(text: text, remaining: state.remainingCount)
+        }
+        if !state.stoppedSections.isEmpty {
+            return .stopped
+        }
+        if !state.failedSections.isEmpty {
+            let n = state.failedSections.count
+            return .failed(text: "\(n) \(n == 1 ? "section" : "sections") couldn't be analyzed")
+        }
+        if !settled {
+            return .complete(text: state.fromCache ? "Opened saved analysis" : "Analysis complete")
+        }
+        return .none
     }
 }
 
@@ -214,6 +246,7 @@ struct AnalysisDetailsView: View {
 
     private func sectionRow(_ section: ReviewSection) -> some View {
         let status = state.sectionStatus(section)
+        let retryStage = state.retryStage(for: section)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             StageStatusGlyph(status: status)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
@@ -225,11 +258,18 @@ struct AnalysisDetailsView: View {
             }
             Spacer(minLength: 8)
             // A stopped context section is the checkout itself: its Retry reopens the PR.
-            if let stage = state.retryStage(for: section),
-               PipelineStage.analysis.contains(stage) || status == .stopped {
+            if let stage = retryStage, Self.showsRetryButton(stage: stage, status: status) {
                 Button("Retry") { onRetry(stage) }.controlSize(.small)
             }
         }
+    }
+
+    /// Whether a section row with a retry-eligible stage (`AnalysisState.retryStage`) actually
+    /// shows the button: every analysis stage does once it's retryable, but a context
+    /// (plumbing) stage's Retry reopens the whole PR, so it only appears once that section has
+    /// genuinely stopped rather than merely having a retryable stage in the abstract.
+    nonisolated static func showsRetryButton(stage: PipelineStage, status: StageStatus) -> Bool {
+        PipelineStage.analysis.contains(stage) || status == .stopped
     }
 
     private func subtitle(_ section: ReviewSection, _ status: StageStatus) -> String? {
@@ -261,7 +301,7 @@ struct RefCheckView: View {
     var body: some View {
         if check.unresolvedCount == 0 {
             Label {
-                Text(verbatim: "All \(check.checked) code references verified")
+                Text(verbatim: Self.headline(check))
             } icon: {
                 Image(systemName: "checkmark.seal").foregroundStyle(.green)
             }
@@ -276,8 +316,8 @@ struct RefCheckView: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                    if check.unresolvedCount > check.unresolved.count {
-                        Text(verbatim: "and \(check.unresolvedCount - check.unresolved.count) more")
+                    if let overflow = Self.overflowText(check) {
+                        Text(verbatim: overflow)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -290,13 +330,27 @@ struct RefCheckView: View {
                 .padding(.top, 4)
             } label: {
                 Label {
-                    Text(verbatim: "\(check.unresolvedCount) of \(check.checked) code references couldn't be verified")
+                    Text(verbatim: Self.headline(check))
                 } icon: {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
             }
             .font(.caption)
         }
+    }
+
+    /// The summary line: every reference verified, or how many of how many weren't.
+    nonisolated static func headline(_ check: RefCheck) -> String {
+        check.unresolvedCount == 0
+            ? "All \(check.checked) code references verified"
+            : "\(check.unresolvedCount) of \(check.checked) code references couldn't be verified"
+    }
+
+    /// "and N more" once the sample of listed refs (`RefCheck.sampleLimit`) is smaller than
+    /// the true unresolved count; nil once every unresolved ref is already listed.
+    nonisolated static func overflowText(_ check: RefCheck) -> String? {
+        let extra = check.unresolvedCount - check.unresolved.count
+        return extra > 0 ? "and \(extra) more" : nil
     }
 }
 
@@ -331,12 +385,17 @@ struct MetricsView: View {
                 GridRow {
                     Text(milestone.label)
                         .font(.caption.weight(milestone == .usefulOverview ? .semibold : .regular))
-                    Text(metrics.elapsed(milestone).map { String(format: "%.1fs", $0) } ?? "—")
+                    Text(Self.elapsedText(metrics, milestone))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    /// "12.3s" once a milestone has landed, an em dash while it's still to come.
+    nonisolated static func elapsedText(_ metrics: AnalysisMetrics, _ milestone: LatencyMilestone) -> String {
+        metrics.elapsed(milestone).map { String(format: "%.1fs", $0) } ?? "—"
     }
 }
 
@@ -400,17 +459,25 @@ struct SectionPendingView: View {
                     Text(known).font(.title3.weight(.medium)).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if case .running(let detail?) = status {
-                WorkingLine(text: "\(section.workingLabel.dropLast()) — \(detail)")
-            } else {
-                WorkingLine(text: status == .pending ? "Waiting to start…" : section.workingLabel)
-            }
+            WorkingLine(text: Self.workingText(section: section, status: status))
             Text("You can keep reviewing elsewhere; this fills in on its own.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The working line's text: a running stage's own detail folds onto the section's working
+    /// label ("Understanding the change…" plus "2 files inspected" becomes "Understanding the
+    /// change — 2 files inspected", the ellipsis dropped since the detail continues the
+    /// sentence), "Waiting to start…" before anything has run, or the plain working label
+    /// otherwise.
+    nonisolated static func workingText(section: ReviewSection, status: StageStatus) -> String {
+        if case .running(let detail?) = status {
+            return "\(section.workingLabel.dropLast()) — \(detail)"
+        }
+        return status == .pending ? "Waiting to start…" : section.workingLabel
     }
 }
 
