@@ -89,6 +89,19 @@ enum GraphLayoutEngine {
         )
     }
 
+    /// Picks the orientation that reads best: left-to-right, unless it doesn't already fit
+    /// the available space and top-to-bottom fits it clearly better (not just marginally —
+    /// a small edge for going vertical isn't worth losing the left-to-right reading order).
+    static func bestFit(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec], available: CGSize) -> (ArchDiagramLayout, CGFloat) {
+        func fit(_ l: ArchDiagramLayout) -> CGFloat {
+            min(1, available.width / max(l.size.width, 1), available.height / max(l.size.height, 1))
+        }
+        let across = layout(nodes: nodes, edges: edges, groups: groups, vertical: false)
+        guard fit(across) < 1 else { return (across, 1) }
+        let down = layout(nodes: nodes, edges: edges, groups: groups, vertical: true)
+        return fit(down) > fit(across) * 1.15 ? (down, fit(down)) : (across, fit(across))
+    }
+
     static func layout(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec]) -> ArchDiagramLayout {
         guard !nodes.isEmpty else { return ArchDiagramLayout(nodes: [], edges: [], boundaries: [], size: .zero) }
         let index = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($1.id, $0) })

@@ -66,6 +66,54 @@ struct ArchContainer: Identifiable, Equatable {
     var memberIds: [String]
     /// The part the reviewer zoomed into, drawn as the container of its own parts.
     var isFocus = false
+
+    /// External, trust and network boundaries are drawn with a dashed border, so a boundary
+    /// outside the system under review reads as "outside" at a glance.
+    var isExternalBoundary: Bool { [.external, .trust, .network].contains(kind) }
+
+    /// The boundary's accent: a trust boundary is flagged orange regardless of focus;
+    /// otherwise the part being zoomed into stands out in the accent color.
+    var tint: Color { kind == .trust ? .orange : (isFocus ? .accentColor : .secondary) }
+}
+
+/// Pure derivations behind the drawing — an arrow's stroke and arrowhead geometry, and the
+/// hover-state transition — factored out so they're tested directly rather than through
+/// `Canvas` drawing or a gesture callback.
+enum ArchDrawingLogic {
+    /// The line's color and width for one emphasis, before selection brightens it.
+    static func strokeStyle(for emphasis: ArchEmphasis) -> (color: Color, width: CGFloat) {
+        switch emphasis {
+        case .context: return (Color.secondary.opacity(0.55), 1.4)
+        case .changed: return (.blue, 2.4)
+        case .added: return (.green, 2.6)
+        case .removed: return (Color.red.opacity(0.8), 1.8)
+        }
+    }
+
+    /// A removed relationship always reads as removed, even when it was also async.
+    static func dashPattern(for arrow: ArchArrow) -> [CGFloat] {
+        if arrow.emphasis == .removed { return [4, 4] }
+        if arrow.isAsync { return [7, 5] }
+        return []
+    }
+
+    /// The arrowhead's three corners for a line ending at `tip`, aimed by the segment
+    /// arriving from `prev`: a symmetric triangle whose base sits `size` points back from
+    /// the tip along that direction.
+    static func arrowheadTriangle(tip: CGPoint, from prev: CGPoint, size: CGFloat) -> (tip: CGPoint, left: CGPoint, right: CGPoint) {
+        let angle = atan2(tip.y - prev.y, tip.x - prev.x)
+        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
+        let left = CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle))
+        let right = CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle))
+        return (tip, left, right)
+    }
+
+    /// The next hover anchor: entering sets it, leaving clears it only if this was the anchor
+    /// that was hovered — a fast pointer move onto a sibling must not clobber the sibling's
+    /// own hover, which already set `current` to something else by the time this fires.
+    static func hoverUpdate(current: ArchAnchor?, anchor: ArchAnchor, isHovering: Bool) -> ArchAnchor? {
+        isHovering ? anchor : (current == anchor ? nil : current)
+    }
 }
 
 /// The architecture drawing (§4.3): a handful of labeled boxes and arrows, laid out by
@@ -88,7 +136,10 @@ struct ArchitectureDiagramView: View {
     var body: some View {
         GeometryReader { geo in
             let available = CGSize(width: max(geo.size.width - 48, 1), height: max(geo.size.height - 48, 1))
-            let (layout, fit) = bestLayout(for: available)
+            let nodes = boxes.map { GraphLayoutEngine.NodeSpec(id: $0.id, size: ArchMetrics.size(of: $0)) }
+            let edges = arrows.map { GraphLayoutEngine.EdgeSpec(id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: ArchMetrics.size(of: $0)) }
+            let groups = containers.map { GraphLayoutEngine.GroupSpec(id: $0.id, memberIds: $0.memberIds) }
+            let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: edges, groups: groups, available: available)
             let scale = max(fit, minimumScale)
             let scaled = CGSize(width: layout.size.width * scale, height: layout.size.height * scale)
             let drawing = canvas(layout)
@@ -107,21 +158,6 @@ struct ArchitectureDiagramView: View {
             }
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { onSelect(nil) })
         }
-    }
-
-    /// Left-to-right reads best and wins unless the pane is shaped so that top-to-bottom
-    /// shows the drawing clearly larger.
-    private func bestLayout(for available: CGSize) -> (ArchDiagramLayout, CGFloat) {
-        let nodes = boxes.map { GraphLayoutEngine.NodeSpec(id: $0.id, size: ArchMetrics.size(of: $0)) }
-        let edges = arrows.map { GraphLayoutEngine.EdgeSpec(id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: ArchMetrics.size(of: $0)) }
-        let groups = containers.map { GraphLayoutEngine.GroupSpec(id: $0.id, memberIds: $0.memberIds) }
-        func fit(_ l: ArchDiagramLayout) -> CGFloat {
-            min(1, available.width / max(l.size.width, 1), available.height / max(l.size.height, 1))
-        }
-        let across = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: groups, vertical: false)
-        guard fit(across) < 1 else { return (across, 1) }
-        let down = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: groups, vertical: true)
-        return fit(down) > fit(across) * 1.15 ? (down, fit(down)) : (across, fit(across))
     }
 
     // MARK: - Drawing
@@ -250,7 +286,7 @@ struct ArchitectureDiagramView: View {
         .shadow(color: .black.opacity(isHovered ? 0.16 : 0.05), radius: isHovered ? 6 : 2, y: 1)
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .onTapGesture { onSelect(.node(box.id)) }
-        .onHover { hovered = $0 ? .node(box.id) : (hovered == .node(box.id) ? nil : hovered) }
+        .onHover { hovered = ArchDrawingLogic.hoverUpdate(current: hovered, anchor: .node(box.id), isHovering: $0) }
         .reviewContextMenu(.component(box.id))
         .help(box.purpose ?? box.title)
     }
@@ -278,31 +314,21 @@ struct ArchitectureDiagramView: View {
     private func draw(_ arrow: ArchArrow, _ placed: ArchDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
         guard placed.points.count >= 2 else { return }
         let selected = selection == .edge(arrow.id)
-        let color: Color
-        let width: CGFloat
-        switch arrow.emphasis {
-        case .context: color = Color.secondary.opacity(0.55); width = 1.4
-        case .changed: color = .blue; width = 2.4
-        case .added: color = .green; width = 2.6
-        case .removed: color = Color.red.opacity(0.8); width = 1.8
-        }
+        let (color, width) = ArchDrawingLogic.strokeStyle(for: arrow.emphasis)
         let stroke = selected ? Color.accentColor : color
-        var dash: [CGFloat] = []
-        if arrow.isAsync { dash = [7, 5] }
-        if arrow.emphasis == .removed { dash = [4, 4] }
+        let dash = ArchDrawingLogic.dashPattern(for: arrow)
 
         context.stroke(Self.roundedPath(placed.points), with: .color(stroke),
                        style: StrokeStyle(lineWidth: selected ? width + 0.8 : width, lineCap: .round, lineJoin: .round, dash: dash))
 
         let tip = placed.points[placed.points.count - 1]
         let prev = placed.points[placed.points.count - 2]
-        let angle = atan2(tip.y - prev.y, tip.x - prev.x)
         let size: CGFloat = arrow.emphasis == .context ? 8 : 10
-        let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
+        let triangle = ArchDrawingLogic.arrowheadTriangle(tip: tip, from: prev, size: size)
         var head = Path()
-        head.move(to: tip)
-        head.addLine(to: CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)))
-        head.addLine(to: CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
+        head.move(to: triangle.tip)
+        head.addLine(to: triangle.left)
+        head.addLine(to: triangle.right)
         head.closeSubpath()
         context.fill(head, with: .color(stroke))
     }
@@ -371,13 +397,12 @@ struct ArchitectureDiagramView: View {
     // MARK: Containers
 
     private func containerView(_ container: ArchContainer) -> some View {
-        let external = [.external, .trust, .network].contains(container.kind)
-        let tint: Color = container.kind == .trust ? .orange : (container.isFocus ? .accentColor : .secondary)
+        let tint = container.tint
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 14).fill(tint.opacity(container.isFocus ? 0.05 : 0.035))
             RoundedRectangle(cornerRadius: 14).strokeBorder(
                 tint.opacity(container.isFocus ? 0.5 : 0.35),
-                style: StrokeStyle(lineWidth: 1.2, dash: external ? [6, 4] : [])
+                style: StrokeStyle(lineWidth: 1.2, dash: container.isExternalBoundary ? [6, 4] : [])
             )
             Text(container.label.uppercased())
                 .font(.system(size: 10.5, weight: .bold))
