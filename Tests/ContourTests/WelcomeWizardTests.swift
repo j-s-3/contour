@@ -3,10 +3,30 @@ import Testing
 
 /// `WelcomeWizardLogic` is the step-validation and precedence-derivation logic CLAUDE.md
 /// calls out for this file, pulled out of `WelcomeWizard`'s body so it's directly testable
-/// against simulated `EnvironmentProbe`/`Preferences` results. The rest — the three panes,
-/// the footer's step navigation, the async tool probe (`refresh()`) — is view rendering
-/// and `EnvironmentProbe` I/O with no UI-testing infrastructure in this suite.
+/// against simulated `EnvironmentProbe`/`Preferences` results. The rest — the three panes'
+/// content, the footer's step navigation (`step += 1`/`step -= 1`), and the async tool
+/// probe (`refresh()`, which is I/O against a real `EnvironmentProbe`) — is SwiftUI `body`
+/// rendering with no UI-testing/hosting infrastructure in this suite (same gap documented
+/// in `AppDelegateTests`/`CommandPaletteViewTests`), so it stays untested here on purpose
+/// rather than being forced through a contrived harness.
 struct WelcomeWizardTests {
+
+    // MARK: - pane(forStep:)
+
+    /// Steps 0 and 1 show the intro and environment panes; this is the wizard's whole
+    /// page state machine, so pinning it catches an off-by-one if a page is ever
+    /// inserted or reordered.
+    @Test func paneForStepMapsTheFirstTwoStepsToTheirOwnPage() {
+        #expect(WelcomeWizardLogic.pane(forStep: 0) == .intro)
+        #expect(WelcomeWizardLogic.pane(forStep: 1) == .environment)
+    }
+
+    /// Step 2 (the last page) and anything past it land on the closing pane, matching the
+    /// `default` case this mapping replaced in `content`'s switch.
+    @Test func paneForStepFallsBackToFirstPRForStepTwoAndBeyond() {
+        #expect(WelcomeWizardLogic.pane(forStep: 2) == .firstPR)
+        #expect(WelcomeWizardLogic.pane(forStep: 99) == .firstPR)
+    }
 
     // MARK: - needsHarnessChoice
 
@@ -93,5 +113,31 @@ struct WelcomeWizardTests {
 
     @Test func canFinishIsFalseWithUnrecognizedText() {
         #expect(!WelcomeWizardLogic.canFinish(urlText: "not a url"))
+    }
+
+    // MARK: - continueDisabled
+
+    @Test func continueDisabledIsFalseOnPanesOtherThanTheEnvironmentStep() {
+        // Only step 1 (the environment pane) has anything that can block continuing;
+        // the intro pane (0) has no blocker to check.
+        #expect(!WelcomeWizardLogic.continueDisabled(step: 0, blocker: "git is required"))
+    }
+
+    @Test func continueDisabledIsTrueOnTheEnvironmentStepWithABlocker() {
+        #expect(WelcomeWizardLogic.continueDisabled(step: 1, blocker: "git is required"))
+    }
+
+    @Test func continueDisabledIsFalseOnTheEnvironmentStepOnceUnblocked() {
+        #expect(!WelcomeWizardLogic.continueDisabled(step: 1, blocker: nil))
+    }
+
+    // MARK: - finishButtonTitle
+
+    @Test func finishButtonTitleIsFinishWithAnEmptyURL() {
+        #expect(WelcomeWizardLogic.finishButtonTitle(urlText: "") == "Finish")
+    }
+
+    @Test func finishButtonTitleIsOpenPROnceAURLIsTyped() {
+        #expect(WelcomeWizardLogic.finishButtonTitle(urlText: "https://github.com/acme/shop/pull/42") == "Open PR")
     }
 }

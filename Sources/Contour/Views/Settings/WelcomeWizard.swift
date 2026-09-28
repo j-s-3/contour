@@ -35,10 +35,10 @@ struct WelcomeWizard: View {
 
     @ViewBuilder
     private var content: some View {
-        switch step {
-        case 0: introPane
-        case 1: environmentPane
-        default: firstPRPane
+        switch WelcomeWizardLogic.pane(forStep: step) {
+        case .intro: introPane
+        case .environment: environmentPane
+        case .firstPR: firstPRPane
         }
     }
 
@@ -210,12 +210,12 @@ struct WelcomeWizard: View {
                 Button("Continue") { step += 1 }
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
-                    .disabled(step == 1 && blocker != nil)
+                    .disabled(WelcomeWizardLogic.continueDisabled(step: step, blocker: blocker))
             } else {
-                Button(urlText.isEmpty ? "Finish" : "Open PR", action: finish)
+                Button(WelcomeWizardLogic.finishButtonTitle(urlText: urlText), action: finish)
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
-                    .disabled(!urlText.isEmpty && GitHubService.normalize(urlText) == nil)
+                    .disabled(!WelcomeWizardLogic.canFinish(urlText: urlText))
             }
         }
     }
@@ -240,6 +240,25 @@ struct WelcomeWizard: View {
 /// pulled out of `WelcomeWizard`'s body so it's directly testable against simulated
 /// `EnvironmentProbe`/`Preferences` results rather than the SwiftUI `body`.
 enum WelcomeWizardLogic {
+    /// The wizard's three pages, in order. A plain enum (rather than switching on `step`
+    /// directly at each call site) so the step → page mapping is pinned once and tested,
+    /// instead of duplicated between `content` and anything else that needs to know which
+    /// page is showing.
+    enum Pane: Equatable {
+        case intro, environment, firstPR
+    }
+
+    /// Which page a given `step` shows. Steps 0 and 1 are the intro and environment
+    /// panes; anything else (2, or an out-of-range value) lands on the closing page, same
+    /// as the `default` case it replaces in `content`'s switch.
+    static func pane(forStep step: Int) -> Pane {
+        switch step {
+        case 0: return .intro
+        case 1: return .environment
+        default: return .firstPR
+        }
+    }
+
     /// Only ask when the answer isn't already determined: nothing stored, and more than
     /// one harness to choose between.
     static func needsHarnessChoice(installedHarnesses: [HarnessID]) -> Bool {
@@ -270,5 +289,17 @@ enum WelcomeWizardLogic {
     /// The URL field is optional — empty is fine — but a non-empty value must be a PR link.
     static func canFinish(urlText: String) -> Bool {
         urlText.isEmpty || GitHubService.normalize(urlText) != nil
+    }
+
+    /// The footer's "Continue" button is disabled only on the environment pane (step 1),
+    /// and only while something still blocks setup from proceeding.
+    static func continueDisabled(step: Int, blocker: String?) -> Bool {
+        step == 1 && blocker != nil
+    }
+
+    /// The closing pane's action button reads "Finish" when there's no PR to jump to, and
+    /// "Open PR" once the reviewer has typed one.
+    static func finishButtonTitle(urlText: String) -> String {
+        urlText.isEmpty ? "Finish" : "Open PR"
     }
 }
