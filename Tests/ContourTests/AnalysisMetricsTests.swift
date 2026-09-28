@@ -61,9 +61,10 @@ struct AnalysisMetricsTests {
 
         let contents = try String(contentsOf: url, encoding: .utf8)
         let lines = contents.split(separator: "\n")
+        // JSONEncoder escapes "/" as "\/", so match on the part that survives escaping.
         #expect(lines.count == 2, "got: \(contents)")
-        #expect(lines.first?.contains("acme/repo#1") == true, "got: \(contents)")
-        #expect(lines.last?.contains("acme/repo#2") == true, "got: \(contents)")
+        #expect(lines.first?.contains("repo#1") == true, "got: \(contents)")
+        #expect(lines.last?.contains("repo#2") == true, "got: \(contents)")
     }
 
     @Test func fileURLPointsAtMetricsJSONLUnderContourSupport() {
