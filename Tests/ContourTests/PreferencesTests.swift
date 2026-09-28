@@ -120,6 +120,83 @@ struct PreferencesTests {
         prefs.opensInFullScreen = true
         #expect(Preferences(defaults: defaults, environment: [:]).opensInFullScreen)
     }
+
+    // MARK: - Stored values round-trip through UserDefaults
+
+    private func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "contour.tests.\(UUID().uuidString)")!
+    }
+
+    @Test func storedHarnessRoundTripsAndDefaultsToNil() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: [:])
+        #expect(prefs.storedHarness == nil)
+        prefs.storedHarness = .claude
+        #expect(prefs.storedHarness == .claude)
+        prefs.storedHarness = nil
+        #expect(prefs.storedHarness == nil)
+    }
+
+    @Test func storedTrackerRoundTripsAndDefaultsToNil() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: [:])
+        #expect(prefs.storedTracker == nil)
+        prefs.storedTracker = .jira
+        #expect(prefs.storedTracker == .jira)
+    }
+
+    @Test func storedGitHubAccessRoundTripsAndDefaultsToNil() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: [:])
+        #expect(prefs.storedGitHubAccess == nil)
+        prefs.storedGitHubAccess = .anonymous
+        #expect(prefs.storedGitHubAccess == .anonymous)
+    }
+
+    @Test func hasCompletedOnboardingRoundTripsAndDefaultsToFalse() {
+        let defaults = freshDefaults()
+        let prefs = Preferences(defaults: defaults, environment: [:])
+        #expect(!prefs.hasCompletedOnboarding)
+        prefs.hasCompletedOnboarding = true
+        #expect(Preferences(defaults: defaults, environment: [:]).hasCompletedOnboarding)
+    }
+
+    // MARK: - Resolved values wire the instance's env/stored/detected state through
+
+    @Test func resolvedHarnessUsesInstalledHarnessesFromTheInstance() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: [:])
+        prefs.installedHarnesses = [.pi]
+        #expect(prefs.resolvedHarness == .pi)
+
+        prefs.storedHarness = .claude
+        #expect(prefs.resolvedHarness == .claude, "a stored choice wins even though only pi is installed")
+    }
+
+    @Test func resolvedTrackerUsesJiraAvailabilityFromTheInstance() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: [:])
+        #expect(prefs.resolvedTracker == .github)
+        prefs.storedTracker = .jira
+        #expect(prefs.resolvedTracker == .github, "jira isn't available yet")
+        prefs.jiraAvailable = true
+        #expect(prefs.resolvedTracker == .jira)
+    }
+
+    @Test func resolvedGitHubAccessHonorsTheEnvironmentOverride() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: ["CONTOUR_GITHUB_ACCESS": "anonymous"])
+        prefs.storedGitHubAccess = .gh
+        #expect(prefs.resolvedGitHubAccess == .anonymous)
+    }
+
+    @Test func isOverriddenByEnvironmentReflectsWhetherTheKeyIsSet() {
+        let prefs = Preferences(defaults: freshDefaults(), environment: ["CONTOUR_HARNESS": "claude"])
+        #expect(prefs.isOverriddenByEnvironment("CONTOUR_HARNESS"))
+        #expect(!prefs.isOverriddenByEnvironment("CONTOUR_TRACKER"))
+    }
+
+    // MARK: - GitHubAccessMode
+
+    @Test func everyGitHubAccessModeHasADisplayName() {
+        #expect(GitHubAccessMode.auto.displayName == "Automatic")
+        #expect(GitHubAccessMode.gh.displayName == "Always use gh")
+        #expect(GitHubAccessMode.anonymous.displayName == "Anonymous API only")
+    }
 }
 
 /// Executable resolution. Contour shells out to CLIs by bare name, so which binary that
