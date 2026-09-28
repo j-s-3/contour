@@ -2,11 +2,17 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `SettingsViewLogic` is the status-derivation and precedence-aware footer logic
-/// CLAUDE.md calls out for this file, pulled out of `SettingsView`/`ToolStatusRow`'s
+/// `SettingsViewLogic` is the status-derivation, precedence-aware footer, and override-notice
+/// text logic CLAUDE.md calls out for this file, pulled out of `SettingsView`/`ToolStatusRow`'s
 /// bodies so it's directly testable against plain `ToolStatus`/`ExternalTool`/`HarnessID`
-/// fixtures. The rest — the tab layout, pickers, override notices, the async probe — is
-/// view rendering with no UI-testing infrastructure in this suite.
+/// fixtures. What's left in `SettingsView.swift` itself — the three `Form`/`Section`/`Picker`
+/// tab bodies, `ToolStatusRow.body`, and the private async `refresh()` that drives a real
+/// `EnvironmentProbe()` — is SwiftUI view construction and process-probing with no seam for
+/// injection, matching the same accepted gap `WelcomeWizardTests.swift` documents for its
+/// near-identical `refresh()`/probe pattern. There is no UI-testing/snapshot infrastructure in
+/// this suite to render or inspect a `body` value, so that portion stays out of reach of this
+/// file's line-coverage number; every non-trivial branch of logic this file contains is tested
+/// below.
 struct SettingsViewTests {
 
     // MARK: - harnessTool / label
@@ -51,6 +57,13 @@ struct SettingsViewTests {
 
     @Test func jiraLabelNamesTheMissingCLIWhenUnavailable() {
         #expect(SettingsViewLogic.jiraLabel(jiraAvailable: false) == "Jira — acli not found")
+    }
+
+    // MARK: - overrideNoticeText
+
+    @Test func overrideNoticeTextNamesTheSpecificVariable() {
+        #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_HARNESS") == "Overridden by CONTOUR_HARNESS in the environment.")
+        #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_TRACKER") == "Overridden by CONTOUR_TRACKER in the environment.")
     }
 
     // MARK: - symbol / tint
