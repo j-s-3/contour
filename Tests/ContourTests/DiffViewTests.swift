@@ -8,10 +8,25 @@ import SwiftUI
 /// for this file — pulled out of `DiffView`'s instance methods so it's testable the same
 /// way, plus `DiffFileStatus.color` (already plain, no production change needed; `.label`
 /// lives on the model and needed none either).
+///
+/// A second pass (#120) pulled the remaining state-transition and text-selection decisions
+/// out of `DiffView`'s button closures and `@ViewBuilder` branches — the collapse/expand-all
+/// toggle, a single file's disclosure toggle, the "jump/land always expands" rule, the
+/// binary/empty/renamed note text, the rename-arrow header title, and the citation
+/// overflow split — so each of those is pinned here too instead of only being reachable by
+/// actually rendering the view (which this suite has no infrastructure to do).
 struct DiffViewTests {
 
     private func parsedFile(_ diff: String) throws -> DiffFile {
         try #require(UnifiedDiff.parse(diff + "\n").first)
+    }
+
+    /// Both fixture diffs parsed together, so the two files get distinct ids (0 and 1) the
+    /// way they would in a real multi-file PR diff, instead of both defaulting to 0.
+    private func parsedFiles() throws -> [DiffFile] {
+        let files = UnifiedDiff.parse(modifiedDiff + "\n" + deletedDiff + "\n")
+        try #require(files.count == 2)
+        return files
     }
 
     private let modifiedDiff = """
@@ -197,5 +212,117 @@ struct DiffViewTests {
         #expect(DiffFileStatus.deleted.color == .red)
         #expect(DiffFileStatus.renamed.color == .blue)
         #expect(DiffFileStatus.copied.color == .blue)
+    }
+
+    // MARK: - fileCountLabel / totalLineCounts
+
+    @Test func fileCountLabelIsSingularForExactlyOneFile() {
+        #expect(DiffViewLogic.fileCountLabel(1) == "1 file")
+        #expect(DiffViewLogic.fileCountLabel(0) == "0 files")
+        #expect(DiffViewLogic.fileCountLabel(2) == "2 files")
+    }
+
+    @Test func totalLineCountsSumsAcrossEveryFile() throws {
+        let files = try parsedFiles() // modifiedDiff: +2 -1, deletedDiff: +0 -2
+        let totals = DiffViewLogic.totalLineCounts(files)
+        #expect(totals == (2, 3))
+    }
+
+    @Test func totalLineCountsIsZeroForNoFiles() {
+        let totals = DiffViewLogic.totalLineCounts([])
+        #expect(totals == (0, 0))
+    }
+
+    // MARK: - toggleAllCollapsed / toggleCollapsed / removingFile
+
+    @Test func toggleAllCollapsedCollapsesEveryFileWhenNoneAreCollapsed() throws {
+        let files = try parsedFiles()
+        let next = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: [])
+        #expect(next == Set([0, 1]))
+    }
+
+    @Test func toggleAllCollapsedExpandsEveryFileWhenAnyAreCollapsed() throws {
+        let files = try parsedFiles()
+        // Only one of two files collapsed still counts as "some collapsed" — expand all.
+        let next = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: [0])
+        #expect(next.isEmpty)
+    }
+
+    @Test func toggleCollapsedInsertsAnExpandedFileAndRemovesACollapsedOne() {
+        #expect(DiffViewLogic.toggleCollapsed(1, in: []) == [1])
+        #expect(DiffViewLogic.toggleCollapsed(1, in: [1, 2]) == [2])
+    }
+
+    @Test func removingFileDropsOnlyTheGivenFile() {
+        #expect(DiffViewLogic.removingFile(1, from: [1, 2]) == [2])
+        // Removing a file that wasn't collapsed is a no-op, not an error.
+        #expect(DiffViewLogic.removingFile(3, from: [1, 2]) == [1, 2])
+    }
+
+    // MARK: - emptyStateNote
+
+    @Test func emptyStateNoteIsBinaryTextRegardlessOfHunks() {
+        let file = DiffFile(id: 0, oldPath: "a.png", newPath: "a.png", status: .modified, isBinary: true)
+        #expect(DiffViewLogic.emptyStateNote(for: file) == "Binary file not shown")
+    }
+
+    @Test func emptyStateNoteIsNilWhenTheFileHasHunksToRender() throws {
+        let file = try parsedFile(modifiedDiff)
+        #expect(DiffViewLogic.emptyStateNote(for: file) == nil)
+    }
+
+    @Test func emptyStateNoteDistinguishesRenamedAddedDeletedAndOtherwiseUnchanged() {
+        let renamed = DiffFile(id: 0, oldPath: "old.rs", newPath: "new.rs", status: .renamed)
+        let added = DiffFile(id: 1, oldPath: nil, newPath: "new.rs", status: .added)
+        let deleted = DiffFile(id: 2, oldPath: "gone.rs", newPath: nil, status: .deleted)
+        let modified = DiffFile(id: 3, oldPath: "m.rs", newPath: "m.rs", status: .modified)
+        #expect(DiffViewLogic.emptyStateNote(for: renamed) == "Renamed without content changes")
+        #expect(DiffViewLogic.emptyStateNote(for: added) == "Empty file")
+        #expect(DiffViewLogic.emptyStateNote(for: deleted) == "Empty file")
+        #expect(DiffViewLogic.emptyStateNote(for: modified) == "No content changes")
+    }
+
+    // MARK: - headerTitle
+
+    @Test func headerTitleShowsTheRenameArrowWhenBothPathsAreKnown() {
+        let file = DiffFile(id: 0, oldPath: "old/path.rs", newPath: "new/path.rs", status: .renamed)
+        let title = DiffViewLogic.headerTitle(for: file)
+        #expect(title.old == "old/path.rs")
+        #expect(title.new == "new/path.rs")
+    }
+
+    @Test func headerTitleFallsBackToThePathForACopyMissingEitherSide() {
+        // A copy the parser only partially resolved (e.g. mid-stream) still needs a title.
+        let file = DiffFile(id: 0, oldPath: nil, newPath: "new/path.rs", status: .copied)
+        let title = DiffViewLogic.headerTitle(for: file)
+        #expect(title.old == nil)
+        #expect(title.new == "new/path.rs")
+    }
+
+    @Test func headerTitleIsJustThePathForAModifiedFile() {
+        let file = DiffFile(id: 0, oldPath: "m.rs", newPath: "m.rs", status: .modified)
+        let title = DiffViewLogic.headerTitle(for: file)
+        #expect(title.old == nil)
+        #expect(title.new == "m.rs")
+    }
+
+    // MARK: - visibleCitations
+
+    private func citation(_ n: Int) -> DiffCitation {
+        DiffCitation(kind: .decision, title: "Decision \(n)", target: .decisionDetail("d\(n)"))
+    }
+
+    @Test func visibleCitationsShowsEverythingWhenAtOrBelowTheLimit() {
+        let citations = (0..<3).map { citation($0) }
+        let visible = DiffViewLogic.visibleCitations(citations)
+        #expect(visible.shown == citations)
+        #expect(visible.overflow.isEmpty)
+    }
+
+    @Test func visibleCitationsSplitsTheOverflowAtTheLimit() {
+        let citations = (0..<5).map { citation($0) }
+        let visible = DiffViewLogic.visibleCitations(citations)
+        #expect(visible.shown == Array(citations.prefix(3)))
+        #expect(visible.overflow == Array(citations.suffix(2)))
     }
 }

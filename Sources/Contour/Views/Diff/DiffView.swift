@@ -53,15 +53,15 @@ struct DiffView: View {
     // MARK: - File list
 
     private func fileList(_ proxy: ScrollViewProxy) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let totals = DiffViewLogic.totalLineCounts(files)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text("\(files.count) \(files.count == 1 ? "file" : "files")")
+                Text(DiffViewLogic.fileCountLabel(files.count))
                     .font(.callout.weight(.semibold))
-                LineCounts(additions: files.reduce(0) { $0 + $1.additions },
-                           deletions: files.reduce(0) { $0 + $1.deletions })
+                LineCounts(additions: totals.additions, deletions: totals.deletions)
                 Spacer()
                 Button {
-                    collapsed = collapsed.isEmpty ? Set(files.map(\.id)) : []
+                    collapsed = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: collapsed)
                 } label: {
                     Image(systemName: collapsed.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
                 }
@@ -75,8 +75,8 @@ struct DiffView: View {
                     HStack(spacing: 6) {
                         StatusGlyph(status: file.status)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(fileName(file.path)).lineLimit(1)
-                            if let dir = directory(file.path) {
+                            Text(DiffViewLogic.fileName(file.path)).lineLimit(1)
+                            if let dir = DiffViewLogic.directory(file.path) {
                                 Text(dir).font(.caption).foregroundStyle(.secondary)
                                     .lineLimit(1).truncationMode(.head)
                             }
@@ -100,7 +100,7 @@ struct DiffView: View {
 
     private func jump(to file: DiffFile, _ proxy: ScrollViewProxy) {
         currentFile = file.id
-        collapsed.remove(file.id)
+        collapsed = DiffViewLogic.removingFile(file.id, from: collapsed)
         proxy.scrollTo(fileAnchor(file), anchor: .top)
     }
 
@@ -109,7 +109,7 @@ struct DiffView: View {
     private func land(on ref: CodeRef?, _ proxy: ScrollViewProxy) {
         guard let target = DiffViewLogic.landingTarget(for: ref, in: files) else { return }
         currentFile = target.file.id
-        collapsed.remove(target.file.id)
+        collapsed = DiffViewLogic.removingFile(target.file.id, from: collapsed)
         // After the expanded file has been laid out.
         DispatchQueue.main.async {
             // Just below the top, so the pinned file header doesn't cover the hunk's header.
@@ -124,8 +124,9 @@ struct DiffView: View {
 
     private func fileHeader(_ file: DiffFile) -> some View {
         let isCollapsed = collapsed.contains(file.id)
+        let title = DiffViewLogic.headerTitle(for: file)
         return Button {
-            if isCollapsed { collapsed.remove(file.id) } else { collapsed.insert(file.id) }
+            collapsed = DiffViewLogic.toggleCollapsed(file.id, in: collapsed)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.right")
@@ -133,10 +134,10 @@ struct DiffView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 12)
                 Group {
-                    if file.status == .renamed || file.status == .copied, let old = file.oldPath, let new = file.newPath {
-                        Text(old).foregroundStyle(.secondary) + Text(" → ").foregroundStyle(.secondary) + Text(new)
+                    if let old = title.old {
+                        Text(old).foregroundStyle(.secondary) + Text(" → ").foregroundStyle(.secondary) + Text(title.new)
                     } else {
-                        Text(file.path)
+                        Text(title.new)
                     }
                 }
                 .font(.system(.callout, design: .monospaced).weight(.medium))
@@ -163,13 +164,10 @@ struct DiffView: View {
 
     @ViewBuilder
     private func fileBody(_ file: DiffFile, citations: [String: [DiffCitation]]) -> some View {
-        if file.isBinary {
-            note("Binary file not shown")
-        } else if file.hunks.isEmpty {
-            note(file.status == .renamed ? "Renamed without content changes"
-                 : file.status == .added || file.status == .deleted ? "Empty file" : "No content changes")
+        if let text = DiffViewLogic.emptyStateNote(for: file) {
+            note(text)
         } else {
-            let gutter = gutterWidth(file)
+            let gutter = DiffViewLogic.gutterWidth(file)
             ForEach(file.hunks) { hunk in
                 hunkHeader(hunk, in: file, citations: citations[hunk.id] ?? [])
                 ForEach(hunk.lines) { line in
@@ -186,18 +184,19 @@ struct DiffView: View {
     }
 
     private func hunkHeader(_ hunk: DiffHunk, in file: DiffFile, citations: [DiffCitation]) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        let visible = DiffViewLogic.visibleCitations(citations)
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(hunk.header)
                 .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(.purple)
                 .lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 8)
-            ForEach(citations.prefix(3)) { citation in
+            ForEach(visible.shown) { citation in
                 CitationBadge(citation: citation) { actions.navigate(citation.target) }
             }
-            if citations.count > 3 {
-                Menu("+\(citations.count - 3)") {
-                    ForEach(citations.dropFirst(3)) { c in Button(c.title) { actions.navigate(c.target) } }
+            if !visible.overflow.isEmpty {
+                Menu("+\(visible.overflow.count)") {
+                    ForEach(visible.overflow) { c in Button(c.title) { actions.navigate(c.target) } }
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -206,11 +205,8 @@ struct DiffView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 4)
         .background(Color.purple.opacity(0.06))
-        .reviewContextMenu(.codeRef(hunkRef(hunk, in: file)))
+        .reviewContextMenu(.codeRef(DiffViewLogic.hunkRef(hunk, in: file)))
     }
-
-    /// The range a hunk shows, as a reference — head side unless the file is gone.
-    private func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef { DiffViewLogic.hunkRef(hunk, in: file) }
 
     private func lineRow(_ line: DiffLine, in file: DiffFile, gutter: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
@@ -220,9 +216,9 @@ struct DiffView: View {
             Text(line.newLine.map(String.init) ?? "")
                 .frame(width: gutter, alignment: .trailing)
                 .foregroundStyle(.tertiary)
-            Text(marker(line.kind))
+            Text(DiffViewLogic.marker(line.kind))
                 .frame(width: 22, alignment: .center)
-                .foregroundStyle(markerColor(line.kind))
+                .foregroundStyle(DiffViewLogic.markerColor(line.kind))
             Text(line.text.isEmpty ? " " : line.text)
                 .foregroundStyle(line.kind == .noNewlineMarker ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .italic(line.kind == .noNewlineMarker)
@@ -232,23 +228,8 @@ struct DiffView: View {
         }
         .font(.system(.footnote, design: .monospaced))
         .padding(.trailing, 12).padding(.vertical, 0.5)
-        .background(background(line, in: file))
+        .background(DiffViewLogic.background(line, in: file, focus: focus))
     }
-
-    private func marker(_ kind: DiffLine.Kind) -> String { DiffViewLogic.marker(kind) }
-
-    private func markerColor(_ kind: DiffLine.Kind) -> Color { DiffViewLogic.markerColor(kind) }
-
-    private func background(_ line: DiffLine, in file: DiffFile) -> Color {
-        DiffViewLogic.background(line, in: file, focus: focus)
-    }
-
-    /// Wide enough for the file's largest line number on either side.
-    private func gutterWidth(_ file: DiffFile) -> CGFloat { DiffViewLogic.gutterWidth(file) }
-
-    private func fileName(_ path: String) -> String { DiffViewLogic.fileName(path) }
-
-    private func directory(_ path: String) -> String? { DiffViewLogic.directory(path) }
 }
 
 /// File/hunk navigation, line highlighting/coloring, and path formatting — pulled out of
@@ -313,6 +294,63 @@ enum DiffViewLogic {
     static func directory(_ path: String) -> String? {
         guard let slash = path.lastIndex(of: "/") else { return nil }
         return String(path[..<slash])
+    }
+
+    /// "1 file" / "N files" for the file-list header.
+    static func fileCountLabel(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "file" : "files")"
+    }
+
+    /// Additions and deletions summed across every file, for the file-list header's total.
+    static func totalLineCounts(_ files: [DiffFile]) -> (additions: Int, deletions: Int) {
+        (files.reduce(0) { $0 + $1.additions }, files.reduce(0) { $0 + $1.deletions })
+    }
+
+    /// The collapsed set after the "collapse all" / "expand all" toggle: collapse every file
+    /// if any are expanded, otherwise expand them all.
+    static func toggleAllCollapsed(files: [DiffFile], collapsed: Set<Int>) -> Set<Int> {
+        collapsed.isEmpty ? Set(files.map(\.id)) : []
+    }
+
+    /// The collapsed set after one file's disclosure triangle is clicked.
+    static func toggleCollapsed(_ fileID: Int, in collapsed: Set<Int>) -> Set<Int> {
+        var next = collapsed
+        if next.contains(fileID) { next.remove(fileID) } else { next.insert(fileID) }
+        return next
+    }
+
+    /// The collapsed set with one file expanded — jumping to a file, or landing a citation on
+    /// one, always opens it even if it was collapsed.
+    static func removingFile(_ fileID: Int, from collapsed: Set<Int>) -> Set<Int> {
+        var next = collapsed
+        next.remove(fileID)
+        return next
+    }
+
+    /// The note shown in place of hunks: for a binary file, or one with no hunks at all
+    /// (renamed without content changes, newly added or deleted empty, or otherwise
+    /// unchanged). Nil means the file has hunks to render normally.
+    static func emptyStateNote(for file: DiffFile) -> String? {
+        if file.isBinary { return "Binary file not shown" }
+        guard file.hunks.isEmpty else { return nil }
+        if file.status == .renamed { return "Renamed without content changes" }
+        if file.status == .added || file.status == .deleted { return "Empty file" }
+        return "No content changes"
+    }
+
+    /// The display for a hunk's file header: the rename/copy arrow when both paths are known,
+    /// otherwise just the file's own path.
+    static func headerTitle(for file: DiffFile) -> (old: String?, new: String) {
+        if (file.status == .renamed || file.status == .copied), let old = file.oldPath, let new = file.newPath {
+            return (old, new)
+        }
+        return (nil, file.path)
+    }
+
+    /// The citations shown inline on a hunk header versus rolled into the "+N" overflow menu.
+    static func visibleCitations(_ citations: [DiffCitation], max: Int = 3) -> (shown: [DiffCitation], overflow: [DiffCitation]) {
+        guard citations.count > max else { return (citations, []) }
+        return (Array(citations.prefix(max)), Array(citations.dropFirst(max)))
     }
 }
 
