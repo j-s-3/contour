@@ -252,6 +252,19 @@ enum ClipboardOffer: Equatable {
     case unreadLink(changeCount: Int)
 }
 
+/// The row-formatting logic CLAUDE.md calls out for this file, pulled out of the private
+/// `PullRequestRow` so it's directly testable without a view instance.
+enum OnboardingViewLogic {
+    /// A PR row's second line: repo and number always, then whatever else is known —
+    /// author or draft state, and when it happened, in that order.
+    static func subtitle(repo: String, number: Int, detail: String?, date: Date?, dateVerb: String) -> String {
+        var parts = ["\(repo) #\(number)"]
+        if let detail { parts.append(detail) }
+        if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 /// One of the start screen's PR lists: a quiet heading over its rows.
 private struct PullRequestList<Rows: View>: View {
     let title: String
@@ -314,10 +327,7 @@ private struct PullRequestRow: View {
     }
 
     private var subtitle: String {
-        var parts = ["\(repo) #\(number)"]
-        if let detail { parts.append(detail) }
-        if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
-        return parts.joined(separator: " · ")
+        OnboardingViewLogic.subtitle(repo: repo, number: number, detail: detail, date: date, dateVerb: dateVerb)
     }
 }
 
@@ -381,7 +391,12 @@ struct AnalyzingView: View {
         }
     }
 
-    private var latestDetail: String {
+    private var latestDetail: String { Self.latestDetail(log: log, stage: stage) }
+
+    /// The console's most recent line, condensed for the one-line status under the mark:
+    /// the stage name alone once a step starts, or the stage name and its detail once the
+    /// harness reports one.
+    static func latestDetail(log: [PipelineProgressEntry], stage: PipelineStage) -> String {
         guard let last = log.last else { return stage.rawValue }
         return last.detail.isEmpty ? last.stage : "\(last.stage) — \(last.detail)"
     }
