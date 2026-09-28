@@ -282,13 +282,30 @@ struct ContentView: View {
     /// A spinner while this verdict is in flight, filled once it's submitted.
     @ViewBuilder
     private func reviewButtonLabel(_ verdict: PRReview.Verdict, symbol: String, submittedColor: Color) -> some View {
-        switch store.review {
-        case .submitting(verdict):
+        switch Self.reviewButtonPhase(for: store.review, verdict: verdict) {
+        case .submitting:
             ProgressView().controlSize(.small)
-        case .submitted(verdict):
+        case .submitted:
             Image(systemName: symbol + ".fill").foregroundStyle(submittedColor)
-        default:
+        case .idle:
             Image(systemName: symbol)
+        }
+    }
+
+    /// Which of the three faces `reviewButtonLabel` shows for one verdict's button: this
+    /// verdict's own review is in flight, already submitted, or neither (idle, or a
+    /// *different* verdict is the one in flight/submitted/failed).
+    enum ReviewButtonPhase: Equatable {
+        case idle
+        case submitting
+        case submitted
+    }
+
+    nonisolated static func reviewButtonPhase(for review: PRReview.State, verdict: PRReview.Verdict) -> ReviewButtonPhase {
+        switch review {
+        case .submitting(verdict): return .submitting
+        case .submitted(verdict): return .submitted
+        default: return .idle
         }
     }
 
@@ -311,7 +328,7 @@ struct ContentView: View {
                 sidebarRow("Architecture", "square.stack.3d.up", .architecture,
                            status: analysis.status(.architecture), section: .architecture)
                 let flowsStatus = analysis.status(.flows)
-                sidebarRow(flowsStatus == .done ? "Flows (\(graph.flows.count))" : "Flows", "arrow.triangle.branch", .flows,
+                sidebarRow(Self.flowsRowTitle(status: flowsStatus, count: graph.flows.count), "arrow.triangle.branch", .flows,
                            status: flowsStatus, section: .flows)
             }
             Section("Review") {
@@ -320,8 +337,8 @@ struct ContentView: View {
                 // recorded.
                 let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
                 let decisionsStatus = analysis.status(.decisions)
-                let done = decisionsStatus == .done && analysis.status(.judgment) == .done
-                    && p.total > 0 && p.reviewed == p.total
+                let done = Self.decisionsRowIsFullyReviewed(
+                    decisionsStatus: decisionsStatus, judgmentStatus: analysis.status(.judgment), progress: p)
                 sidebarRow("Decisions", "checklist", .decisions, status: decisionsStatus, section: .decisions) {
                     if p.total > 0 {
                         HStack(spacing: 4) {
@@ -338,11 +355,31 @@ struct ContentView: View {
                 .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
-                sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
+                sidebarRow("Raw diff", "doc.text", .diff, status: Self.diffRowStatus(diffText: store.diffText), section: nil)
             }
         }
         .listStyle(.sidebar)
         .frame(minWidth: 220)
+    }
+
+    /// The Flows sidebar row's title: a count once the stage is done and has something to
+    /// count, a bare label otherwise (still running, or done with nothing found).
+    nonisolated static func flowsRowTitle(status: StageStatus, count: Int) -> String {
+        status == .done ? "Flows (\(count))" : "Flows"
+    }
+
+    /// The Decisions row's checkmark: every decision has to be both analyzed (Decisions and
+    /// Judgment stages done) *and* actually reviewed — a PR with no considerations at all
+    /// (`total == 0`) is never "done", since there was nothing to check off.
+    nonisolated static func decisionsRowIsFullyReviewed(
+        decisionsStatus: StageStatus, judgmentStatus: StageStatus, progress: (reviewed: Int, total: Int)
+    ) -> Bool {
+        decisionsStatus == .done && judgmentStatus == .done && progress.total > 0 && progress.reviewed == progress.total
+    }
+
+    /// The raw-diff row has nothing to show until the diff has been fetched.
+    nonisolated static func diffRowStatus(diffText: String?) -> StageStatus {
+        diffText == nil ? .pending : .done
     }
 
     private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget,
@@ -456,6 +493,43 @@ struct ContentView: View {
         }
     }
 
+    /// Which of `sectionContent`'s branches a lens is in: it already has *something* to
+    /// show (from this revision or a stale one), or it doesn't, in which case the stage's own
+    /// status decides between a retryable failure, a retryable stop, content anyway (a `done`
+    /// stage with nothing to show, e.g. zero decisions found), or a pending placeholder.
+    enum SectionBranch: Equatable {
+        /// `showsOverlay` is true only for the `hasContent` case: a `done` stage with
+        /// nothing to show (e.g. zero decisions found) renders the same `content()` but
+        /// with no progress/stopped pill floated over it, since there's nothing left for
+        /// that stage to report.
+        case content(showsOverlay: Bool)
+        case failed(String)
+        case stopped
+        case pending
+    }
+
+    nonisolated static func sectionBranch(hasContent: Bool, status: StageStatus) -> SectionBranch {
+        if hasContent { return .content(showsOverlay: true) }
+        if let message = status.failure { return .failed(message) }
+        if status == .stopped { return .stopped }
+        if status == .done { return .content(showsOverlay: false) }
+        return .pending
+    }
+
+    /// Which pill, if any, floats over a lens's own content while its stage keeps working
+    /// (or sits stopped) behind what's already on screen.
+    enum SectionOverlay: Equatable {
+        case none
+        case progress(String)
+        case stopped
+    }
+
+    nonisolated static func sectionOverlay(status: StageStatus, progress: String?) -> SectionOverlay {
+        if status.isRunning, let progress { return .progress(progress) }
+        if status == .stopped { return .stopped }
+        return .none
+    }
+
     /// A lens that may still be analyzing. With nothing yet it shows what's known and what's
     /// being worked on (or, if it failed, a retry); with something, the lens itself, plus a
     /// floating note while more is still arriving. Never a disabled or blank destination.
@@ -465,26 +539,30 @@ struct ContentView: View {
         known: String? = nil, progress: String? = nil, @ViewBuilder content: () -> Content
     ) -> some View {
         let status = store.analysis.status(stage)
-        if hasContent {
+        switch Self.sectionBranch(hasContent: hasContent, status: status) {
+        case .content(showsOverlay: true):
             content()
                 .overlay(alignment: .bottom) {
-                    if status.isRunning, let progress {
-                        SectionProgressPill(text: progress)
-                    } else if status == .stopped {
+                    switch Self.sectionOverlay(status: status, progress: progress) {
+                    case .progress(let text):
+                        SectionProgressPill(text: text)
+                    case .stopped:
                         SectionStoppedPill { store.retry(stage) }
+                    case .none:
+                        EmptyView()
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: status.isRunning)
                 .animation(.easeInOut(duration: 0.3), value: status == .stopped)
-        } else if let message = status.failure {
+        case .content(showsOverlay: false):
+            content()
+        case .failed(let message):
             SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
             }
-        } else if status == .stopped {
+        case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }
-        } else if status == .done {
-            content()
-        } else {
+        case .pending:
             SectionPendingView(section: section, status: status, known: known)
         }
     }
