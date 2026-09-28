@@ -336,4 +336,117 @@ struct DecisionsViewTests {
     @Test func beforeAfterPartsOnALabelWithNoSeparatorIsTheWholeLabel() {
         #expect(DecisionsViewLogic.beforeAfterParts(from: "Single stage") == ["Single stage"])
     }
+
+    // MARK: - Layout state (split out of DecisionsView's computed properties and body)
+
+    private func brief(options: [DecisionOption] = [], answer: String = "the answer") -> DecisionBrief {
+        DecisionBrief(question: "Q?", shape: nil, options: options, answer: answer, insteadOf: nil, why: nil, tradeoff: nil)
+    }
+
+    /// Other Decisions must open by themselves when nothing was proposed for review, else the
+    /// lens would show an empty list with the analysis' findings hidden behind a button.
+    @Test func otherDecisionsOpenByDefaultOnlyWhenNothingIsToReview() {
+        #expect(DecisionsViewLogic.otherShown(showOther: false, toReviewIsEmpty: true))
+        #expect(DecisionsViewLogic.otherShown(showOther: true, toReviewIsEmpty: false))
+        #expect(!DecisionsViewLogic.otherShown(showOther: false, toReviewIsEmpty: false))
+    }
+
+    /// J/K only walks Other Decisions once they're visible, so it never lands on a hidden row.
+    @Test func sequenceAppendsOtherDecisionsOnlyOnceShown() {
+        let review = [decision("r1"), decision("r2")], other = [decision("o1")]
+        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: false).map(\.id) == ["r1", "r2"])
+        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: true).map(\.id) == ["r1", "r2", "o1"])
+    }
+
+    @Test func otherToggleTitlePluralizesAndFlipsWhenShown() {
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: true, count: 3) == "Hide lower-impact decisions")
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: false, count: 1) == "Show 1 lower-impact decision")
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: false, count: 4) == "Show 4 lower-impact decisions")
+    }
+
+    /// The one-at-a-time footer must disable Previous on the first card and Next on the last,
+    /// and offer the hidden Other Decisions only at the very end.
+    @Test func oneAtATimeStepDisablesEndsAndOffersOthersAtTheEnd() {
+        let first = DecisionsViewLogic.oneAtATimeStep(index: 0, count: 3, otherCount: 2, otherShown: false)
+        #expect(first == .init(label: "1 of 3", canGoPrevious: false, canGoNext: true, offersOtherDecisions: false))
+        let last = DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: false)
+        #expect(last == .init(label: "3 of 3", canGoPrevious: true, canGoNext: false, offersOtherDecisions: true))
+        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: true).offersOtherDecisions)
+        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 0, otherShown: false).offersOtherDecisions)
+    }
+
+    // MARK: - Card and row text
+
+    @Test func whyLabelIsPlainWhenNothingAboveItDrewAChoice() {
+        #expect(DecisionsViewLogic.whyLabel(hasShape: false, hasTradeoff: false) == "Why")
+        #expect(DecisionsViewLogic.whyLabel(hasShape: true, hasTradeoff: false) == "Why this side?")
+        #expect(DecisionsViewLogic.whyLabel(hasShape: false, hasTradeoff: true) == "Why this side?")
+    }
+
+    /// A questioned decision needs somewhere to write the question; a note already written
+    /// must stay visible even if the state was later changed.
+    @Test func noteFieldShowsWhenQuestionedOrWhenANoteExists() {
+        #expect(DecisionsViewLogic.showsNoteField(state: .questioned, note: ""))
+        #expect(DecisionsViewLogic.showsNoteField(state: .accepted, note: "hmm"))
+        #expect(!DecisionsViewLogic.showsNoteField(state: .accepted, note: ""))
+    }
+
+    @Test func chosenSummaryPrefersTheChosenOptionThenTheAnswer() {
+        let withDetail = brief(options: [DecisionOption(label: "A"), DecisionOption(label: "B", detail: "faster", chosen: true)])
+        #expect(DecisionsViewLogic.chosenSummary(withDetail) == "B — faster")
+        let noDetail = brief(options: [DecisionOption(label: "B", chosen: true)])
+        #expect(DecisionsViewLogic.chosenSummary(noDetail) == "B")
+        #expect(DecisionsViewLogic.chosenSummary(brief(options: [DecisionOption(label: "A")], answer: "Did X")) == "Did X")
+    }
+
+    @Test func reviewButtonHelpOffersClearingOnlyWhenOn() {
+        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: false, target: .accepted, title: "Looks good", shortcut: "A")
+                == "Looks good (A)")
+        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: true, target: .accepted, title: "Looks good", shortcut: "A")
+                == "\(ReviewerState.accepted.label) — click to clear (A)")
+    }
+
+    /// Discussed-only resolution is green; a recorded judgment wins so the dot matches its card.
+    @Test func progressDotFillDistinguishesPendingDiscussedAndJudged() {
+        #expect(DecisionsViewLogic.progressDotFill(resolved: false, state: .accepted) == .pending)
+        #expect(DecisionsViewLogic.progressDotFill(resolved: true, state: .unreviewed) == .discussed)
+        #expect(DecisionsViewLogic.progressDotFill(resolved: true, state: .questioned) == .judged(.questioned))
+    }
+
+    // MARK: - Drill-down text
+
+    @Test func drillDownTextHelpersFormatCountsEdgesAndFooter() {
+        #expect(DecisionsViewLogic.tradeoffsTitle(count: 1) == "What it traded")
+        #expect(DecisionsViewLogic.tradeoffsTitle(count: 3) == "What it traded (3)")
+        #expect(DecisionsViewLogic.edgeTitle(from: "A", to: "B") == "A → B")
+        #expect(DecisionsViewLogic.drillDownFooter(level: "Design", confidence: "High")
+                == "Design-level choice · analysis confidence high")
+    }
+
+    // MARK: - Spectrum and choice geometry
+
+    /// The 0.5 midpoint counts as the second dimension, matching the emphasized label and knob.
+    @Test func spectrumFavorsTheSecondDimensionFromTheMidpointUp() {
+        #expect(!DecisionsViewLogic.favorsSecondDimension(0.49))
+        #expect(DecisionsViewLogic.favorsSecondDimension(0.5))
+    }
+
+    /// The knob travels from the 6pt inset at 0 to the far end (minus its own margin) at 1.
+    @Test func knobOffsetSpansTheTrack() {
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 0) == 6)
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 1) == 134)
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 0.5) == 70)
+    }
+
+    @Test func connectorHidesTheOuterHalvesOfTheFirstAndLastOption() {
+        #expect(DecisionsViewLogic.connectorOpacities(index: 0, count: 3) == (0, 0.3))
+        #expect(DecisionsViewLogic.connectorOpacities(index: 1, count: 3) == (0.3, 0.3))
+        #expect(DecisionsViewLogic.connectorOpacities(index: 2, count: 3) == (0.3, 0))
+    }
+
+    @Test func labelAlignmentRightAlignsOnlyTheSecondLeadingLabel() {
+        #expect(DecisionsViewLogic.labelAlignment(.leading, index: 1) == .trailing)
+        #expect(DecisionsViewLogic.labelAlignment(.leading, index: 0) == .leading)
+        #expect(DecisionsViewLogic.labelAlignment(.center, index: 1) == .center)
+    }
 }
