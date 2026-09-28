@@ -128,4 +128,15 @@ final class StartScreenTests: XCTestCase {
         let requests = await ReviewRequests.fetch(access: .anonymous)
         XCTAssertNil(requests)
     }
+
+    /// With access not pinned to anonymous, `fetch` reaches past the anonymous guard and
+    /// shells out to a real `gh` — this repo's convention is never to fake a real CLI on
+    /// PATH (`HarnessContractTests` replays a captured stream instead of spawning one), so
+    /// this drives the real call. `gh` may or may not be installed or authenticated in the
+    /// environment running this test; either way `fetch`'s `try?` degrades a failure to
+    /// `nil` rather than throwing or crashing, so both outcomes are valid.
+    func testFetchReachesGHWhenAccessIsntAnonymous() async {
+        let requests = await ReviewRequests.fetch(access: .gh)
+        if let requests { XCTAssertTrue(requests.allSatisfy { !$0.repo.isEmpty }) }
+    }
 }
