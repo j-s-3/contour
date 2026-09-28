@@ -10,7 +10,10 @@ extension View {
     }
 }
 
-private struct PRDropTarget: ViewModifier {
+/// Internal rather than private so `PRDropTargetTests` can call `loadPullRequest` directly
+/// against a real `NSItemProvider`, per CLAUDE.md's guidance to test this file's
+/// drop-payload parsing the same way as `PRLinkTests`.
+struct PRDropTarget: ViewModifier {
     let open: (String) -> Void
     @State private var isTargeted = false
 
@@ -37,13 +40,16 @@ private struct PRDropTarget: ViewModifier {
     }
 
     /// A browser drag carries a URL; a text drag carries the surrounding words too, so it
-    /// is searched rather than taken whole.
+    /// is searched rather than taken whole. `nonisolated(nonsending)` because it touches no
+    /// main-actor state (`open`/`isTargeted`), so `PRDropTargetTests` can await it from any
+    /// context — yet it runs on the caller's executor, so the non-`Sendable` `provider`
+    /// never crosses an actor boundary (plain `nonisolated` would hop off the main actor).
     ///
     /// Bridged through a continuation rather than a plain completion handler: `loadObject`'s
     /// own completion handler is `@Sendable`, and a plain `(String?) -> Void` closure isn't,
     /// so handing it straight to `loadObject` is what Swift 6's strict concurrency checking
     /// is (correctly) unhappy about. The continuation only ever captures itself, which is.
-    private static func loadPullRequest(from provider: NSItemProvider) async -> String? {
+    nonisolated(nonsending) static func loadPullRequest(from provider: NSItemProvider) async -> String? {
         if provider.canLoadObject(ofClass: URL.self) {
             return await withCheckedContinuation { continuation in
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in

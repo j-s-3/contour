@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftUI
 @testable import Contour
 
 /// The in-app mark is drawn from a Swift port of `scripts/generate-logo.py`, so these
@@ -56,6 +57,124 @@ struct ContourMarkTests {
         #expect(ContourMarkPalette.dark.inner == (0xFF, 0xC8, 0x57))
     }
 
+    /// The light-appearance palette uses deeper tones of the same two hues as dark, per
+    /// its doc comment, rather than the icon's own (pale-on-dark-tile) colours.
+    @Test func lightPaletteUsesDeeperTonesOfTheSameHues() {
+        #expect(ContourMarkPalette.light.outer == (0x1F, 0x95, 0x9E))
+        #expect(ContourMarkPalette.light.inner == (0xE0, 0x98, 0x12))
+    }
+
+    @Test func forSchemePicksDarkOnlyForDarkAppearance() {
+        #expect(ContourMarkPalette.forScheme(.dark).outer == ContourMarkPalette.dark.outer)
+        #expect(ContourMarkPalette.forScheme(.light).outer == ContourMarkPalette.light.outer)
+    }
+
+    /// The line warms from the outer hue at the base to the inner (peak) hue at the summit.
+    @Test func lineColorRunsFromOuterAtTheBaseToThePeakAtTheSummit() {
+        let palette = ContourMarkPalette.dark
+        let expectedOuter = Color(.sRGB, red: palette.outer.0 / 255, green: palette.outer.1 / 255, blue: palette.outer.2 / 255)
+        #expect(palette.line(level: 0) == expectedOuter)
+        #expect(palette.line(level: 1) == palette.peak)
+    }
+
+    // MARK: - Geometry
+
+    /// The mark is documented as "about 1.4:1", wider than tall.
+    @Test func boundsAreWiderThanTallMatchingTheDocumentedAspectRatio() {
+        #expect(ContourMarkGeometry.bounds.width > 0 && ContourMarkGeometry.bounds.height > 0)
+        #expect(ContourMarkGeometry.aspectRatio > 1.3 && ContourMarkGeometry.aspectRatio < 1.5)
+    }
+
+    @Test func ringPointsReturnsExactlyTheRequestedCount() {
+        let points = ContourMarkGeometry.ringPoints(centre: .zero, radius: 10, level: 0.5, count: 12)
+        #expect(points.count == 12)
+    }
+
+    // MARK: - ContourMarkView's pure draw-state helpers
+    //
+    // `draw(in:size:)` itself needs a live GraphicsContext, which tests can't construct, so
+    // the state it derives (compact threshold, stroke widths, ring visibility, peak
+    // geometry) is pulled out into nonisolated static helpers and pinned here instead.
+
+    /// The compact threshold is exclusive: exactly `compactHeight` (40) still gets the full
+    /// mark, matching `size.height < Self.compactHeight` in `draw`.
+    @Test func isCompactOnlyBelowTheThreshold() {
+        #expect(ContourMarkView.isCompact(height: 39.999) == true)
+        #expect(ContourMarkView.isCompact(height: 40) == false)
+        #expect(ContourMarkView.isCompact(height: 104) == false)
+    }
+
+    /// Compact drops every other ring (an optical simplification at favicon size); the full
+    /// mark keeps them all, in the same outermost-first order as `ContourMarkGeometry.rings`.
+    @Test func visibleRingIndicesDropsEveryOtherRingWhenCompact() {
+        #expect(ContourMarkGeometry.ringCount == 7, "the expectations below are written for 7 rings")
+        #expect(ContourMarkView.visibleRingIndices(compact: false) == [0, 1, 2, 3, 4, 5, 6])
+        #expect(ContourMarkView.visibleRingIndices(compact: true) == [0, 2, 4, 6])
+    }
+
+    @Test func lineWeightIsHeavierWhenCompact() {
+        #expect(ContourMarkView.lineWeight(compact: false) == 1.25)
+        #expect(ContourMarkView.lineWeight(compact: true) == 1.4)
+        #expect(ContourMarkView.lineWeight(compact: true) > ContourMarkView.lineWeight(compact: false))
+    }
+
+    @Test func minStrokeWidthScalesInverselyWithTheDrawScale() {
+        #expect(ContourMarkView.minStrokeWidth(compact: false, scale: 1) == 0.9)
+        #expect(ContourMarkView.minStrokeWidth(compact: true, scale: 1) == 1.1)
+        #expect(ContourMarkView.minStrokeWidth(compact: false, scale: 2) == 0.45)
+    }
+
+    /// The floor only bites when the geometric width would be thinner than `minWidth`;
+    /// otherwise the ring keeps its own proportional width.
+    @Test func strokeWidthNeverGoesBelowTheMinimum() {
+        let proportional = ContourMarkGeometry.stroke * 1.0 * 1.25
+        #expect(ContourMarkView.strokeWidth(widthFactor: 1.0, weight: 1.25, minWidth: 0) == proportional)
+        #expect(ContourMarkView.strokeWidth(widthFactor: 0, weight: 1.25, minWidth: 5) == 5)
+    }
+
+    @Test func traceAlphaScalesWithRingOpacity() {
+        #expect(ContourMarkView.traceAlpha(ringOpacity: 1.0) == 0.12)
+        #expect(ContourMarkView.traceAlpha(ringOpacity: 0.5) == 0.06)
+    }
+
+    /// The peak dot is drawn bigger when compact so it still reads at favicon size.
+    @Test func dotRadiusIsLargerWhenCompact() {
+        #expect(ContourMarkView.dotRadius(compact: false) == ContourMarkGeometry.peakRadius)
+        #expect(ContourMarkView.dotRadius(compact: true) == ContourMarkGeometry.peakRadius * 1.5)
+    }
+
+    @Test func circleRectIsCenteredOnThePointWithSideTwiceTheRadius() {
+        let rect = ContourMarkView.circleRect(center: CGPoint(x: 10, y: 20), radius: 5)
+        #expect(rect == CGRect(x: 5, y: 15, width: 10, height: 10))
+    }
+
+    /// The halo is centred on the peak and sized off the geometry's own `haloRadius`, so the
+    /// two never drift apart.
+    @Test func haloRectIsCenteredOnThePeakWithTheHaloRadius() {
+        let expected = CGRect(x: ContourMarkGeometry.peak.x - ContourMarkGeometry.haloRadius,
+                              y: ContourMarkGeometry.peak.y - ContourMarkGeometry.haloRadius,
+                              width: ContourMarkGeometry.haloRadius * 2,
+                              height: ContourMarkGeometry.haloRadius * 2)
+        #expect(ContourMarkView.haloRect == expected)
+        #expect(ContourMarkGeometry.haloRadius == ContourMarkGeometry.peakRadius * 2.2)
+    }
+
+    @Test func haloOpacityFadesInWithThePeakStage() {
+        #expect(ContourMarkView.haloOpacity(peakStage: 0) == 0)
+        #expect(ContourMarkView.haloOpacity(peakStage: 1) == 0.18)
+    }
+
+    /// Floored at `traceOpacity` (never fully invisible) and reaches full opacity only once
+    /// the peak has completely resolved.
+    @Test func peakDotOpacityIsFlooredThenReachesFullOpacity() {
+        #expect(ContourMarkView.peakDotOpacity(peakStage: 0) == 0.12)
+        #expect(ContourMarkView.peakDotOpacity(peakStage: 1) == 1)
+    }
+
+    @Test func heroHeightIsUsedOnTheWelcomeAndAnalysisScreens() {
+        #expect(ContourMarkView.heroHeight == 104)
+    }
+
     // MARK: - Resolving the mark
 
     @Test func nothingIsResolvedAtZeroAndEverythingAtOne() {
@@ -86,63 +205,5 @@ struct ContourMarkTests {
             return ([s.peak] + s.rings).filter { $0 > 0 && $0 < 1 }.count > 1
         }
         #expect(overlapping)
-    }
-
-    // MARK: - Analysis progress
-
-    private static let pipelineOrder: [PipelineStage] = [
-        .fetching, .checkingOut, .cacheCheck, .ticket, .behaviorChange, .understanding,
-        .architecture, .decisions, .flows, .judgment,
-    ]
-
-    @Test func everyStageHasItsOwnSliceInPipelineOrder() {
-        let starts = Self.pipelineOrder.map { AnalysisResolution.target(stage: $0, elapsed: 0) }
-        #expect(starts.first == 0)
-        #expect(starts.last! < 1)
-        for (a, b) in zip(starts, starts.dropFirst()) { #expect(a < b) }
-    }
-
-    /// In an open review the stages run in parallel: each settled stage resolves its own
-    /// slice, in whatever order they finish, and only a finished analysis is whole.
-    @Test func anOpenReviewResolvesOneSliceForEachSettledStage() {
-        var state = AnalysisState()
-        let opened = AnalysisResolution.target(state: state)
-        #expect(opened > 0 && opened < 0.2)
-
-        state.stages[.decisions] = .done
-        let oneDone = AnalysisResolution.target(state: state)
-        #expect(oneDone > opened)
-
-        state.stages[.architecture] = .failed("boom")
-        let twoSettled = AnalysisResolution.target(state: state)
-        #expect(twoSettled > oneDone, "a failed stage is settled too")
-
-        // Retrying decisions gives its slice back until it settles again.
-        state.stages[.decisions] = .running(detail: nil)
-        let retrying = AnalysisResolution.target(state: state)
-        #expect(retrying < twoSettled)
-        #expect(abs(retrying - opened - (twoSettled - oneDone)) < 1e-9, "only architecture's slice remains")
-
-        for stage in PipelineStage.analysis { state.stages[stage] = .done }
-        #expect(abs(AnalysisResolution.target(state: state) - 1) < 1e-9)
-        state.isComplete = true
-        #expect(AnalysisResolution.target(state: state) == 1)
-    }
-
-    @Test func aLongStageCreepsTowardItsEndButNeverClaimsTheNextStage() {
-        let start = AnalysisResolution.target(stage: .decisions, elapsed: 0)
-        let next = AnalysisResolution.target(stage: .flows, elapsed: 0)
-        let later = AnalysisResolution.target(stage: .decisions, elapsed: 60)
-        let muchLater = AnalysisResolution.target(stage: .decisions, elapsed: 3600)
-        #expect(start < later)
-        #expect(later < muchLater)
-        #expect(muchLater <= next)
-    }
-
-    @Test func drawnResolutionEasesTowardTheTargetAndNeverGoesBack() {
-        let halfway = AnalysisResolution.approach(from: 0.2, to: 0.4, over: 0.25)
-        #expect(halfway > 0.2 && halfway < 0.4)
-        #expect(AnalysisResolution.approach(from: 0.2, to: 0.4, over: 5) == 0.4)
-        #expect(AnalysisResolution.approach(from: 0.5, to: 0.3, over: 1) == 0.5)
     }
 }

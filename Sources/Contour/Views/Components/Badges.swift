@@ -94,7 +94,11 @@ struct ProvenanceMark: View {
             .accessibilityLabel(helpText)
     }
 
-    private var helpText: String {
+    private var helpText: String { Self.helpText(provenance: provenance, confidence: confidence, source: source) }
+
+    /// Pulled out (static, taking its inputs explicitly) so this file's central "never
+    /// present an inference as a fact" text is directly testable per `Provenance` case.
+    static func helpText(provenance: Provenance, confidence: Confidence?, source: String?) -> String {
         var text: String
         switch provenance {
         case .fact: text = "Observed fact"
@@ -181,27 +185,36 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        return Self.wrap(sizes: sizes, spacing: spacing, maxWidth: maxWidth).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let origins = Self.wrap(sizes: sizes, spacing: spacing, maxWidth: bounds.width).origins
+        for (subview, origin) in zip(subviews, origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
+        }
+    }
+
+    /// The wrapping algorithm itself, extracted so it's directly testable: `sizeThatFits`
+    /// and `placeSubviews` need real SwiftUI `Subviews`, which this suite has no
+    /// infrastructure to construct, but the row-breaking math they share does not.
+    /// Mirrors `sizeThatFits`/`placeSubviews`'s original inline loop exactly, so a chip
+    /// starts a new row only once its row already holds something (an over-wide chip
+    /// still gets its own row rather than looping forever).
+    static func wrap(sizes: [CGSize], spacing: CGFloat, maxWidth: CGFloat) -> (size: CGSize, origins: [CGPoint]) {
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+        var origins: [CGPoint] = []
+        origins.reserveCapacity(sizes.count)
+        for size in sizes {
             if x + size.width > maxWidth, x > 0 {
                 x = 0; y += rowHeight + spacing; rowHeight = 0
             }
+            origins.append(CGPoint(x: x, y: y))
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
-        return CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight)
-    }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x: CGFloat = bounds.minX, y: CGFloat = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+        let size = CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight)
+        return (size, origins)
     }
 }

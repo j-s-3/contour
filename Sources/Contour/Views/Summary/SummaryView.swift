@@ -53,24 +53,37 @@ struct SummaryView: View {
 
                 whatChanged
 
-                if let change = graph.dominantBehaviorChange, change.why != nil || change.consequence != nil {
-                    whyAndConsequence(change)
-                        .padding(.top, 26)
-                } else if awaitingBehavior {
+                switch SummaryViewLogic.whySectionMode(
+                    hasDominantChange: graph.dominantBehaviorChange != nil,
+                    hasWhyOrConsequence: graph.dominantBehaviorChange?.why != nil || graph.dominantBehaviorChange?.consequence != nil,
+                    awaitingBehavior: awaitingBehavior
+                ) {
+                case .whyAndConsequence:
+                    if let change = graph.dominantBehaviorChange {
+                        whyAndConsequence(change)
+                            .padding(.top, 26)
+                    }
+                case .placeholder:
                     whyPlaceholder
                         .padding(.top, 26)
+                case .none:
+                    EmptyView()
                 }
 
                 // A stopped judgment is settled, so it lands here with whatever it found.
-                if let items = graph.thingsToThinkAbout(during: analysis) {
-                    if !items.isEmpty {
+                let considerations = graph.thingsToThinkAbout(during: analysis)
+                switch SummaryViewLogic.thingsToThinkAboutBranch(items: considerations, judgmentStopped: judgmentStatus == .stopped) {
+                case .list:
+                    if let items = considerations {
                         thingsToThinkAbout(items)
                             .padding(.top, 36)
-                    } else if judgmentStatus == .stopped {
-                        retryLine("Stopped before weighing what needs judgment.", stage: .judgment)
-                            .padding(.top, 36)
                     }
-                } else {
+                case .stoppedEmpty:
+                    retryLine("Stopped before weighing what needs judgment.", stage: .judgment)
+                        .padding(.top, 36)
+                case .none:
+                    EmptyView()
+                case .placeholder:
                     thingsToThinkAboutPlaceholder
                         .padding(.top, 36)
                 }
@@ -142,12 +155,7 @@ struct SummaryView: View {
     }
 
     private func factColor(_ tone: GlanceFact.Tone) -> AnyShapeStyle {
-        switch tone {
-        case .plain: AnyShapeStyle(.secondary)
-        case .good: AnyShapeStyle(Color.green)
-        case .caution: AnyShapeStyle(Color.orange)
-        case .bad: AnyShapeStyle(Color.red)
-        }
+        SummaryViewLogic.factTint(tone).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary)
     }
 
     private var dot: some View { Text("\u{00b7}").foregroundStyle(.tertiary) }
@@ -200,7 +208,7 @@ struct SummaryView: View {
                         .transition(.opacity)
                     WorkingLine(text: "Building before / after…")
                 } else {
-                    WorkingLine(text: understandingStatus.failure == nil ? "Understanding the change…" : "Building before / after…",
+                    WorkingLine(text: SummaryViewLogic.awaitingBehaviorText(understandingFailed: understandingStatus.failure != nil),
                                 font: .title3)
                 }
             } else if let problem = graph.pr.problemToBeSolved {
@@ -219,10 +227,12 @@ struct SummaryView: View {
                     .lineLimit(3)
                     .reviewContextMenu(.pullRequest)
             }
-            if behaviorStatus.failure != nil {
-                retryLine("Couldn't build the before / after.", stage: .behaviorChange)
-            } else if behaviorStatus == .stopped {
-                retryLine("Stopped before the before / after was built.", stage: .behaviorChange)
+            if let text = SummaryViewLogic.retryBannerText(
+                status: behaviorStatus,
+                failureText: "Couldn't build the before / after.",
+                stoppedText: "Stopped before the before / after was built."
+            ) {
+                retryLine(text, stage: .behaviorChange)
             }
         }
         .animation(.easeInOut(duration: 0.35), value: graph.dominantBehaviorChange?.id)
@@ -277,23 +287,13 @@ struct SummaryView: View {
     /// Judgment runs last, over everything else; until then, say what it's waiting on in the
     /// reviewer's terms, and point at the decisions already found.
     private var judgmentWorkingText: String {
-        let found = graph.decisions.count
-        let decisions = analysis.status(.decisions)
-        if !judgmentStatus.isRunning, decisions.isRunning || decisions == .pending {
-            return found > 0 ? "\(found) \(found == 1 ? "decision" : "decisions") found · looking for consequential choices…"
-                             : "Looking for consequential choices…"
-        }
-        return "Weighing what needs your judgment…"
+        SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: graph.decisions.count, decisionsStatus: analysis.status(.decisions), judgmentStatus: judgmentStatus
+        )
     }
 
     private func openStage(_ stage: BehaviorStage) {
-        if let componentId = stage.componentIds.first {
-            navigate(.componentDetail(componentId))
-        } else if let flowId = stage.flowId {
-            navigate(.flowDetail(flowId))
-        } else {
-            navigate(.architecture)
-        }
+        navigate(SummaryViewLogic.navigationTarget(for: stage))
     }
 
     // MARK: - Why / consequence
@@ -338,20 +338,21 @@ struct SummaryView: View {
     // MARK: - Things to think about
 
     private func thingsToThinkAbout(_ items: [Consideration]) -> some View {
-        let visible = showAllConsiderations ? items : Array(items.prefix(considerationBudget))
+        let visible = SummaryViewLogic.visibleConsiderations(items, showAll: showAllConsiderations, budget: considerationBudget)
         let progress = graph.reviewProgress(discussed: discussed)
+        let resolvedText = SummaryViewLogic.resolvedProgressText(reviewed: progress.reviewed, total: progress.total)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .font(.callout)
-                Text(verbatim: "\(items.count) \(items.count == 1 ? "thing" : "things") to think about".uppercased())
+                Text(verbatim: SummaryViewLogic.thingsToThinkAboutHeaderText(count: items.count))
                     .font(.callout.weight(.semibold))
                     .tracking(0.5)
                 Spacer()
                 // This list is the review checklist; the sidebar and Decisions count the same.
-                if progress.reviewed > 0 {
-                    Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
+                if let resolvedText {
+                    Text(verbatim: resolvedText)
                         .font(.callout)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
@@ -379,8 +380,8 @@ struct SummaryView: View {
                 )
             }
 
-            if items.count > considerationBudget {
-                Button(showAllConsiderations ? "Show fewer" : "Show \(items.count - considerationBudget) more") {
+            if let moreLabel = SummaryViewLogic.showMoreLabel(count: items.count, budget: considerationBudget, showingAll: showAllConsiderations) {
+                Button(moreLabel) {
                     withAnimation(.easeInOut(duration: 0.18)) { showAllConsiderations.toggle() }
                 }
                 .buttonStyle(.link)
@@ -391,19 +392,22 @@ struct SummaryView: View {
 
             // While an earlier revision's list is being revalidated, say a fresh one is
             // coming rather than let it pass for a conclusion about this code.
-            if !judgmentStatus.isSettled {
+            switch SummaryViewLogic.judgmentTailState(status: judgmentStatus) {
+            case .working:
                 WorkingLine(text: judgmentWorkingText, font: .caption)
                     .padding(.leading, 58)
                     .padding(.top, 6)
                     .padding(.bottom, 4)
-            } else if judgmentStatus.failure != nil {
+            case .failed:
                 retryLine("Couldn't finish weighing what needs judgment.", stage: .judgment)
                     .padding(.leading, 58)
                     .padding(.top, 6)
-            } else if judgmentStatus == .stopped {
+            case .stopped:
                 retryLine("Stopped before weighing what else needs judgment.", stage: .judgment)
                     .padding(.leading, 58)
                     .padding(.top, 6)
+            case .settled:
+                EmptyView()
             }
         }
         .padding(.bottom, 10)
@@ -468,9 +472,13 @@ struct SummaryView: View {
     private var exploreTheChange: some View {
         // What the PR did to the structure, in words — never a count of parts it touched,
         // which says more about the diff than about the architecture.
-        let architecture = graph.architecture.map { "\($0.impact.label) architectural impact" }
-            ?? "\(graph.topLevelParts.count) parts"
+        let architecture = SummaryViewLogic.architectureReadyText(
+            impactLabel: graph.architecture?.impact.label, partsCount: graph.topLevelParts.count
+        )
         let progress = graph.reviewProgress(discussed: discussed)
+        let decisionsReady = SummaryViewLogic.decisionsReadyText(
+            reviewed: progress.reviewed, total: progress.total, decisionsCount: graph.decisions.count
+        )
         return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Explore the change")
             HStack(spacing: 12) {
@@ -481,9 +489,7 @@ struct SummaryView: View {
                             detail: tileDetail(.flows, ready: "\(graph.flows.count) traced", count: graph.flows.count, noun: "flow"),
                             symbol: "arrow.triangle.branch") { navigate(.flows) }
                 ExploreTile(title: "Decisions",
-                            detail: tileDetail(.decisions, ready: progress.total > 0 ? "\(progress.reviewed) of \(progress.total) resolved"
-                                                   : "\(graph.decisions.count) identified",
-                                               count: graph.decisions.count, noun: "decision"),
+                            detail: tileDetail(.decisions, ready: decisionsReady, count: graph.decisions.count, noun: "decision"),
                             symbol: "checklist") { navigate(.decisions) }
             }
         }
@@ -491,13 +497,7 @@ struct SummaryView: View {
 
     /// A tile's line: its summary once ready, otherwise how far its analysis has got.
     private func tileDetail(_ stage: PipelineStage, ready: String, count: Int, noun: String) -> String {
-        switch analysis.status(stage) {
-        case .done, .stale: return ready
-        case .failed: return "Couldn't be analyzed"
-        case .stopped: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s"), stopped" : "Stopped"
-        case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
-        case .pending: return "Waiting…"
-        }
+        SummaryViewLogic.tileDetail(status: analysis.status(stage), ready: ready, count: count, noun: noun)
     }
 
     // MARK: - Helpers
@@ -562,8 +562,7 @@ private struct ConsiderationRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .opacity(hovered || isExpanded ? 1 : 0.75)
-                .help(graph.reviewDecisionId(for: item) != nil
-                      ? "Review the decision this question is about" : "Ask about this")
+                .help(SummaryViewLogic.reviewButtonHelp(hasDecision: graph.reviewDecisionId(for: item) != nil))
             }
             .contentShape(Rectangle())
             .onTapGesture(perform: onToggle)
@@ -593,8 +592,7 @@ private struct ConsiderationRow: View {
         }
         .frame(width: 24, height: 24)
         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
-        .help(isResolved ? "Resolved"
-              : isQuestion ? "Open question — the analysis couldn't settle this" : "A judgment call worth your attention")
+        .help(SummaryViewLogic.considerationBadgeHelp(isResolved: isResolved, isQuestion: isQuestion))
     }
 
     @ViewBuilder
@@ -633,7 +631,7 @@ private struct ConsiderationRow: View {
                 WrapChips(item.refs) { ref in CodeRefChip(ref: ref) { navigate(.evidence(ref)) } }
             }
             HStack(spacing: 12) {
-                Text(PRGraph.provenanceLabel(item.provenance, item.confidence).capitalizedFirst)
+                Text(SummaryViewLogic.capitalizedFirst(PRGraph.provenanceLabel(item.provenance, item.confidence)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Button { actions.ask(.consideration(item.id)) } label: {
@@ -645,12 +643,7 @@ private struct ConsiderationRow: View {
     }
 
     private var relatedLinks: [(title: String, symbol: String, target: NavigationTarget)] {
-        item.relatedIds.compactMap { id in
-            if let d = graph.decision(id) { return (d.title, "checklist", .decisionDetail(id)) }
-            if let c = graph.component(id) { return (c.title, "square.stack.3d.up", .componentDetail(id)) }
-            if let f = graph.flow(id) { return (f.title, "arrow.triangle.branch", .flowDetail(id)) }
-            return nil
-        }
+        SummaryViewLogic.relatedLinks(for: item, graph: graph)
     }
 }
 
@@ -694,6 +687,183 @@ private struct ExploreTile: View {
     }
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+/// The grouping/filtering/formatting logic CLAUDE.md calls out for this file, pulled out
+/// of `SummaryView`/`ConsiderationRow`'s bodies so it's directly testable against plain
+/// fixtures — `GlanceFact.Tone`, `StageStatus`, `BehaviorStage`, `Consideration`, and a
+/// hand-built `PRGraph` — rather than through the SwiftUI `body`.
+enum SummaryViewLogic {
+    /// The facts line's tint for a tone; nil means "leave it at .secondary" (the shared
+    /// default, rather than a color of its own).
+    static func factTint(_ tone: GlanceFact.Tone) -> Color? {
+        switch tone {
+        case .plain: return nil
+        case .good: return .green
+        case .caution: return .orange
+        case .bad: return .red
+        }
+    }
+
+    /// Judgment runs last, over everything else; until then, say what it's waiting on in the
+    /// reviewer's terms, and point at the decisions already found.
+    static func judgmentWorkingText(decisionsFound: Int, decisionsStatus: StageStatus, judgmentStatus: StageStatus) -> String {
+        if !judgmentStatus.isRunning, decisionsStatus.isRunning || decisionsStatus == .pending {
+            return decisionsFound > 0
+                ? "\(decisionsFound) \(decisionsFound == 1 ? "decision" : "decisions") found · looking for consequential choices…"
+                : "Looking for consequential choices…"
+        }
+        return "Weighing what needs your judgment…"
+    }
+
+    /// Where a behavior stage's box opens to: its component, or its flow, or Architecture
+    /// as the fallback when neither is known.
+    static func navigationTarget(for stage: BehaviorStage) -> NavigationTarget {
+        if let componentId = stage.componentIds.first {
+            return .componentDetail(componentId)
+        } else if let flowId = stage.flowId {
+            return .flowDetail(flowId)
+        } else {
+            return .architecture
+        }
+    }
+
+    /// A tile's line: its summary once ready, otherwise how far its analysis has got.
+    static func tileDetail(status: StageStatus, ready: String, count: Int, noun: String) -> String {
+        switch status {
+        case .done, .stale: return ready
+        case .failed: return "Couldn't be analyzed"
+        case .stopped: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s"), stopped" : "Stopped"
+        case .running: return count > 0 ? "\(count) \(noun)\(count == 1 ? "" : "s") so far…" : "Analyzing…"
+        case .pending: return "Waiting…"
+        }
+    }
+
+    /// The decisions, components and flows a consideration names, each with the icon and
+    /// destination its own detail view uses.
+    static func relatedLinks(for item: Consideration, graph: PRGraph) -> [(title: String, symbol: String, target: NavigationTarget)] {
+        item.relatedIds.compactMap { id in
+            if let d = graph.decision(id) { return (d.title, "checklist", .decisionDetail(id)) }
+            if let c = graph.component(id) { return (c.title, "square.stack.3d.up", .componentDetail(id)) }
+            if let f = graph.flow(id) { return (f.title, "arrow.triangle.branch", .flowDetail(id)) }
+            return nil
+        }
+    }
+
+    static func capitalizedFirst(_ text: String) -> String {
+        text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// The hero's placeholder line while the before/after is still being built and the
+    /// plain-language "how" hasn't landed yet: what the pipeline is doing right now, in the
+    /// reviewer's terms — understanding the change, unless that step already came back and
+    /// building the before/after is what's left.
+    static func awaitingBehaviorText(understandingFailed: Bool) -> String {
+        understandingFailed ? "Building before / after…" : "Understanding the change…"
+    }
+
+    /// A failed-or-stopped stage's one line of explanation, or nil once it's neither (so the
+    /// caller shows nothing). Shared by every section that offers Retry off a `StageStatus`.
+    static func retryBannerText(status: StageStatus, failureText: String, stoppedText: String) -> String? {
+        if status.failure != nil { return failureText }
+        if status == .stopped { return stoppedText }
+        return nil
+    }
+
+    /// What follows the visible considerations: still working, settled with a problem, or
+    /// nothing more to say. Judgment is the last stage to settle, so this is effectively "how
+    /// did judgment end up".
+    enum JudgmentTailState: Equatable {
+        case working
+        case failed
+        case stopped
+        case settled
+    }
+
+    static func judgmentTailState(status: StageStatus) -> JudgmentTailState {
+        if !status.isSettled { return .working }
+        if status.failure != nil { return .failed }
+        if status == .stopped { return .stopped }
+        return .settled
+    }
+
+    /// Which of the four things-to-think-about states the Overview is in: the list itself,
+    /// a stopped judgment that found nothing before it stopped, nothing to show at all (an
+    /// unusual, empty-and-settled case), or still waiting on the first analysis.
+    enum ThingsToThinkAboutBranch: Equatable {
+        case list
+        case stoppedEmpty
+        case none
+        case placeholder
+    }
+
+    static func thingsToThinkAboutBranch(items: [Consideration]?, judgmentStopped: Bool) -> ThingsToThinkAboutBranch {
+        guard let items else { return .placeholder }
+        if !items.isEmpty { return .list }
+        if judgmentStopped { return .stoppedEmpty }
+        return .none
+    }
+
+    /// The considerations actually rendered: everything once expanded, otherwise the budget's
+    /// worth in the order judgment produced them (already the reviewer's priority order).
+    static func visibleConsiderations(_ items: [Consideration], showAll: Bool, budget: Int) -> [Consideration] {
+        showAll ? items : Array(items.prefix(budget))
+    }
+
+    /// The "Show N more" / "Show fewer" toggle's label, or nil when everything already fits
+    /// inside the budget and no toggle is needed.
+    static func showMoreLabel(count: Int, budget: Int, showingAll: Bool) -> String? {
+        guard count > budget else { return nil }
+        return showingAll ? "Show fewer" : "Show \(count - budget) more"
+    }
+
+    /// The section header: "N thing(s) to think about", singular only for exactly one.
+    static func thingsToThinkAboutHeaderText(count: Int) -> String {
+        "\(count) \(count == 1 ? "thing" : "things") to think about".uppercased()
+    }
+
+    /// The review-progress line, shown only once at least one item has been resolved — before
+    /// that it would just read as "0 of N", noise rather than progress.
+    static func resolvedProgressText(reviewed: Int, total: Int) -> String? {
+        guard reviewed > 0 else { return nil }
+        return "\(reviewed) of \(total) resolved"
+    }
+
+    /// The Architecture tile's ready-state summary: the impact the model named, in words —
+    /// never a bare count of touched parts, which describes the diff more than the design.
+    static func architectureReadyText(impactLabel: String?, partsCount: Int) -> String {
+        if let impactLabel { return "\(impactLabel) architectural impact" }
+        return "\(partsCount) parts"
+    }
+
+    /// The Decisions tile's ready-state summary: review progress once there's something to
+    /// review against, otherwise just how many decisions were identified.
+    static func decisionsReadyText(reviewed: Int, total: Int, decisionsCount: Int) -> String {
+        total > 0 ? "\(reviewed) of \(total) resolved" : "\(decisionsCount) identified"
+    }
+
+    /// A consideration's badge tooltip: resolved beats everything else, then the kind
+    /// distinguishes an open question from a judgment call.
+    static func considerationBadgeHelp(isResolved: Bool, isQuestion: Bool) -> String {
+        if isResolved { return "Resolved" }
+        return isQuestion ? "Open question — the analysis couldn't settle this" : "A judgment call worth your attention"
+    }
+
+    /// The Review button's tooltip: where it's actually going to take the reviewer.
+    static func reviewButtonHelp(hasDecision: Bool) -> String {
+        hasDecision ? "Review the decision this question is about" : "Ask about this"
+    }
+
+    /// Whether the why/consequence row shows, its own placeholder shows, or neither: the
+    /// before/after has to both exist and actually carry a why or a consequence to worth
+    /// showing, and only while still awaiting it does the placeholder reserve its place.
+    enum WhySectionMode: Equatable {
+        case whyAndConsequence
+        case placeholder
+        case none
+    }
+
+    static func whySectionMode(hasDominantChange: Bool, hasWhyOrConsequence: Bool, awaitingBehavior: Bool) -> WhySectionMode {
+        if hasDominantChange && hasWhyOrConsequence { return .whyAndConsequence }
+        if awaitingBehavior { return .placeholder }
+        return .none
+    }
 }

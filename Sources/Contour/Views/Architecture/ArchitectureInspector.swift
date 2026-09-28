@@ -33,7 +33,7 @@ struct ArchitectureInspector: View {
 
     @ViewBuilder
     private func partDetail(_ part: ComponentNode) -> some View {
-        header(eyebrow: eyebrow(for: part), title: part.title, subject: .component(part.id))
+        header(eyebrow: Self.eyebrow(for: part, in: graph), title: part.title, subject: .component(part.id))
 
         if let purpose = part.summary {
             section("Purpose") { statement(purpose) }
@@ -46,8 +46,8 @@ struct ArchitectureInspector: View {
             if let before = part.delta?.before, let after = part.delta?.after {
                 beforeAfter(before, after)
             }
-            if part.delta?.summary == nil, part.delta?.before == nil || part.delta?.after == nil {
-                Text(unchangedLine(part)).font(.callout).foregroundStyle(.secondary)
+            if Self.showsUnchangedNote(part) {
+                Text(Self.unchangedLine(part)).font(.callout).foregroundStyle(.secondary)
             }
         }
 
@@ -86,7 +86,9 @@ struct ArchitectureInspector: View {
         askButton(.component(part.id))
     }
 
-    private func eyebrow(for part: ComponentNode) -> String {
+    /// Pulled out of the view (static, taking `graph` explicitly) so it's directly
+    /// testable, per the "extract inspector content-selection/formatting logic" guidance.
+    nonisolated static func eyebrow(for part: ComponentNode, in graph: PRGraph) -> String {
         let kind = part.parentId.flatMap(graph.component).map { "Part of \($0.title)" } ?? "Part"
         switch part.changeKind {
         case .new: return "\(kind) · New"
@@ -96,7 +98,7 @@ struct ArchitectureInspector: View {
         }
     }
 
-    private func unchangedLine(_ part: ComponentNode) -> String {
+    nonisolated static func unchangedLine(_ part: ComponentNode) -> String {
         switch part.changeKind {
         case .new: return "Added by this PR."
         case .removed: return "Removed by this PR."
@@ -105,15 +107,43 @@ struct ArchitectureInspector: View {
         }
     }
 
+    /// Whether the "This PR" section falls back to `unchangedLine` — only when there's no
+    /// delta summary to show *and* no complete before/after pair either.
+    nonisolated static func showsUnchangedNote(_ part: ComponentNode) -> Bool {
+        part.delta?.summary == nil && (part.delta?.before == nil || part.delta?.after == nil)
+    }
+
+    // MARK: - Connection row content
+
+    nonisolated static func connectionIcon(direction: String) -> String {
+        direction == "from" ? "arrow.down.right" : "arrow.up.right"
+    }
+
+    nonisolated static func connectionLabel(_ edge: ArchitectureEdge) -> String {
+        edge.label.isEmpty ? "—" : edge.label
+    }
+
+    nonisolated static func connectionLabelWeight(_ change: EdgeChange) -> Font.Weight {
+        change == .existing ? .regular : .semibold
+    }
+
+    nonisolated static func connectionLabelColor(_ change: EdgeChange) -> Color {
+        change == .existing ? Color.primary : change.color
+    }
+
+    nonisolated static func connectionCaption(direction: String, otherTitle: String) -> String {
+        "\(direction) \(otherTitle)"
+    }
+
     private func connectionRow(_ e: ArchLevelEdge, direction: String, other: String) -> some View {
         Button { onSelect(.edge(e.id)) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: direction == "from" ? "arrow.down.right" : "arrow.up.right")
+                Image(systemName: Self.connectionIcon(direction: direction))
                     .font(.caption2).foregroundStyle(.secondary)
-                Text(e.edge.label.isEmpty ? "—" : e.edge.label)
-                    .font(.callout.weight(e.edge.change == .existing ? .regular : .semibold))
-                    .foregroundStyle(e.edge.change == .existing ? Color.primary : e.edge.change.color)
-                Text("\(direction) \(graph.component(other)?.title ?? other)")
+                Text(Self.connectionLabel(e.edge))
+                    .font(.callout.weight(Self.connectionLabelWeight(e.edge.change)))
+                    .foregroundStyle(Self.connectionLabelColor(e.edge.change))
+                Text(Self.connectionCaption(direction: direction, otherTitle: graph.component(other)?.title ?? other))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
@@ -130,23 +160,24 @@ struct ArchitectureInspector: View {
         let e = drawn.edge
         let from = graph.component(drawn.fromId)?.title ?? drawn.fromId
         let to = graph.component(drawn.toId)?.title ?? drawn.toId
-        header(eyebrow: "Relationship" + (e.change == .existing ? "" : " · \(Self.changeWord(e.change))"),
-               title: "\(from) → \(to)", subject: .relationship(e.id))
+        header(eyebrow: Self.relationshipEyebrow(e.change), title: "\(from) → \(to)", subject: .relationship(e.id))
 
         section("What crosses it") {
             if let previous = e.previousLabel {
                 beforeAfter(previous, e.label)
             } else {
-                Text(e.label.isEmpty ? "Not labeled" : e.label).font(.callout.weight(.medium))
+                Text(Self.crossesLabel(e)).font(.callout.weight(.medium))
             }
-            Text(properties(e)).font(.caption).foregroundStyle(.secondary)
+            Text(Self.properties(e)).font(.caption).foregroundStyle(.secondary)
         }
 
-        if let note = e.note, !note.isEmpty {
-            section("This PR") { Text(note).font(.callout) }
-        } else if e.change == .existing {
+        if let note = Self.relationshipThisPRNote(e) {
             section("This PR") {
-                Text("Not changed by this PR — drawn for context.").font(.callout).foregroundStyle(.secondary)
+                if note.isFallback {
+                    Text(note.text).font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Text(note.text).font(.callout)
+                }
             }
         }
 
@@ -154,7 +185,9 @@ struct ArchitectureInspector: View {
         if !folded.isEmpty {
             section("Also between these parts") {
                 ForEach(folded) { other in
-                    Text("\(graph.component(other.fromId)?.title ?? other.fromId) → \(graph.component(other.toId)?.title ?? other.toId): \(other.label)")
+                    Text(Self.foldedEdgeLine(fromTitle: graph.component(other.fromId)?.title ?? other.fromId,
+                                              toTitle: graph.component(other.toId)?.title ?? other.toId,
+                                              label: other.label))
                         .font(.callout).foregroundStyle(.secondary)
                         .reviewContextMenu(.relationship(other.id))
                 }
@@ -164,8 +197,7 @@ struct ArchitectureInspector: View {
         questions(graph.questionAnchors(on: level)[.edge(e.id)] ?? [])
         let anchored = graph.decisionAnchors(on: level)[.edge(e.id)] ?? []
         decisions(unique(anchored + graph.decisions(forEdge: e)))
-        let fromFlows = Set(graph.flows(through: drawn.fromId).map(\.id))
-        flows(graph.flows(through: drawn.toId).filter { fromFlows.contains($0.id) })
+        flows(Self.sharedFlows(graph.flows(through: drawn.fromId), graph.flows(through: drawn.toId)))
 
         HStack(spacing: 14) {
             Button("Inspect \(from)") { onSelect(.node(drawn.fromId)) }
@@ -176,14 +208,46 @@ struct ArchitectureInspector: View {
         askButton(.relationship(e.id))
     }
 
-    private func properties(_ e: ArchitectureEdge) -> String {
+    nonisolated static func properties(_ e: ArchitectureEdge) -> String {
         var parts = [e.flow == .async ? "Asynchronous" : "Synchronous"]
         if e.isTrustBoundary { parts.append("crosses a trust boundary") }
         if e.onCriticalPath { parts.append("on a critical path") }
         return parts.joined(separator: " · ")
     }
 
-    static func changeWord(_ change: EdgeChange) -> String {
+    /// The relationship header's eyebrow: unqualified for an existing relationship, tagged
+    /// with its change word otherwise.
+    nonisolated static func relationshipEyebrow(_ change: EdgeChange) -> String {
+        "Relationship" + (change == .existing ? "" : " · \(changeWord(change))")
+    }
+
+    /// The "What crosses it" label when there's no previous label to diff against.
+    nonisolated static func crossesLabel(_ e: ArchitectureEdge) -> String {
+        e.label.isEmpty ? "Not labeled" : e.label
+    }
+
+    /// The "This PR" text for a relationship: its note when there is one, else a fallback
+    /// line for an existing (drawn-for-context) relationship, else nothing to show.
+    /// `isFallback` marks the fallback case so the caller can render it de-emphasized.
+    nonisolated static func relationshipThisPRNote(_ e: ArchitectureEdge) -> (text: String, isFallback: Bool)? {
+        if let note = e.note, !note.isEmpty { return (note, false) }
+        if e.change == .existing { return ("Not changed by this PR — drawn for context.", true) }
+        return nil
+    }
+
+    /// One line of the "Also between these parts" list: the other relationship folded into
+    /// this arrow, by the parts it connects.
+    nonisolated static func foldedEdgeLine(fromTitle: String, toTitle: String, label: String) -> String {
+        "\(fromTitle) → \(toTitle): \(label)"
+    }
+
+    /// Flows that pass through both endpoints of a relationship — order follows `toFlows`.
+    nonisolated static func sharedFlows(_ fromFlows: [FlowNode], _ toFlows: [FlowNode]) -> [FlowNode] {
+        let fromIds = Set(fromFlows.map(\.id))
+        return toFlows.filter { fromIds.contains($0.id) }
+    }
+
+    nonisolated static func changeWord(_ change: EdgeChange) -> String {
         switch change {
         case .new: return "New"
         case .changed: return "Changed"
@@ -236,15 +300,29 @@ struct ArchitectureInspector: View {
         }
     }
 
+    /// The "N implementation component(s)" caption, or nil when there's nothing to count —
+    /// the singular/plural boundary is the only wrinkle worth pinning.
+    nonisolated static func implementationCountLabel(nodeCount: Int, nameCount: Int) -> String? {
+        let count = nodeCount + nameCount
+        guard count > 0 else { return nil }
+        return "\(count) implementation \(count == 1 ? "component" : "components")"
+    }
+
+    /// The refs chip row: the part's own refs plus its implementation nodes' refs, deduplicated
+    /// in that order.
+    nonisolated static func mergedRefs(partRefs: [CodeRef], implRefs: [CodeRef]) -> [CodeRef] {
+        unique(partRefs + implRefs)
+    }
+
     @ViewBuilder
     private func implementation(_ part: ComponentNode) -> some View {
         let impl = graph.implementation(of: part.id)
-        let count = impl.nodes.count + impl.names.count
-        let refs = unique(part.refs + impl.nodes.flatMap(\.refs))
-        if count > 0 || !refs.isEmpty {
+        let countLabel = Self.implementationCountLabel(nodeCount: impl.nodes.count, nameCount: impl.names.count)
+        let refs = Self.mergedRefs(partRefs: part.refs, implRefs: impl.nodes.flatMap(\.refs))
+        if countLabel != nil || !refs.isEmpty {
             section("Implementation") {
-                if count > 0 {
-                    Text("\(count) implementation \(count == 1 ? "component" : "components")")
+                if let countLabel {
+                    Text(countLabel)
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(impl.nodes) { node in

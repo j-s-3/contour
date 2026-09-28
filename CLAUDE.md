@@ -68,6 +68,11 @@ the gap is closed incrementally: every change must leave the code it adds or mod
   plain struct beside the view, not inside a SwiftUI `body`. Views should be thin; the
   existing `GraphLayout`, `BehaviorDiagramLayout`, `DiagramMode` and `ReviewSubject`
   types are the pattern: pure types next to the view, tested directly.
+- Every member of a `View` is implicitly `@MainActor`. A pure `static func` helper left on
+  a view type must be declared `nonisolated` so a (nonisolated) `@Test` can call it; if it
+  genuinely needs the main actor (it takes a `GraphStore`, a `Binding`, an `NSItemProvider`),
+  mark the test `@MainActor` instead. CI fails on "main actor-isolated … in a synchronous
+  nonisolated context" warnings, since those become errors under Swift 6 mode (#185, #72).
 - Use the seams instead of the network: `Harness` (replay a captured stream through
   `interpret`), `PRSource` (a struct returning a canned `RawPRContext`),
   `AnalysisCache(directory:)` with a temp directory, `GraphStore()` on `@MainActor`, and

@@ -56,20 +56,28 @@ struct ChatMarkdownView: View {
     }
 
     private func inline(_ s: String) -> some View {
-        let linked = linkify(s)
-        let attributed = (try? AttributedString(
-            markdown: linked,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(s)
-        return Text(attributed)
+        Text(Self.attributedText(for: s, linkify: linkify))
             .font(.callout)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Linkifies one inline span, then parses it as inline markdown (emphasis, code spans,
+    /// and — this is what makes citations and `[[kind:id]]` references clickable — links).
+    /// A span `linkify` couldn't turn into valid markdown (or that a reviewer typed with
+    /// unbalanced syntax) falls back to the raw, unlinkified text so the line still renders
+    /// instead of vanishing.
+    nonisolated static func attributedText(for s: String, linkify: (String) -> String) -> AttributedString {
+        let linked = linkify(s)
+        return (try? AttributedString(
+            markdown: linked,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(s)
+    }
+
     /// Line-oriented block split. Consecutive plain lines join into one paragraph.
-    static func blocks(_ text: String) -> [Block] {
+    nonisolated static func blocks(_ text: String) -> [Block] {
         var blocks: [Block] = []
         var paragraph: [String] = []
         var code: [String]?

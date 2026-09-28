@@ -49,20 +49,42 @@ struct JiraTracker: IssueTracker {
     /// Fetches ticket summary/description via `acli jira workitem view <key> --json`.
     /// Returns `nil` on any failure (not installed, not authed, ticket not found, ADF
     /// parse failure) rather than throwing, per this service's best-effort contract.
+    ///
+    /// The parsing and URL-derivation are pulled into the plain-string static functions
+    /// below (`parseWorkItemJSON`, `parseSiteHost(fromAuthStatusOutput:)`, `browseURL`)
+    /// so they're testable without a real `acli` call, the same split `GHCLISource` uses
+    /// for `gh`: only the two `Shell.run` call sites themselves are left uncovered here.
     func fetchTicket(key: String) async -> TicketInfo? {
         guard let output = try? await Shell.run("acli", ["jira", "workitem", "view", key, "--json"]) else {
             return nil
         }
-        guard let data = output.data(using: .utf8),
+        guard let fields = Self.parseWorkItemJSON(output) else { return nil }
+
+        let siteHost = await Self.authenticatedSiteHost()
+        let url = Self.browseURL(forKey: key, siteHost: siteHost, selfLink: fields.selfLink)
+
+        return TicketInfo(kind: .jira, key: key, summary: fields.summary, description: fields.description, url: url)
+    }
+
+    /// The subset of `acli jira workitem view --json`'s output `fetchTicket` needs.
+    struct ParsedWorkItem: Equatable {
+        var summary: String
+        var description: String
+        var selfLink: String?
+    }
+
+    /// Parses `acli jira workitem view <key> --json`'s stdout. Returns `nil` on any
+    /// unexpected shape (not JSON, no `fields.summary`) rather than throwing, matching
+    /// `fetchTicket`'s best-effort contract.
+    static func parseWorkItemJSON(_ jsonString: String) -> ParsedWorkItem? {
+        guard let data = jsonString.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let fields = obj["fields"] as? [String: Any],
               let summary = fields["summary"] as? String
         else { return nil }
 
         let description = (fields["description"] as? [String: Any]).map(Self.flattenADF) ?? ""
-        let url = await Self.browseURL(forKey: key, selfLink: obj["self"] as? String)
-
-        return TicketInfo(kind: .jira, key: key, summary: summary, description: description, url: url)
+        return ParsedWorkItem(summary: summary, description: description, selfLink: obj["self"] as? String)
     }
 
     /// Derives a human-facing `/browse/<key>` URL. Prefers the public site host from
@@ -70,9 +92,9 @@ struct JiraTracker: IssueTracker {
     /// `self` link points at an internal backend host (e.g.
     /// `jira-prod-us-28-1.prod.atl-paas.net`) that isn't guaranteed to resolve for a
     /// human clicking the link, even though it's a perfectly valid API endpoint.
-    private static func browseURL(forKey key: String, selfLink: String?) async -> String {
-        if let site = await authenticatedSiteHost() {
-            return "https://\(site)/browse/\(key)"
+    static func browseURL(forKey key: String, siteHost: String?, selfLink: String?) -> String {
+        if let siteHost {
+            return "https://\(siteHost)/browse/\(key)"
         }
         if let selfLink, let url = URL(string: selfLink), let host = url.host {
             return "https://\(host)/browse/\(key)"
@@ -82,9 +104,14 @@ struct JiraTracker: IssueTracker {
         return "https://atlassian.net/browse/\(key)"
     }
 
-    /// Parses the "Site: <host>" line from `acli jira auth status`'s plain-text output.
+    /// Runs `acli jira auth status` and extracts its "Site:" line via `parseSiteHost`.
     private static func authenticatedSiteHost() async -> String? {
         guard let output = try? await Shell.run("acli", ["jira", "auth", "status"]) else { return nil }
+        return Self.parseSiteHost(fromAuthStatusOutput: output)
+    }
+
+    /// Parses the "Site: <host>" line from `acli jira auth status`'s plain-text output.
+    static func parseSiteHost(fromAuthStatusOutput output: String) -> String? {
         for line in output.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("Site:") {
@@ -97,7 +124,7 @@ struct JiraTracker: IssueTracker {
     /// Flattens Atlassian Document Format (rich-text) JSON into plain text good enough
     /// for an LLM prompt: paragraph/heading boundaries become newlines, list items get a
     /// leading dash, inline marks are dropped (bold/italic don't matter for grounding).
-    private static func flattenADF(_ node: [String: Any]) -> String {
+    static func flattenADF(_ node: [String: Any]) -> String {
         var lines: [String] = []
         walk(node, into: &lines, listPrefix: nil)
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)

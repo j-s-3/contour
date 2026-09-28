@@ -25,7 +25,7 @@ struct CodeViewerView: View {
                 ContentUnavailableView("Couldn't load this file", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if showWholeFile {
-                ScrollView { codeText(wholeFile.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }) }
+                ScrollView { codeText(CodeViewerLogic.numberedLines(wholeFile)) }
             } else {
                 ScrollView { codeText(lines) }
             }
@@ -96,7 +96,7 @@ struct CodeViewerView: View {
     private func codeText(_ rows: [(number: Int, text: String)]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(rows, id: \.number) { row in
-                let isInRef = row.number >= ref.startLine && row.number <= ref.endLine
+                let isInRef = CodeViewerLogic.isInRef(row.number, ref: ref)
                 HStack(alignment: .top, spacing: 10) {
                     Text("\(row.number)")
                         .font(.system(.footnote, design: .monospaced))
@@ -116,26 +116,90 @@ struct CodeViewerView: View {
     }
 
     private func load() async {
-        guard let checkout else { errorMessage = "No local checkout available."; return }
-        do {
-            let result = try await repoContext.readLines(
-                in: checkout, path: ref.path, startLine: ref.startLine, endLine: ref.endLine,
-                contextLines: contextLines, side: ref.side
-            )
-            lines = result.lines
+        switch await CodeViewerLogic.loadExcerpt(
+            checkout: checkout, ref: ref, contextLines: contextLines, service: repoContext
+        ) {
+        case .noCheckout:
+            errorMessage = "No local checkout available."
+        case .loaded(let ls):
+            lines = ls
             errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
+        case .failed(let message):
+            errorMessage = message
         }
     }
 
     private func loadWholeFile() async {
-        guard let checkout else { return }
-        do {
-            wholeFile = try await repoContext.readWholeFile(in: checkout, path: ref.path)
+        switch await CodeViewerLogic.loadWholeFile(checkout: checkout, path: ref.path, service: repoContext) {
+        case .noCheckout:
+            break
+        case .loaded(let content):
+            wholeFile = content
             errorMessage = nil
+        case .failed(let message):
+            errorMessage = message
+        }
+    }
+}
+
+/// The line-range highlight resolution and whole-file line numbering CLAUDE.md calls out
+/// for this file, pulled out of `CodeViewerView`'s body so it's directly testable with
+/// fixture `CodeRef`s and source text.
+enum CodeViewerLogic {
+    /// Whether a line number falls within the reference's cited range — what gets the
+    /// highlight background.
+    static func isInRef(_ lineNumber: Int, ref: CodeRef) -> Bool {
+        lineNumber >= ref.startLine && lineNumber <= ref.endLine
+    }
+
+    /// A whole file's text as 1-indexed rows, the same numbering `codeText` expects.
+    static func numberedLines(_ text: String) -> [(number: Int, text: String)] {
+        text.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }
+    }
+
+    /// What `load()` does with an excerpt read, minus the `@State` writes: the missing-checkout
+    /// guard and the do/catch that were previously buried in `CodeViewerView`'s private method.
+    /// `readLines` itself is already covered end-to-end by `RepoContextServiceTests` against a
+    /// real, local (no-network) git checkout; this pins the *branching* `CodeViewerView` layers
+    /// on top of it, testable the same way.
+    enum ExcerptOutcome {
+        case noCheckout
+        case loaded([(number: Int, text: String)])
+        case failed(String)
+    }
+
+    static func loadExcerpt(
+        checkout: RepoCheckout?, ref: CodeRef, contextLines: Int, service: RepoContextService
+    ) async -> ExcerptOutcome {
+        guard let checkout else { return .noCheckout }
+        do {
+            let result = try await service.readLines(
+                in: checkout, path: ref.path, startLine: ref.startLine, endLine: ref.endLine,
+                contextLines: contextLines, side: ref.side
+            )
+            return .loaded(result.lines)
         } catch {
-            errorMessage = error.localizedDescription
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// The same split for "Open whole file": no checkout is a silent no-op (matching
+    /// `CodeViewerView`'s original behavior of leaving a previously-loaded excerpt on screen
+    /// rather than clearing it), success carries the file's text, failure carries the message.
+    enum WholeFileOutcome {
+        case noCheckout
+        case loaded(String)
+        case failed(String)
+    }
+
+    static func loadWholeFile(
+        checkout: RepoCheckout?, path: String, service: RepoContextService
+    ) async -> WholeFileOutcome {
+        guard let checkout else { return .noCheckout }
+        do {
+            return .loaded(try await service.readWholeFile(in: checkout, path: path))
+        } catch {
+            return .failed(error.localizedDescription)
         }
     }
 }

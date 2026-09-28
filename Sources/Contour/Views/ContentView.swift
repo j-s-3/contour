@@ -126,8 +126,10 @@ struct ContentView: View {
 
     /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
     /// screen, so it never animates here.
-    private var screen: Int {
-        switch store.phase {
+    private var screen: Int { Self.screen(for: store.phase) }
+
+    nonisolated static func screen(for phase: SessionPhase) -> Int {
+        switch phase {
         case .idle: return 0
         case .opening: return 1
         case .failed: return 2
@@ -280,18 +282,37 @@ struct ContentView: View {
     /// A spinner while this verdict is in flight, filled once it's submitted.
     @ViewBuilder
     private func reviewButtonLabel(_ verdict: PRReview.Verdict, symbol: String, submittedColor: Color) -> some View {
-        switch store.review {
-        case .submitting(verdict):
+        switch Self.reviewButtonPhase(for: store.review, verdict: verdict) {
+        case .submitting:
             ProgressView().controlSize(.small)
-        case .submitted(verdict):
+        case .submitted:
             Image(systemName: symbol + ".fill").foregroundStyle(submittedColor)
-        default:
+        case .idle:
             Image(systemName: symbol)
         }
     }
 
-    private var reviewFailureTitle: String {
-        if case .failed(.requestChanges, _) = store.review { return "Couldn't request changes" }
+    /// Which of the three faces `reviewButtonLabel` shows for one verdict's button: this
+    /// verdict's own review is in flight, already submitted, or neither (idle, or a
+    /// *different* verdict is the one in flight/submitted/failed).
+    enum ReviewButtonPhase: Equatable {
+        case idle
+        case submitting
+        case submitted
+    }
+
+    nonisolated static func reviewButtonPhase(for review: PRReview.State, verdict: PRReview.Verdict) -> ReviewButtonPhase {
+        switch review {
+        case .submitting(verdict): return .submitting
+        case .submitted(verdict): return .submitted
+        default: return .idle
+        }
+    }
+
+    private var reviewFailureTitle: String { Self.reviewFailureTitle(for: store.review) }
+
+    nonisolated static func reviewFailureTitle(for review: PRReview.State) -> String {
+        if case .failed(.requestChanges, _) = review { return "Couldn't request changes" }
         return "Couldn't approve the pull request"
     }
 
@@ -307,7 +328,7 @@ struct ContentView: View {
                 sidebarRow("Architecture", "square.stack.3d.up", .architecture,
                            status: analysis.status(.architecture), section: .architecture)
                 let flowsStatus = analysis.status(.flows)
-                sidebarRow(flowsStatus == .done ? "Flows (\(graph.flows.count))" : "Flows", "arrow.triangle.branch", .flows,
+                sidebarRow(Self.flowsRowTitle(status: flowsStatus, count: graph.flows.count), "arrow.triangle.branch", .flows,
                            status: flowsStatus, section: .flows)
             }
             Section("Review") {
@@ -316,8 +337,8 @@ struct ContentView: View {
                 // recorded.
                 let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
                 let decisionsStatus = analysis.status(.decisions)
-                let done = decisionsStatus == .done && analysis.status(.judgment) == .done
-                    && p.total > 0 && p.reviewed == p.total
+                let done = Self.decisionsRowIsFullyReviewed(
+                    decisionsStatus: decisionsStatus, judgmentStatus: analysis.status(.judgment), progress: p)
                 sidebarRow("Decisions", "checklist", .decisions, status: decisionsStatus, section: .decisions) {
                     if p.total > 0 {
                         HStack(spacing: 4) {
@@ -334,11 +355,31 @@ struct ContentView: View {
                 .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
-                sidebarRow("Raw diff", "doc.text", .diff, status: store.diffText == nil ? .pending : .done, section: nil)
+                sidebarRow("Raw diff", "doc.text", .diff, status: Self.diffRowStatus(diffText: store.diffText), section: nil)
             }
         }
         .listStyle(.sidebar)
         .frame(minWidth: 220)
+    }
+
+    /// The Flows sidebar row's title: a count once the stage is done and has something to
+    /// count, a bare label otherwise (still running, or done with nothing found).
+    nonisolated static func flowsRowTitle(status: StageStatus, count: Int) -> String {
+        status == .done ? "Flows (\(count))" : "Flows"
+    }
+
+    /// The Decisions row's checkmark: every decision has to be both analyzed (Decisions and
+    /// Judgment stages done) *and* actually reviewed — a PR with no considerations at all
+    /// (`total == 0`) is never "done", since there was nothing to check off.
+    nonisolated static func decisionsRowIsFullyReviewed(
+        decisionsStatus: StageStatus, judgmentStatus: StageStatus, progress: (reviewed: Int, total: Int)
+    ) -> Bool {
+        decisionsStatus == .done && judgmentStatus == .done && progress.total > 0 && progress.reviewed == progress.total
+    }
+
+    /// The raw-diff row has nothing to show until the diff has been fetched.
+    nonisolated static func diffRowStatus(diffText: String?) -> StageStatus {
+        diffText == nil ? .pending : .done
     }
 
     private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget,
@@ -353,7 +394,7 @@ struct ContentView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 1) {
                     Label(title, systemImage: symbol)
-                    if let subtitle = sidebarSubtitle(status, section) {
+                    if let subtitle = Self.sidebarSubtitle(status, section) {
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -375,7 +416,7 @@ struct ContentView: View {
         .listRowBackground(isActive(target) ? Color.accentColor.opacity(0.15) : Color.clear)
     }
 
-    private func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
+    nonisolated static func sidebarSubtitle(_ status: StageStatus, _ section: ReviewSection?) -> String? {
         guard let section else { return nil }
         switch status {
         case .running(let detail): return detail ?? section.workingLabel
@@ -387,8 +428,10 @@ struct ContentView: View {
         }
     }
 
-    private func isActive(_ target: NavigationTarget) -> Bool {
-        switch (store.current, target) {
+    private func isActive(_ target: NavigationTarget) -> Bool { Self.isActive(target, given: store.current) }
+
+    nonisolated static func isActive(_ target: NavigationTarget, given current: NavigationTarget) -> Bool {
+        switch (current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
              (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
             return true
@@ -402,8 +445,10 @@ struct ContentView: View {
     }
 
     /// The node or edge a navigation target asks Architecture to select, if any.
-    private var architectureFocus: ArchAnchor? {
-        switch store.current {
+    private var architectureFocus: ArchAnchor? { Self.architectureFocus(for: store.current) }
+
+    nonisolated static func architectureFocus(for current: NavigationTarget) -> ArchAnchor? {
+        switch current {
         case .componentDetail(let id): return .node(id)
         case .edgeDetail(let id): return .edge(id)
         default: return nil
@@ -411,8 +456,10 @@ struct ContentView: View {
     }
 
     /// The flow, and stage, a navigation target asks Flows to show.
-    private var flowsFocus: FlowsView.Focus? {
-        switch store.current {
+    private var flowsFocus: FlowsView.Focus? { Self.flowsFocus(for: store.current) }
+
+    nonisolated static func flowsFocus(for current: NavigationTarget) -> FlowsView.Focus? {
+        switch current {
         case .flowDetail(let id): return .init(flowId: id)
         case .flowNodeDetail(let flowId, let nodeId): return .init(flowId: flowId, nodeId: nodeId)
         default: return nil
@@ -420,15 +467,21 @@ struct ContentView: View {
     }
 
     /// The code reference a navigation target asks the raw diff to land on.
-    private var diffFocus: CodeRef? {
-        if case .diffLocation(let ref) = store.current { return ref }
+    private var diffFocus: CodeRef? { Self.diffFocus(for: store.current) }
+
+    nonisolated static func diffFocus(for current: NavigationTarget) -> CodeRef? {
+        if case .diffLocation(let ref) = current { return ref }
         return nil
     }
 
     /// The decision a navigation target asks Decisions to open, and the Overview question
     /// that brought the reviewer there, if any.
     private func decisionsFocus(_ graph: PRGraph) -> DecisionsView.Focus? {
-        switch store.current {
+        Self.decisionsFocus(for: store.current, graph: graph)
+    }
+
+    nonisolated static func decisionsFocus(for current: NavigationTarget, graph: PRGraph) -> DecisionsView.Focus? {
+        switch current {
         case .decisionDetail(let id):
             return .init(decisionId: id)
         case .consideration(let id):
@@ -440,6 +493,43 @@ struct ContentView: View {
         }
     }
 
+    /// Which of `sectionContent`'s branches a lens is in: it already has *something* to
+    /// show (from this revision or a stale one), or it doesn't, in which case the stage's own
+    /// status decides between a retryable failure, a retryable stop, content anyway (a `done`
+    /// stage with nothing to show, e.g. zero decisions found), or a pending placeholder.
+    enum SectionBranch: Equatable {
+        /// `showsOverlay` is true only for the `hasContent` case: a `done` stage with
+        /// nothing to show (e.g. zero decisions found) renders the same `content()` but
+        /// with no progress/stopped pill floated over it, since there's nothing left for
+        /// that stage to report.
+        case content(showsOverlay: Bool)
+        case failed(String)
+        case stopped
+        case pending
+    }
+
+    nonisolated static func sectionBranch(hasContent: Bool, status: StageStatus) -> SectionBranch {
+        if hasContent { return .content(showsOverlay: true) }
+        if let message = status.failure { return .failed(message) }
+        if status == .stopped { return .stopped }
+        if status == .done { return .content(showsOverlay: false) }
+        return .pending
+    }
+
+    /// Which pill, if any, floats over a lens's own content while its stage keeps working
+    /// (or sits stopped) behind what's already on screen.
+    enum SectionOverlay: Equatable {
+        case none
+        case progress(String)
+        case stopped
+    }
+
+    nonisolated static func sectionOverlay(status: StageStatus, progress: String?) -> SectionOverlay {
+        if status.isRunning, let progress { return .progress(progress) }
+        if status == .stopped { return .stopped }
+        return .none
+    }
+
     /// A lens that may still be analyzing. With nothing yet it shows what's known and what's
     /// being worked on (or, if it failed, a retry); with something, the lens itself, plus a
     /// floating note while more is still arriving. Never a disabled or blank destination.
@@ -449,26 +539,30 @@ struct ContentView: View {
         known: String? = nil, progress: String? = nil, @ViewBuilder content: () -> Content
     ) -> some View {
         let status = store.analysis.status(stage)
-        if hasContent {
+        switch Self.sectionBranch(hasContent: hasContent, status: status) {
+        case .content(showsOverlay: true):
             content()
                 .overlay(alignment: .bottom) {
-                    if status.isRunning, let progress {
-                        SectionProgressPill(text: progress)
-                    } else if status == .stopped {
+                    switch Self.sectionOverlay(status: status, progress: progress) {
+                    case .progress(let text):
+                        SectionProgressPill(text: text)
+                    case .stopped:
                         SectionStoppedPill { store.retry(stage) }
+                    case .none:
+                        EmptyView()
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: status.isRunning)
                 .animation(.easeInOut(duration: 0.3), value: status == .stopped)
-        } else if let message = status.failure {
+        case .content(showsOverlay: false):
+            content()
+        case .failed(let message):
             SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
             }
-        } else if status == .stopped {
+        case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }
-        } else if status == .done {
-            content()
-        } else {
+        case .pending:
             SectionPendingView(section: section, status: status, known: known)
         }
     }

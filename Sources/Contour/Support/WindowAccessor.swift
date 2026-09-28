@@ -24,6 +24,22 @@ struct WindowAccessor: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    /// The full decision behind `updateNSView`'s deferred toggle, pulled out so it's
+    /// testable without a live `NSWindow`: opted in, not already toggled by this view, and
+    /// the window isn't already in full screen by some other means (the user's own
+    /// green-button click, or a restored full-screen frame).
+    nonisolated static func shouldEnterFullScreen(entersFullScreen: Bool, alreadyEntered: Bool, isCurrentlyFullScreen: Bool) -> Bool {
+        entersFullScreen && !alreadyEntered && !isCurrentlyFullScreen
+    }
+
+    /// The belt-and-suspenders fix-up applied in `makeNSView`, pulled out as a pure
+    /// `OptionSet` operation so it's testable without a live `NSWindow`: make sure the
+    /// window is explicitly eligible for the full-screen space even if something about
+    /// running unbundled left the default collection behavior off.
+    nonisolated static func collectionBehaviorWithFullScreenPrimary(_ behavior: NSWindow.CollectionBehavior) -> NSWindow.CollectionBehavior {
+        behavior.union(.fullScreenPrimary)
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         // `NSView` isn't `Sendable`, so it can't be captured (even weakly) in the `@Sendable`
@@ -31,10 +47,7 @@ struct WindowAccessor: NSViewRepresentable {
         // since it inherits the isolation it was created under rather than crossing it.
         Task { @MainActor [weak view] in
             guard let window = view?.window else { return }
-            // Belt-and-suspenders: make sure this window is explicitly eligible for the
-            // full-screen space even if something about running unbundled left the
-            // default collection behavior off.
-            window.collectionBehavior.insert(.fullScreenPrimary)
+            window.collectionBehavior = Self.collectionBehaviorWithFullScreenPrimary(window.collectionBehavior)
         }
         return view
     }
@@ -43,7 +56,12 @@ struct WindowAccessor: NSViewRepresentable {
         guard entersFullScreen, !context.coordinator.didEnterFullScreen else { return }
         Task { @MainActor [weak nsView] in
             try? await Task.sleep(for: .seconds(0.2))
-            guard let window = nsView?.window, !window.styleMask.contains(.fullScreen) else { return }
+            guard let window = nsView?.window else { return }
+            guard Self.shouldEnterFullScreen(
+                entersFullScreen: entersFullScreen,
+                alreadyEntered: context.coordinator.didEnterFullScreen,
+                isCurrentlyFullScreen: window.styleMask.contains(.fullScreen)
+            ) else { return }
             context.coordinator.didEnterFullScreen = true
             window.toggleFullScreen(nil)
         }

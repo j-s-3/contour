@@ -159,7 +159,13 @@ struct ArchitectureView: View {
 
     // MARK: - What to draw
 
-    private func boxes(_ level: ArchLevel) -> [ArchBox] {
+    private func boxes(_ level: ArchLevel) -> [ArchBox] { Self.boxes(level, graph: graph, mode: mode) }
+    private func arrows(_ level: ArchLevel) -> [ArchArrow] { Self.arrows(level, graph: graph, mode: mode) }
+    private func containers(_ level: ArchLevel) -> [ArchContainer] { Self.containers(level, graph: graph, mode: mode) }
+
+    /// Pulled out of the view (static, taking `graph`/`mode` explicitly) so it's directly
+    /// testable, per the "extract layout/selection/formatting logic" guidance.
+    nonisolated static func boxes(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchBox] {
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
         let neighbors = Set(level.context.map(\.id))
@@ -190,8 +196,8 @@ struct ArchitectureView: View {
         }
     }
 
-    private func arrows(_ level: ArchLevel) -> [ArchArrow] {
-        let drawn = Set(boxes(level).map(\.id))
+    nonisolated static func arrows(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchArrow] {
+        let drawn = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
         return level.edges.compactMap { le in
@@ -212,8 +218,8 @@ struct ArchitectureView: View {
         }
     }
 
-    private func containers(_ level: ArchLevel) -> [ArchContainer] {
-        let drawn = Set(boxes(level).map(\.id))
+    nonisolated static func containers(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchContainer] {
+        let drawn = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         return level.boundaries.compactMap { b in
             let members = b.componentIds.filter(drawn.contains)
             guard !members.isEmpty else { return nil }
@@ -223,67 +229,106 @@ struct ArchitectureView: View {
 
     @ViewBuilder
     private func legend(_ level: ArchLevel) -> some View {
-        if mode == .delta {
-            let boxes = boxes(level), arrows = arrows(level)
-            let kinds = Set(boxes.map(\.emphasis) + arrows.map(\.emphasis)).subtracting([.context])
-            let hasDecision = boxes.contains { $0.decision != nil } || arrows.contains { $0.decisions > 0 }
-            let hasQuestion = boxes.contains { $0.questions > 0 } || arrows.contains { $0.questions > 0 }
-            let hasAsync = arrows.contains(where: \.isAsync)
-            if !kinds.isEmpty || hasDecision || hasQuestion || hasAsync {
-                HStack(spacing: 14) {
-                    ForEach([ArchEmphasis.changed, .added, .removed].filter(kinds.contains), id: \.word) { k in
-                        HStack(spacing: 5) {
-                            RoundedRectangle(cornerRadius: 3).strokeBorder(k.color, lineWidth: 1.6).frame(width: 14, height: 10)
-                            Text(k.word)
-                        }
-                    }
+        if let info = Self.legendInfo(level, graph: graph, mode: mode) {
+            HStack(spacing: 14) {
+                ForEach([ArchEmphasis.changed, .added, .removed].filter(info.kinds.contains), id: \.word) { k in
                     HStack(spacing: 5) {
-                        RoundedRectangle(cornerRadius: 3).strokeBorder(Color.secondary.opacity(0.5)).frame(width: 14, height: 10)
-                        Text("Existing context")
+                        RoundedRectangle(cornerRadius: 3).strokeBorder(k.color, lineWidth: 1.6).frame(width: 14, height: 10)
+                        Text(k.word)
                     }
-                    if hasAsync { Label("Asynchronous", systemImage: "clock.arrow.circlepath") }
-                    if hasDecision { Text("◇ Decision").foregroundStyle(.purple) }
-                    if hasQuestion { Label("Review question", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 3).strokeBorder(Color.secondary.opacity(0.5)).frame(width: 14, height: 10)
+                    Text("Existing context")
+                }
+                if info.hasAsync { Label("Asynchronous", systemImage: "clock.arrow.circlepath") }
+                if info.hasDecision { Text("◇ Decision").foregroundStyle(.purple) }
+                if info.hasQuestion { Label("Review question", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// What the legend under the drawing needs to show, or nil when there's nothing to
+    /// explain (Before/After mode, or nothing changed at this level). Pulled out of
+    /// `legend(_:)` so the "which badges appear" derivation — which change kinds are present,
+    /// whether anything has a decision, a question or an async arrow — is directly testable
+    /// without a `View`.
+    struct LegendInfo: Equatable {
+        var kinds: [ArchEmphasis]
+        var hasDecision: Bool
+        var hasQuestion: Bool
+        var hasAsync: Bool
+    }
+
+    nonisolated static func legendInfo(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> LegendInfo? {
+        guard mode == .delta else { return nil }
+        let boxes = Self.boxes(level, graph: graph, mode: mode)
+        let arrows = Self.arrows(level, graph: graph, mode: mode)
+        let present = Set(boxes.map(\.emphasis) + arrows.map(\.emphasis)).subtracting([.context])
+        let kinds = [ArchEmphasis.changed, .added, .removed].filter(present.contains)
+        let hasDecision = boxes.contains { $0.decision != nil } || arrows.contains { $0.decisions > 0 }
+        let hasQuestion = boxes.contains { $0.questions > 0 } || arrows.contains { $0.questions > 0 }
+        let hasAsync = arrows.contains(where: \.isAsync)
+        guard !kinds.isEmpty || hasDecision || hasQuestion || hasAsync else { return nil }
+        return LegendInfo(kinds: kinds, hasDecision: hasDecision, hasQuestion: hasQuestion, hasAsync: hasAsync)
     }
 
     // MARK: - Zoom and selection
 
     private func zoom(into id: String) {
-        guard !graph.parts(inside: id).isEmpty else { return }
-        zoom(to: graph.ancestry(of: id).map(\.id))
+        guard let newPath = Self.zoomTarget(into: id, graph: graph) else { return }
+        zoom(to: newPath)
+    }
+
+    /// The path zooming into `id` would show, or nil if it has nothing inside to zoom into
+    /// (the guard `zoom(into:)` used to check inline). Pulled out, per CLAUDE.md's "extract
+    /// layout/selection/formatting logic" guidance, so it's directly testable.
+    nonisolated static func zoomTarget(into id: String, graph: PRGraph) -> [String]? {
+        guard !graph.parts(inside: id).isEmpty else { return nil }
+        return graph.ancestry(of: id).map(\.id)
     }
 
     private func zoom(to newPath: [String]) {
         withAnimation(.easeInOut(duration: 0.2)) {
-            let previousFocus = path.last
+            let newSelection = Self.selectionAfterZoom(from: path, to: newPath, graph: graph)
             path = newPath
-            // Zooming out keeps the part we came from selected, so the reviewer sees where they were.
-            if let previousFocus, level.contains(previousFocus) {
-                selection = .node(previousFocus)
-            } else {
-                selection = nil
-            }
+            selection = newSelection
         }
+    }
+
+    /// Zooming out keeps the part the reviewer zoomed out *from* selected, so they see where
+    /// they were — but only if it's still drawn at the new path. Pulled out of `zoom(to:)` so
+    /// this containment check is directly testable without a live `@State` path.
+    nonisolated static func selectionAfterZoom(from oldPath: [String], to newPath: [String], graph: PRGraph) -> ArchAnchor? {
+        guard let previousFocus = oldPath.last else { return nil }
+        let newLevel = graph.architectureLevel(path: newPath)
+        return newLevel.contains(previousFocus) ? .node(previousFocus) : nil
     }
 
     /// Shows a part or relationship that navigation asked for, zooming in if it's inside
     /// another part.
     private func reveal(_ anchor: ArchAnchor) {
+        guard let target = Self.revealTarget(anchor, graph: graph) else { return }
+        path = target.path
+        selection = target.selection
+    }
+
+    /// Where `reveal(_:)` should land: the path to zoom to and what to select, or nil when the
+    /// anchor no longer resolves against `graph` (a stale link). Pulled out of `reveal(_:)` so
+    /// the node/edge resolution — including "the outermost level where this relationship is
+    /// its own arrow" — is directly testable.
+    nonisolated static func revealTarget(_ anchor: ArchAnchor, graph: PRGraph) -> (path: [String], selection: ArchAnchor)? {
         switch anchor {
         case .node(let id):
-            guard let part = graph.drawablePart(for: id) else { return }
-            path = graph.architecturePath(showing: part.id)
-            selection = .node(part.id)
+            guard let part = graph.drawablePart(for: id) else { return nil }
+            return (graph.architecturePath(showing: part.id), .node(part.id))
         case .edge(let id):
-            guard let edge = graph.resolvedEdges.first(where: { $0.id == id }) else { return }
+            guard let edge = graph.resolvedEdges.first(where: { $0.id == id }) else { return nil }
             // The outermost level where this relationship is its own arrow.
             let candidates = [[]] + graph.ancestry(of: edge.fromId).dropLast().indices.map { i in
                 Array(graph.ancestry(of: edge.fromId).prefix(i + 1).map(\.id))
@@ -291,31 +336,44 @@ struct ArchitectureView: View {
             for candidate in candidates {
                 let level = graph.architectureLevel(path: candidate)
                 if let drawn = level.edges.first(where: { $0.id == id || $0.mergedIds.contains(id) }) {
-                    path = candidate
-                    selection = .edge(drawn.id)
-                    return
+                    return (candidate, .edge(drawn.id))
                 }
             }
+            return nil
         }
     }
 
     private func dropHiddenSelection() {
-        guard let selection else { return }
-        let boxes = Set(boxes(level).map(\.id))
-        let arrows = Set(arrows(level).map(\.id))
+        selection = Self.selectionAfterHidingCheck(selection, level: level, graph: graph, mode: mode)
+    }
+
+    /// `selection` unchanged, or nil once the mode change (before/after/delta) makes it no
+    /// longer drawn. Pulled out of `dropHiddenSelection()` for the same reason as `boxes`/
+    /// `arrows`/`containers`: it's the state-derivation logic, not the mutation.
+    nonisolated static func selectionAfterHidingCheck(_ selection: ArchAnchor?, level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> ArchAnchor? {
+        guard let selection else { return nil }
+        let boxes = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
+        let arrows = Set(Self.arrows(level, graph: graph, mode: mode).map(\.id))
         switch selection {
-        case .node(let id) where !boxes.contains(id): self.selection = nil
-        case .edge(let id) where !arrows.contains(id): self.selection = nil
-        default: break
+        case .node(let id) where !boxes.contains(id): return nil
+        case .edge(let id) where !arrows.contains(id): return nil
+        default: return selection
         }
     }
 
     /// Tells the window what "this" is for ⌘⇧A.
     private func publishFocus() {
+        actions.focus(Self.focusSubject(selection: selection, path: path))
+    }
+
+    /// What ⌘⇧A should ask about: the current selection, falling back to the part being
+    /// zoomed into when nothing is selected. Pulled out of `publishFocus()` so the fallback
+    /// logic is directly testable.
+    nonisolated static func focusSubject(selection: ArchAnchor?, path: [String]) -> ReviewSubject? {
         switch selection {
-        case .node(let id): actions.focus(.component(id))
-        case .edge(let id): actions.focus(.relationship(id))
-        case nil: actions.focus(path.last.map { .component($0) })
+        case .node(let id): return .component(id)
+        case .edge(let id): return .relationship(id)
+        case nil: return path.last.map { .component($0) }
         }
     }
 }

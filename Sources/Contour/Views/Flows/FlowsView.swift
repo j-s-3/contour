@@ -84,41 +84,36 @@ struct FlowsView: View {
 
     // MARK: - State
 
-    private var currentFlow: FlowNode? { graph.flow(selectedFlowId) ?? graph.flows.first }
+    private var currentFlow: FlowNode? { FlowsViewLogic.currentFlow(in: graph, selectedFlowId: selectedFlowId) }
     private var currentBehavior: FlowBehavior? { currentFlow.map { graph.behavior(for: $0) } }
     private var selectedNode: FlowBehaviorNode? { currentBehavior?.node(selectedNodeId) }
 
     private func apply(_ focus: Focus?) {
-        guard let focus, graph.flow(focus.flowId) != nil else { return }
-        selectedFlowId = focus.flowId
-        selectedNodeId = focus.nodeId
-        level = .behavior
+        guard let result = FlowsViewLogic.applying(focus, to: graph) else { return }
+        selectedFlowId = result.selectedFlowId
+        selectedNodeId = result.selectedNodeId
+        level = result.level
     }
 
     private func openFlow(_ id: String) {
-        guard graph.flow(id) != nil else { return }
-        selectedFlowId = id
-        selectedNodeId = nil
+        guard let result = FlowsViewLogic.opening(id, in: graph) else { return }
+        selectedFlowId = result.selectedFlowId
+        selectedNodeId = result.selectedNodeId
         keyboardFocused = true
     }
 
     private func select(_ node: FlowBehaviorNode?) {
-        if node?.id != selectedNodeId { level = .behavior }
-        selectedNodeId = node?.id
+        let result = FlowsViewLogic.selecting(node, currentSelectedNodeId: selectedNodeId)
+        if let newLevel = result.level { level = newLevel }
+        selectedNodeId = result.nodeId
         keyboardFocused = true
     }
 
     /// [ and ] cycle scenarios, like the Decisions lens's J and K. Shortcuts with a modifier
     /// aren't ours.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard graph.flows.count > 1,
-              press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
-        let offset: Int
-        switch press.characters {
-        case "[": offset = -1
-        case "]": offset = 1
-        default: return .ignored
-        }
+        guard FlowsViewLogic.recognizesScenarioKey(press.characters, modifiers: press.modifiers, flowCount: graph.flows.count),
+              let offset = FlowsViewLogic.scenarioOffset(for: press.characters) else { return .ignored }
         if let next = graph.scenario(offset, from: currentFlow?.id) { openFlow(next.id) }
         return .handled
     }
@@ -127,12 +122,9 @@ struct FlowsView: View {
     private func drill(_ node: FlowBehaviorNode) {
         guard let flow = currentFlow else { return }
         let available = FlowDrillLevel.available(for: node, in: flow, graph: graph)
-        if selectedNodeId != node.id {
-            selectedNodeId = node.id
-            level = available.first { $0 > .behavior } ?? .behavior
-        } else {
-            level = available.first { $0 > level } ?? level
-        }
+        let result = FlowsViewLogic.drilling(node, currentSelectedNodeId: selectedNodeId, currentLevel: level, available: available)
+        selectedNodeId = result.nodeId
+        level = result.level
     }
 
     private func showImplementation(_ node: FlowBehaviorNode) {
@@ -142,12 +134,10 @@ struct FlowsView: View {
 
     /// Tells the window what "this" is for ⌘⇧A.
     private func publishFocus() {
-        guard let flow = currentFlow else { return actions.focus(nil) }
-        if let node = selectedNode {
-            actions.focus(.flowNode(flowId: flow.id, nodeId: node.id))
-        } else {
-            actions.focus(.flow(flow.id))
+        guard let subject = FlowsViewLogic.focusToPublish(flow: currentFlow, node: selectedNode) else {
+            return actions.focus(nil)
         }
+        actions.focus(subject)
     }
 
     // MARK: - Header
@@ -267,10 +257,7 @@ struct FlowsView: View {
 
     /// Older analyses carry no change sentence; name the stages that changed instead.
     private func condensedChangeSummary(_ behavior: FlowBehavior) -> String? {
-        let changed = behavior.nodes.filter { $0.change != .existing && $0.kind != .trigger }
-        guard !changed.isEmpty else { return nil }
-        return "Changes " + changed.prefix(3).map { "“\($0.label)”" }.joined(separator: ", ")
-            + (changed.count > 3 ? ", and \(changed.count - 3) more" : "") + "."
+        FlowsViewLogic.condensedChangeSummary(behavior)
     }
 
     /// Several triggers converging on this flow, or this flow handing off to a shared one.
@@ -320,5 +307,97 @@ struct FlowsView: View {
                 if let node = selectedNode, !node.change.isVisible(in: new) { select(nil) }
             }
         }
+    }
+}
+
+/// The scenario-cycling, selection and drill-down logic, plus the change-summary
+/// condensation CLAUDE.md calls out for this file, pulled out of `FlowsView`'s body so
+/// they're directly testable without a view instance. `FlowsView`'s own methods are thin
+/// wrappers around these that just apply the result to `@State`.
+enum FlowsViewLogic {
+    /// Which way `[` or `]` cycles scenarios; nil for any other key.
+    static func scenarioOffset(for characters: String) -> Int? {
+        switch characters {
+        case "[": return -1
+        case "]": return 1
+        default: return nil
+        }
+    }
+
+    /// Whether a keypress should cycle scenarios: more than one scenario to cycle through,
+    /// no modifier held (a shortcut with one isn't ours), and a recognized bracket key.
+    /// Mirrors the guard in `FlowsView.handleKey`.
+    static func recognizesScenarioKey(_ characters: String, modifiers: EventModifiers, flowCount: Int) -> Bool {
+        flowCount > 1
+            && modifiers.isDisjoint(with: [.command, .control, .option])
+            && scenarioOffset(for: characters) != nil
+    }
+
+    /// The next rung of the ladder strictly below `level` that has something on it, or
+    /// `level` itself when there is none.
+    static func nextLevel(after level: FlowDrillLevel, available: [FlowDrillLevel]) -> FlowDrillLevel {
+        available.first { $0 > level } ?? level
+    }
+
+    /// Older analyses carry no change sentence; name the stages that changed instead.
+    static func condensedChangeSummary(_ behavior: FlowBehavior) -> String? {
+        let changed = behavior.nodes.filter { $0.change != .existing && $0.kind != .trigger }
+        guard !changed.isEmpty else { return nil }
+        return "Changes " + changed.prefix(3).map { "“\($0.label)”" }.joined(separator: ", ")
+            + (changed.count > 3 ? ", and \(changed.count - 3) more" : "") + "."
+    }
+
+    // MARK: - Selection state
+
+    /// The flow shown when nothing is selected, or the selection names one that no longer
+    /// exists: the graph's first flow. Mirrors `FlowsView.currentFlow`.
+    static func currentFlow(in graph: PRGraph, selectedFlowId: String?) -> FlowNode? {
+        graph.flow(selectedFlowId) ?? graph.flows.first
+    }
+
+    /// New selection after navigation asks the view to focus a flow (and optionally a stage
+    /// in it) — `.onAppear` and `.onChange(of: focus)`. A focus naming an unknown flow is
+    /// left alone rather than clearing the current selection. Mirrors `FlowsView.apply`.
+    static func applying(_ focus: FlowsView.Focus?, to graph: PRGraph)
+        -> (selectedFlowId: String, selectedNodeId: String?, level: FlowDrillLevel)? {
+        guard let focus, graph.flow(focus.flowId) != nil else { return nil }
+        return (focus.flowId, focus.nodeId, .behavior)
+    }
+
+    /// New selection after choosing a scenario tab, a convergence link, or a subflow —
+    /// always clears the stage selection. An unknown flow id is ignored. Mirrors
+    /// `FlowsView.openFlow`.
+    static func opening(_ id: String, in graph: PRGraph) -> (selectedFlowId: String, selectedNodeId: String?)? {
+        guard graph.flow(id) != nil else { return nil }
+        return (id, nil)
+    }
+
+    /// New node selection after clicking a stage (or its own selected self, to close the
+    /// inspector): the drill level resets to `.behavior` whenever the selection actually
+    /// changes, and is left alone otherwise. Mirrors `FlowsView.select`.
+    static func selecting(_ node: FlowBehaviorNode?, currentSelectedNodeId: String?)
+        -> (nodeId: String?, level: FlowDrillLevel?) {
+        let changesSelection = node?.id != currentSelectedNodeId
+        let resetLevel: FlowDrillLevel? = changesSelection ? .behavior : nil
+        return (node?.id, resetLevel)
+    }
+
+    /// New (node, level) after double-clicking a stage: selecting a new stage opens it at
+    /// the first available rung below `.behavior`; double-clicking the already-selected one
+    /// steps one more rung down. Mirrors `FlowsView.drill`.
+    static func drilling(_ node: FlowBehaviorNode, currentSelectedNodeId: String?, currentLevel: FlowDrillLevel,
+                          available: [FlowDrillLevel]) -> (nodeId: String, level: FlowDrillLevel) {
+        if currentSelectedNodeId != node.id {
+            return (node.id, nextLevel(after: .behavior, available: available))
+        }
+        return (node.id, nextLevel(after: currentLevel, available: available))
+    }
+
+    /// What ⌘⇧A should focus: nothing when there's no flow to show, the stage when one's
+    /// selected, else the flow itself. Mirrors `FlowsView.publishFocus`.
+    static func focusToPublish(flow: FlowNode?, node: FlowBehaviorNode?) -> ReviewSubject? {
+        guard let flow else { return nil }
+        if let node { return .flowNode(flowId: flow.id, nodeId: node.id) }
+        return .flow(flow.id)
     }
 }

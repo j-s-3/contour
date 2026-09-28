@@ -53,7 +53,28 @@ jobs:
         # each time — consistent with a real concurrency race rather than one bad test.
         # TODO(#swift6-migration): re-enable once the race is root-caused; this trades CI
         # time for a green build in the interim.
-        run: swift test --enable-code-coverage --no-parallel
+        run: |
+          set -o pipefail
+          swift test --enable-code-coverage --no-parallel 2>&1 | tee test-output.log
+
+      - name: No main-actor isolation warnings (issue #185)
+        # Members of a `View` are implicitly `@MainActor`; calling one from a nonisolated
+        # `@Test` is only a warning today because SwiftUI's isolation is @preconcurrency, but
+        # it becomes a hard error under Swift 6 language mode (#72). Pure helpers on views are
+        # declared `nonisolated`; anything that genuinely needs the main actor is called from
+        # a `@MainActor` test. Fail here so new instances don't pile up silently again.
+        run: |
+          PATTERN="main actor-isolated .* in a (synchronous )?nonisolated context"
+          # Strip color codes and OSC-8 links so the list reads cleanly in the annotation.
+          perl -pe 's/\e\[[0-9;]*m//g; s/\e\]8;;.*?\e\\//g' test-output.log \
+            | grep -E "$PATTERN" | sed -E "s|^$GITHUB_WORKSPACE/||" | sort -u > isolation-warnings.txt || true
+          if [ -s isolation-warnings.txt ]; then
+            cat isolation-warnings.txt
+            # One annotation carrying the whole list, so it's readable from the checks API too.
+            LIST="$(sed -E 's/%/%25/g' isolation-warnings.txt | awk '{printf "%s%%0A", $0}')"
+            echo "::error title=Main-actor isolation warnings::$(wc -l < isolation-warnings.txt | tr -d ' ') found. Mark pure View helpers 'nonisolated' or make the test @MainActor.%0A$LIST"
+            exit 1
+          fi
 
       - name: Code coverage report
         run: |

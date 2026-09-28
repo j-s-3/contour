@@ -22,7 +22,7 @@ struct RequestChangesSheet: View {
                 .frame(minHeight: 120)
                 .scrollContentBackground(.hidden)
                 .overlay(alignment: .topLeading) {
-                    if comment.isEmpty {
+                    if Self.showsPlaceholder(comment: comment) {
                         Text("What should change?")
                             .foregroundStyle(.tertiary)
                             .padding(.leading, 5)
@@ -38,8 +38,7 @@ struct RequestChangesSheet: View {
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Request Changes") {
-                    onSubmit(comment)
-                    dismiss()
+                    Self.submit(comment: comment, onSubmit: onSubmit) { dismiss() }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!PRReview.isReady(.requestChanges, comment: comment))
@@ -48,5 +47,21 @@ struct RequestChangesSheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear { editorFocused = true }
+    }
+
+    /// Pulled out (static, taking its dependencies explicitly) so the submit action is
+    /// directly testable. The comment-required validation that gates the button lives in
+    /// `PRReview.isReady`, already covered by `PRReviewTests`.
+    static func submit(comment: String, onSubmit: (String) -> Void, dismiss: () -> Void) {
+        onSubmit(comment)
+        dismiss()
+    }
+
+    /// Whether the "What should change?" placeholder shows over the empty editor. Pulled
+    /// out alongside `submit` so both bits of this file's own logic are directly testable;
+    /// everything else below is declarative SwiftUI layout with no hosting environment to
+    /// exercise it under `swift test` (see `RequestChangesSheetTests.swift`).
+    static func showsPlaceholder(comment: String) -> Bool {
+        comment.isEmpty
     }
 }

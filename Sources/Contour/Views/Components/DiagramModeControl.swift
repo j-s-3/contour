@@ -23,12 +23,18 @@ struct DiagramModeControl: View {
             .help("Before this PR (B), after it (A), or only what it changed (D)")
             Text(mode.showing(subject))
                 .font(.callout.weight(.medium))
-                .foregroundStyle(mode == .delta ? AnyShapeStyle(.blue) : AnyShapeStyle(.secondary))
+                .foregroundStyle(Self.isAccented(mode) ? AnyShapeStyle(.blue) : AnyShapeStyle(.secondary))
                 .lineLimit(1)
                 .padding(.leading, 4)
                 .contentTransition(.opacity)
                 .animation(.easeInOut(duration: 0.15), value: mode)
         }
+    }
+
+    /// Only "What changed" gets the accent color: it's the one mode that isn't a plain
+    /// snapshot, so the "Showing …" sentence beside it should read as a callout, not a status.
+    nonisolated static func isAccented(_ mode: DiagramMode) -> Bool {
+        mode == .delta
     }
 }
 
@@ -37,10 +43,18 @@ extension View {
     /// elsewhere (the chat, a search field) never reaches here, and modified keys aren't ours.
     func diagramModeKeys(_ mode: Binding<DiagramMode>) -> some View {
         onKeyPress(phases: .down) { press in
-            guard press.modifiers.isDisjoint(with: [.command, .control, .option]),
-                  let new = DiagramMode(key: press.characters) else { return .ignored }
-            mode.wrappedValue = new
-            return .handled
+            DiagramModeKeyHandling.handle(characters: press.characters, modifiers: press.modifiers, mode: mode)
         }
+    }
+}
+
+/// Pulled out of `diagramModeKeys` (taking the raw key info explicitly rather than a live
+/// `KeyPress`) so the switch's key handling is directly testable.
+enum DiagramModeKeyHandling {
+    static func handle(characters: String, modifiers: EventModifiers, mode: Binding<DiagramMode>) -> KeyPress.Result {
+        guard modifiers.isDisjoint(with: [.command, .control, .option]),
+              let new = DiagramMode(key: characters) else { return .ignored }
+        mode.wrappedValue = new
+        return .handled
     }
 }

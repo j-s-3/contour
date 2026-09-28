@@ -239,8 +239,10 @@ final class GraphStore {
         pipeline = nil
     }
 
+    /// Internal rather than private so tests can drive state transitions with synthetic
+    /// events instead of a real pipeline (network, checkout, harness).
     @MainActor
-    private func handle(_ event: PipelineEvent) {
+    func handle(_ event: PipelineEvent) {
         switch event {
         case .log(let entry):
             progressLog.append(entry)

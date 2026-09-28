@@ -131,7 +131,7 @@ struct DecisionsView: View {
 
     /// Says what the list is for — where the reviewer's time is best spent — without claiming
     /// the analysis ranked importance perfectly, and that more was found than is shown.
-    static func framing(toReview: Int, total: Int) -> String {
+    nonisolated static func framing(toReview: Int, total: Int) -> String {
         let others = total - toReview
         if toReview == 0 {
             return "No choice in this PR stood out as needing your judgment. "
@@ -314,12 +314,17 @@ struct DecisionsView: View {
     /// Opens the decision navigation asked for: reveal it, select it, scroll to it, and
     /// light it up briefly so the eye lands on it.
     private func arrive(_ proxy: ScrollViewProxy) {
-        guard let id = focus?.decisionId, graph.decision(id) != nil else {
-            if selectedId == nil { selectedId = sequence.first?.id }
-            return
-        }
-        if other.contains(where: { $0.id == id }) { showOther = true }
-        selectedId = id
+        let id = focus?.decisionId
+        let exists = id.flatMap { graph.decision($0) } != nil
+        let plan = DecisionsViewLogic.arrivalSelection(
+            decisionId: id,
+            decisionExists: exists,
+            isOtherDecision: id.map { i in other.contains { $0.id == i } } ?? false,
+            existingSelectedId: selectedId,
+            fallbackId: sequence.first?.id)
+        selectedId = plan.selectedId
+        guard exists, let id else { return }
+        if plan.revealOther { showOther = true }
         withAnimation(.easeOut(duration: 0.2)) { arrivedId = id }
         DispatchQueue.main.async {
             withAnimation { proxy.scrollTo(id, anchor: .top) }
@@ -330,37 +335,37 @@ struct DecisionsView: View {
     }
 
     private func handleKey(_ press: KeyPress, proxy: ScrollViewProxy) -> KeyPress.Result {
-        // Typing a question for the author, or any shortcut with a modifier, isn't ours.
-        guard noteFocus == nil, press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
-        switch press.key {
-        case .downArrow: step(1, proxy: proxy); return .handled
-        case .upArrow: step(-1, proxy: proxy); return .handled
-        default: break
+        let action = DecisionsViewLogic.keyAction(
+            isArrowDown: press.key == .downArrow,
+            isArrowUp: press.key == .upArrow,
+            character: press.characters,
+            modifiersBlockShortcuts: !press.modifiers.isDisjoint(with: [.command, .control, .option]),
+            noteFieldFocused: noteFocus != nil,
+            hasSelection: selected != nil,
+            selectionIsToReview: selected.map(graph.isToReview) ?? false)
+        switch action {
+        case .step(let delta):
+            step(delta, proxy: proxy)
+            return .handled
+        case .judge(let state):
+            guard let decision = selected else { return .ignored }
+            judge(decision, state, proxy: proxy)
+            return .handled
+        case .toggleExpanded:
+            guard let decision = selected else { return .ignored }
+            toggleExpanded(decision.id)
+            return .handled
+        case .ignored:
+            return .ignored
         }
-        guard let decision = selected else { return .ignored }
-        let key = press.characters.lowercased()
-        // Other decisions aren't judged — add one to review first.
-        if ["a", "q", "c"].contains(key), !graph.isToReview(decision) { return .ignored }
-        switch key {
-        case "j": step(1, proxy: proxy)
-        case "k": step(-1, proxy: proxy)
-        case "a": judge(decision, .accepted, proxy: proxy)
-        case "q": judge(decision, .questioned, proxy: proxy)
-        case "c": judge(decision, .discuss, proxy: proxy)
-        case "m", " ": toggleExpanded(decision.id)
-        default: return .ignored
-        }
-        return .handled
     }
 
     private func step(_ delta: Int, proxy: ScrollViewProxy? = nil) {
         let ids = sequence.map(\.id)
-        guard !ids.isEmpty else { return }
-        let current = selected.flatMap { ids.firstIndex(of: $0.id) } ?? 0
-        let next = min(max(current + delta, 0), ids.count - 1)
-        selectedId = ids[next]
+        guard let nextId = DecisionsViewLogic.stepId(in: ids, currentId: selected?.id, delta: delta) else { return }
+        selectedId = nextId
         keyboardFocused = true
-        if let proxy { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(ids[next]) } }
+        if let proxy { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(nextId) } }
     }
 
     /// Records a judgment. "Looks good" moves on to the next decision still waiting for
@@ -372,14 +377,10 @@ struct DecisionsView: View {
         guard turningOn else { return }
         switch state {
         case .accepted:
-            let ids = sequence.map(\.id)
-            guard let at = ids.firstIndex(of: decision.id) else { return }
-            let after = sequence.dropFirst(at + 1)
-            if let next = after.first(where: { $0.reviewerState == .unreviewed }) ?? after.first {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    selectedId = next.id
-                    if let proxy { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(next.id) } }
-                }
+            guard let nextId = DecisionsViewLogic.nextAfterAccepting(sequence: sequence, decisionId: decision.id) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                selectedId = nextId
+                if let proxy { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(nextId) } }
             }
         case .questioned:
             DispatchQueue.main.async { noteFocus = decision.id }
@@ -393,12 +394,13 @@ struct DecisionsView: View {
     /// Add to review / Not worth reviewing. A decision added to review is selected where it
     /// lands; one taken out hands the selection to the next decision still to review.
     private func setToReview(_ decision: DecisionNode, _ toReview: Bool) {
-        let next = toReview ? nil : self.toReview.drop { $0.id != decision.id }.dropFirst().first
+        let nextId = DecisionsViewLogic.selectionAfterTogglingReview(
+            toReview: self.toReview, decisionId: decision.id, addingToReview: toReview)
         withAnimation(.easeInOut(duration: 0.2)) {
             onSetToReview(decision.id, toReview)
             expandedIds.remove(decision.id)
         }
-        selectedId = toReview ? decision.id : (next ?? self.toReview.first { $0.id != decision.id })?.id
+        selectedId = nextId
         keyboardFocused = true
     }
 
@@ -406,6 +408,138 @@ struct DecisionsView: View {
         withAnimation(.easeInOut(duration: 0.18)) {
             if expandedIds.contains(id) { expandedIds.remove(id) } else { expandedIds.insert(id) }
         }
+    }
+}
+
+/// Pure grouping/ordering logic pulled out of this file's views (per CLAUDE.md's guidance)
+/// so it's directly testable without a live view.
+enum DecisionsViewLogic {
+    /// Reorders a decision's Overview questions so the one the reviewer arrived from leads,
+    /// leaving the rest in their original order.
+    static func questions(from all: [Consideration], leadingWith arrivedFromConsiderationId: String?) -> [Consideration] {
+        guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
+        return [item] + all.filter { $0.id != lead }
+    }
+
+    /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
+    nonisolated static func provenanceNote(_ s: Statement) -> String {
+        switch s.provenance {
+        case .claim: return "Author rationale"
+        case .fact: return "Observed"
+        case .interpretation: return "AI inference"
+        }
+    }
+
+    static func provenanceHelp(_ s: Statement) -> String {
+        var text = PRGraph.provenanceLabel(s.provenance, s.confidence)
+        if let source = s.source, !source.isEmpty { text += " — \(source)" }
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    // MARK: - Keyboard shortcuts
+
+    /// What a keypress in the Decisions lens should do, decided from plain inputs rather than
+    /// `KeyPress` itself so it's directly testable. Mirrors `DecisionsView.handleKey`.
+    enum KeyAction: Equatable {
+        case step(Int)
+        case judge(ReviewerState)
+        case toggleExpanded
+        case ignored
+    }
+
+    /// - Parameters:
+    ///   - isArrowDown/isArrowUp: the two keys handled before any selection is required.
+    ///   - character: the pressed key's characters, lowercased by the caller for j/k/a/q/c/m.
+    ///   - modifiersBlockShortcuts: true when Command/Control/Option was held — never ours.
+    ///   - noteFieldFocused: a reviewer note field has focus, so typing isn't a shortcut.
+    ///   - hasSelection: a decision is currently selected.
+    ///   - selectionIsToReview: the selected decision is one being reviewed — A/Q/C only ever
+    ///     judge those; an Other Decision must be added to review first.
+    nonisolated static func keyAction(isArrowDown: Bool, isArrowUp: Bool, character: String,
+                                       modifiersBlockShortcuts: Bool, noteFieldFocused: Bool,
+                                       hasSelection: Bool, selectionIsToReview: Bool) -> KeyAction {
+        guard !noteFieldFocused, !modifiersBlockShortcuts else { return .ignored }
+        if isArrowDown { return .step(1) }
+        if isArrowUp { return .step(-1) }
+        guard hasSelection else { return .ignored }
+        let key = character.lowercased()
+        if ["a", "q", "c"].contains(key), !selectionIsToReview { return .ignored }
+        switch key {
+        case "j": return .step(1)
+        case "k": return .step(-1)
+        case "a": return .judge(.accepted)
+        case "q": return .judge(.questioned)
+        case "c": return .judge(.discuss)
+        case "m", " ": return .toggleExpanded
+        default: return .ignored
+        }
+    }
+
+    // MARK: - Navigation / selection math
+
+    /// Where `step(_:)` moves: `delta` positions from `currentId` in `ids`, clamped to the
+    /// ends. Nil when there's nothing to select.
+    nonisolated static func stepId(in ids: [String], currentId: String?, delta: Int) -> String? {
+        guard !ids.isEmpty else { return nil }
+        let current = currentId.flatMap { ids.firstIndex(of: $0) } ?? 0
+        let next = min(max(current + delta, 0), ids.count - 1)
+        return ids[next]
+    }
+
+    /// After accepting a decision, the review moves on: the next still-`unreviewed` decision
+    /// after it in the sequence, or failing that the next one at all, or nil past the end.
+    nonisolated static func nextAfterAccepting(sequence: [DecisionNode], decisionId: String) -> String? {
+        guard let at = sequence.firstIndex(where: { $0.id == decisionId }) else { return nil }
+        let after = sequence[sequence.index(after: at)...]
+        return (after.first { $0.reviewerState == .unreviewed } ?? after.first)?.id
+    }
+
+    /// Where selection lands after toggling a decision's review placement: itself when added,
+    /// or the next decision still to review (falling back to any other one) when removed.
+    nonisolated static func selectionAfterTogglingReview(toReview: [DecisionNode], decisionId: String,
+                                                          addingToReview: Bool) -> String? {
+        guard !addingToReview else { return decisionId }
+        let next = toReview.drop { $0.id != decisionId }.dropFirst().first
+        return (next ?? toReview.first { $0.id != decisionId })?.id
+    }
+
+    /// What `arrive(_:)` should do with navigation's requested decision: reveal Other
+    /// Decisions and select it when it exists, otherwise leave the current selection alone
+    /// (defaulting it only when nothing was selected yet).
+    nonisolated static func arrivalSelection(decisionId: String?, decisionExists: Bool, isOtherDecision: Bool,
+                                              existingSelectedId: String?, fallbackId: String?)
+        -> (selectedId: String?, revealOther: Bool) {
+        guard let id = decisionId, decisionExists else {
+            return (existingSelectedId ?? fallbackId, false)
+        }
+        return (id, isOtherDecision)
+    }
+
+    // MARK: - Presentation
+
+    /// The impacts line under a decision's question — its top few, joined for one glance.
+    nonisolated static func impactsSummary(_ impacts: [DecisionImpact]) -> String {
+        impacts.prefix(3).map(\.label).joined(separator: " · ")
+    }
+
+    /// The tint behind a decision's numbered badge: neutral until it's judged.
+    nonisolated static func badgeTint(for state: ReviewerState) -> Color {
+        state == .unreviewed ? .secondary : state.tint
+    }
+
+    /// `TradeoffSpectrum`'s tooltip: the model's own explanation, or a plain fallback naming
+    /// which side the choice leans toward.
+    nonisolated static func tradeoffHelp(_ tradeoff: DecisionTradeoff) -> String {
+        (tradeoff.explanation?.text ?? "Leans toward \(tradeoff.chosenDimension)") + " — right-click to ask about it"
+    }
+
+    /// Splits a before/after option's label ("Reader → Printer") on any `→` or `>` into its
+    /// chain of parts, trimming surrounding whitespace and stray leading/trailing dashes
+    /// from each one, and dropping empties left by adjacent separators.
+    nonisolated static func beforeAfterParts(from label: String) -> [String] {
+        label.components(separatedBy: CharacterSet(charactersIn: "→>"))
+            .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "-")) }
+            .filter { !$0.isEmpty }
     }
 }
 
@@ -436,9 +570,8 @@ private struct DecisionCard: View {
 
     /// Overview questions reviewed here; the one the reviewer arrived from leads.
     private var questions: [Consideration] {
-        let all = graph.overviewQuestions(reviewedOn: decision.id)
-        guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
-        return [item] + all.filter { $0.id != lead }
+        DecisionsViewLogic.questions(from: graph.overviewQuestions(reviewedOn: decision.id),
+                                     leadingWith: arrivedFromConsiderationId)
     }
 
     var body: some View {
@@ -521,7 +654,7 @@ private struct DecisionCard: View {
     /// Why this is highlighted — what it could affect and why it matters, in one quiet line.
     /// Reasoning, never a score.
     private var whyHighlighted: some View {
-        let impacts = decision.impacts.prefix(3).map(\.label).joined(separator: " · ")
+        let impacts = DecisionsViewLogic.impactsSummary(decision.impacts)
         var line = Text("")
         if decision.reviewerPlacement == .review { line = line + Text("You added this to review. ") }
         if !impacts.isEmpty { line = line + Text("Impacts \(impacts)").fontWeight(.medium) + Text(" — ") }
@@ -551,11 +684,11 @@ private struct DecisionCard: View {
             if let why = brief.why {
                 GridRow {
                     rowLabel(brief.shape == nil && brief.tradeoff == nil ? "Why" : "Why this side?")
-                    (Text(why.text) + Text("   " + Self.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
+                    (Text(why.text) + Text("   " + DecisionsViewLogic.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
                         .font(.body)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .help(Self.provenanceHelp(why))
+                        .help(DecisionsViewLogic.provenanceHelp(why))
                         .reviewContextMenu(.decision(decision.id))
                 }
             }
@@ -624,21 +757,6 @@ private struct DecisionCard: View {
         .padding(10)
         .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.25)))
-    }
-
-    /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
-    static func provenanceNote(_ s: Statement) -> String {
-        switch s.provenance {
-        case .claim: return "Author rationale"
-        case .fact: return "Observed"
-        case .interpretation: return "AI inference"
-        }
-    }
-
-    static func provenanceHelp(_ s: Statement) -> String {
-        var text = PRGraph.provenanceLabel(s.provenance, s.confidence)
-        if let source = s.source, !source.isEmpty { text += " — \(source)" }
-        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 
@@ -788,7 +906,7 @@ private struct DecisionBadge: View {
         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 6 }
     }
 
-    private var tint: Color { state == .unreviewed ? .secondary : state.tint }
+    private var tint: Color { DecisionsViewLogic.badgeTint(for: state) }
 }
 
 /// "✓ Reviewed" — obvious, never loud.
@@ -990,9 +1108,7 @@ private struct DecisionChoiceView: View {
 
     /// One side of a before/after: its label drawn as a chain of tiny boxes.
     private func structure(_ option: DecisionOption, index: Int, title: String) -> some View {
-        let parts = option.label.components(separatedBy: CharacterSet(charactersIn: "→>"))
-            .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "-")) }
-            .filter { !$0.isEmpty }
+        let parts = DecisionsViewLogic.beforeAfterParts(from: option.label)
         let tint = option.chosen ? Color.accentColor : Color.secondary
         return HStack(alignment: .center, spacing: 12) {
             Text(title)
@@ -1125,7 +1241,7 @@ struct TradeoffSpectrum: View {
         .font(.callout)
         .lineLimit(1)
         .contentShape(Rectangle())
-        .help((tradeoff.explanation?.text ?? "Leans toward \(tradeoff.chosenDimension)") + " — right-click to ask about it")
+        .help(DecisionsViewLogic.tradeoffHelp(tradeoff))
     }
 }
 
