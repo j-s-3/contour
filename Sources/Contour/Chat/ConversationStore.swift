@@ -181,7 +181,9 @@ final class ConversationStore {
     /// Code is only inlined when the reviewer is looking at code: a pinned range, a code
     /// reference subject, or the Implementation expansion. Everything else is left for the
     /// harness to read on demand, which keeps the first answer at the concept's level.
-    private static func excerpts(
+    /// Internal rather than `private` so it's directly testable against a real checkout,
+    /// without needing `CONTOUR_MOCK_ANALYSIS` (a process-global env var other tests read).
+    static func excerpts(
         for resolved: ResolvedSubject, expansions: Set<ContextExpansion>, pinned: [CodeRef], checkout: RepoCheckout
     ) async -> [(ref: CodeRef, text: String)] {
         var refs = pinned
