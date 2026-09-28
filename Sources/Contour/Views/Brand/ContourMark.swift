@@ -127,15 +127,15 @@ struct ContourMarkView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     /// The mark's height on the welcome and analysis screens.
-    static let heroHeight: CGFloat = 104
+    nonisolated static let heroHeight: CGFloat = 104
 
     /// Below this height the inner rings crowd into a smudge, so the mark drops every
     /// other ring — the same optical simplification any logo gets at favicon size.
-    private static let compactHeight: CGFloat = 40
+    nonisolated private static let compactHeight: CGFloat = 40
 
     /// How visible an unresolved ring is: enough that the shape is already there, faintly,
     /// before it is understood.
-    private static let traceOpacity = 0.12
+    nonisolated private static let traceOpacity = 0.12
 
     var body: some View {
         Canvas { context, size in
@@ -143,6 +143,65 @@ struct ContourMarkView: View {
         }
         .aspectRatio(ContourMarkGeometry.aspectRatio, contentMode: .fit)
         .accessibilityHidden(true)
+    }
+
+    // MARK: - Pure state derivation (kept out of `draw` so it's testable without a
+    // live GraphicsContext; see ContourMarkTests).
+
+    /// Below `compactHeight` the inner rings crowd into a smudge, so the mark drops every
+    /// other ring — the same optical simplification any logo gets at favicon size.
+    nonisolated static func isCompact(height: CGFloat) -> Bool { height < compactHeight }
+
+    /// Ring indices actually drawn: all of them normally, every other one when compact.
+    /// Indexed like `ContourMarkGeometry.rings` (outermost first).
+    nonisolated static func visibleRingIndices(compact: Bool) -> [Int] {
+        ContourMarkGeometry.rings.indices.filter { !compact || $0 % 2 == 0 }
+    }
+
+    /// The icon crops the outer rings to its tile; showing them whole shrinks the mark
+    /// about 1.4×, so the lines get some of that weight back — more of it when compact,
+    /// where thin lines vanish first.
+    nonisolated static func lineWeight(compact: Bool) -> Double { compact ? 1.4 : 1.25 }
+
+    /// Keep strokes legible at small sizes: never thinner than ~1pt on screen. `scale` is
+    /// the screen-points-per-canvas-point factor for the current draw.
+    nonisolated static func minStrokeWidth(compact: Bool, scale: Double) -> Double {
+        (compact ? 1.1 : 0.9) / scale
+    }
+
+    /// A single ring's stroke width: proportional to the icon's stroke and how far out the
+    /// ring sits, floored at `minWidth` so it never goes illegibly thin.
+    nonisolated static func strokeWidth(widthFactor: Double, weight: Double, minWidth: Double) -> Double {
+        max(ContourMarkGeometry.stroke * widthFactor * weight, minWidth)
+    }
+
+    /// How visible an unresolved ring's faint trace is, scaled by that ring's own opacity.
+    nonisolated static func traceAlpha(ringOpacity: Double) -> Double { ringOpacity * Self.traceOpacity }
+
+    /// The dot at the peak is enlarged when compact, since a favicon-sized mark needs a
+    /// bigger dot to read at all.
+    nonisolated static func dotRadius(compact: Bool) -> Double {
+        compact ? ContourMarkGeometry.peakRadius * 1.5 : ContourMarkGeometry.peakRadius
+    }
+
+    /// The square bounding a circle of `radius` centred on `center`.
+    nonisolated static func circleRect(center: CGPoint, radius: Double) -> CGRect {
+        CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+    }
+
+    /// The soft halo behind the peak, sized off `ContourMarkGeometry.haloRadius`. Only drawn
+    /// when not compact — there's no room for it at favicon size.
+    nonisolated static var haloRect: CGRect {
+        circleRect(center: ContourMarkGeometry.peak, radius: ContourMarkGeometry.haloRadius)
+    }
+
+    /// The halo fades in with the peak and is never fully opaque.
+    nonisolated static func haloOpacity(peakStage: Double) -> Double { 0.18 * peakStage }
+
+    /// The peak dot is never fully invisible even before resolving (floored at
+    /// `traceOpacity`), then eases to fully opaque as `peakStage` reaches 1.
+    nonisolated static func peakDotOpacity(peakStage: Double) -> Double {
+        Self.traceOpacity + (1 - Self.traceOpacity) * peakStage
     }
 
     private func draw(in context: inout GraphicsContext, size: CGSize) {
@@ -153,22 +212,20 @@ struct ContourMarkView: View {
         context.translateBy(x: -geo.bounds.minX, y: -geo.bounds.minY)
 
         let palette = ContourMarkPalette.forScheme(colorScheme)
-        let compact = size.height < Self.compactHeight
-        // Keep strokes legible at small sizes: never thinner than ~1pt on screen.
-        let minWidth = (compact ? 1.1 : 0.9) / k
-        // The icon crops the outer rings to its tile; showing them whole shrinks the mark
-        // about 1.4×, so the lines get some of that weight back.
-        let weight = compact ? 1.4 : 1.25
+        let compact = Self.isCompact(height: size.height)
+        let minWidth = Self.minStrokeWidth(compact: compact, scale: k)
+        let weight = Self.lineWeight(compact: compact)
         let stages = ContourResolution.stages(resolution)
 
-        for (index, ring) in geo.rings.enumerated() where !compact || index % 2 == 0 {
+        for index in Self.visibleRingIndices(compact: compact) {
+            let ring = geo.rings[index]
             let amount = stages.ring(index)
             let colour = palette.line(level: ring.level)
-            let width = max(geo.stroke * ring.widthFactor * weight, minWidth)
+            let width = Self.strokeWidth(widthFactor: ring.widthFactor, weight: weight, minWidth: minWidth)
             let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
 
             if amount < 1 {
-                context.stroke(ring.path, with: .color(colour.opacity(ring.opacity * Self.traceOpacity)), style: style)
+                context.stroke(ring.path, with: .color(colour.opacity(Self.traceAlpha(ringOpacity: ring.opacity))), style: style)
             }
             guard amount > 0 else { continue }
             if drawsProgressively {
@@ -180,16 +237,13 @@ struct ContourMarkView: View {
         }
 
         // The peak fades in once and then holds still: no pulse.
-        let peak = stages.peak
-        let halo = CGRect(x: geo.peak.x - geo.haloRadius, y: geo.peak.y - geo.haloRadius,
-                          width: geo.haloRadius * 2, height: geo.haloRadius * 2)
-        let dotRadius = compact ? geo.peakRadius * 1.5 : geo.peakRadius
-        let dot = CGRect(x: geo.peak.x - dotRadius, y: geo.peak.y - dotRadius,
-                         width: dotRadius * 2, height: dotRadius * 2)
+        let peakStage = stages.peak
+        let dotRadius = Self.dotRadius(compact: compact)
+        let dot = Self.circleRect(center: geo.peak, radius: dotRadius)
         if !compact {
-            context.fill(Path(ellipseIn: halo), with: .color(palette.peak.opacity(0.18 * peak)))
+            context.fill(Path(ellipseIn: Self.haloRect), with: .color(palette.peak.opacity(Self.haloOpacity(peakStage: peakStage))))
         }
-        context.fill(Path(ellipseIn: dot), with: .color(palette.peak.opacity(Self.traceOpacity + (1 - Self.traceOpacity) * peak)))
+        context.fill(Path(ellipseIn: dot), with: .color(palette.peak.opacity(Self.peakDotOpacity(peakStage: peakStage))))
     }
 }
 
