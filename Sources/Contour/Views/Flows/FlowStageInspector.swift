@@ -27,6 +27,53 @@ enum FlowDrillLevel: Int, CaseIterable, Comparable, Identifiable {
     }
 }
 
+/// Content-selection logic pulled out of `FlowStageInspector`'s body: which graph-linked
+/// pieces (evidence, neighboring stages, pinned notes) a selected stage shows, and how the
+/// drill level recovers when the selected stage changes out from under it. Kept as plain
+/// functions over `FlowBehavior`/`FlowAnnotation` values, beside the view, per CLAUDE.md's
+/// guidance for this file.
+enum FlowStageInspectorLogic {
+    /// Evidence for a stage: its own refs plus every traced step's, deduplicated. Order
+    /// follows `node.refs` first so directly-attributed evidence sorts ahead of the steps
+    /// it was traced through.
+    static func refs(node: FlowBehaviorNode, steps: [FlowStep]) -> [CodeRef] {
+        unique(node.refs + steps.flatMap(\.refs))
+    }
+
+    /// The decisions and review questions pinned to this stage specifically, out of every
+    /// note pinned anywhere in the flow.
+    static func notes(_ all: [FlowAnnotation], forNodeId nodeId: String) -> [FlowAnnotation] {
+        all.filter { $0.nodeId == nodeId }
+    }
+
+    /// Splits a stage's notes into its decisions and its review questions, in the order the
+    /// "Behavior" rung shows them.
+    static func notes(_ notes: [FlowAnnotation], kind: FlowAnnotation.Kind) -> [FlowAnnotation] {
+        notes.filter { $0.kind == kind }
+    }
+
+    /// What led into this stage, and what it leads to — each outgoing edge paired with the
+    /// stage it lands on. An edge to or from a stage no longer in the behavior graph (a bad
+    /// id from the model) is silently dropped rather than shown as a broken link.
+    static func neighbors(
+        of nodeId: String, in behavior: FlowBehavior
+    ) -> (previous: [FlowBehaviorNode], next: [(edge: FlowBehaviorEdge, node: FlowBehaviorNode)]) {
+        let previous = behavior.incoming(nodeId).compactMap { behavior.node($0.fromId) }
+        let next = behavior.outgoing(nodeId).compactMap { edge in
+            behavior.node(edge.toId).map { (edge: edge, node: $0) }
+        }
+        return (previous, next)
+    }
+
+    /// The drill level to fall back to when the selected stage changes: the current level
+    /// if the new stage still has something on that rung, `.behavior` (always available)
+    /// otherwise — so switching from a stage with steps to one without doesn't leave the
+    /// inspector showing an empty "Steps" rung.
+    static func levelAfterNodeChange(current: FlowDrillLevel, available: [FlowDrillLevel]) -> FlowDrillLevel {
+        available.contains(current) ? current : .behavior
+    }
+}
+
 /// What a selected stage does, then how — one rung of the ladder at a time. Provenance is
 /// shown only when the stage was inferred; evidence is at the bottom rung, not beside every
 /// line.
@@ -44,9 +91,9 @@ struct FlowStageInspector: View {
 
     private var behavior: FlowBehavior { graph.behavior(for: flow) }
     private var steps: [FlowStep] { graph.implementationSteps(for: node, in: flow) }
-    private var refs: [CodeRef] { unique(node.refs + steps.flatMap(\.refs)) }
+    private var refs: [CodeRef] { FlowStageInspectorLogic.refs(node: node, steps: steps) }
     private var available: [FlowDrillLevel] { FlowDrillLevel.available(for: node, in: flow, graph: graph) }
-    private var notes: [FlowAnnotation] { graph.annotations(for: flow).filter { $0.nodeId == node.id } }
+    private var notes: [FlowAnnotation] { FlowStageInspectorLogic.notes(graph.annotations(for: flow), forNodeId: node.id) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,7 +118,7 @@ struct FlowStageInspector: View {
             actionsBar
         }
         .background(.background.secondary)
-        .onChange(of: node.id) { _, _ in if !available.contains(level) { level = .behavior } }
+        .onChange(of: node.id) { _, _ in level = FlowStageInspectorLogic.levelAfterNodeChange(current: level, available: available) }
     }
 
     // MARK: - Chrome
@@ -183,13 +230,12 @@ struct FlowStageInspector: View {
             .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
         }
 
-        let previous = behavior.incoming(node.id).compactMap { behavior.node($0.fromId) }
-        let next = behavior.outgoing(node.id).compactMap { e in behavior.node(e.toId).map { (e, $0) } }
+        let (previous, next) = FlowStageInspectorLogic.neighbors(of: node.id, in: behavior)
         if !previous.isEmpty || !next.isEmpty {
             field("In the flow") {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(previous) { p in neighbor(p, prefix: "After", condition: nil, async: false) }
-                    ForEach(next, id: \.0.id) { e, n in neighbor(n, prefix: "Then", condition: e.label, async: e.flow == .async) }
+                    ForEach(next, id: \.edge.id) { e, n in neighbor(n, prefix: "Then", condition: e.label, async: e.flow == .async) }
                 }
             }
         }
@@ -201,11 +247,11 @@ struct FlowStageInspector: View {
             .buttonStyle(.link).font(.callout)
         }
 
-        let decisions = notes.filter { $0.kind == .decision }
+        let decisions = FlowStageInspectorLogic.notes(notes, kind: .decision)
         if !decisions.isEmpty {
             field("Decision") { noteLinks(decisions) }
         }
-        let questions = notes.filter { $0.kind == .question }
+        let questions = FlowStageInspectorLogic.notes(notes, kind: .question)
         if !questions.isEmpty {
             field("Review question") { noteLinks(questions) }
         }
