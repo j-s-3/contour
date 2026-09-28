@@ -559,7 +559,7 @@ private struct StageBox: View {
 }
 
 /// A flowchart decision shape: a box with pointed ends.
-private struct Lozenge: InsettableShape {
+struct Lozenge: InsettableShape {
     var inset: CGFloat = 0
     func path(in rect: CGRect) -> Path {
         let r = rect.insetBy(dx: inset, dy: inset)
