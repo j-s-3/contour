@@ -132,4 +132,50 @@ struct GitHubIssueTrackerTests {
     @Test func jiraKeysAreNotTreatedAsGitHubIssues() {
         #expect(ref(context(title: "PROJ-1234 fix the thing", headRef: "proj-fix")) == nil)
     }
+
+    // MARK: - fetch(_:)
+
+    private struct CannedSource: PRSource {
+        var issue: RawIssue?
+        var describesItself: String { "canned" }
+        func fetchContext(prURL: String) async throws -> RawPRContext { fatalError("not used") }
+        func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? { issue }
+    }
+
+    @Test func fetchUsesTheRefsOwnOwnerAndRepoWhenPresent() async {
+        let source = CannedSource(issue: RawIssue(title: "Bug", body: "desc", url: "https://github.com/other-org/other-repo/issues/55"))
+        let tracker = GitHubIssueTracker(source: source, currentOwner: "acme", currentRepo: "shop")
+        let ref = IssueRef(id: "55", tracker: .github, owner: "other-org", repo: "other-repo")
+
+        let ticket = await tracker.fetch(ref)
+        #expect(ticket?.kind == .github)
+        #expect(ticket?.key == "other-org/other-repo#55")
+        #expect(ticket?.summary == "Bug")
+        #expect(ticket?.description == "desc")
+        #expect(ticket?.url == "https://github.com/other-org/other-repo/issues/55")
+    }
+
+    @Test func fetchFallsBackToTheCurrentRepoWhenTheRefHasNone() async {
+        let source = CannedSource(issue: RawIssue(title: "Same-repo bug", body: "d", url: "u"))
+        let tracker = GitHubIssueTracker(source: source, currentOwner: "acme", currentRepo: "shop")
+        let ticket = await tracker.fetch(IssueRef(id: "9", tracker: .github))
+        #expect(ticket?.summary == "Same-repo bug")
+        #expect(ticket?.key == "#9", "no owner/repo on the ref, so the display key stays bare")
+    }
+
+    @Test func fetchReturnsNilWithNoRepoToLookIn() async {
+        let tracker = GitHubIssueTracker(source: CannedSource(issue: nil))
+        let ticket = await tracker.fetch(IssueRef(id: "9", tracker: .github))
+        #expect(ticket == nil)
+    }
+
+    @Test func fetchReturnsNilWhenTheSourceCantFindTheIssue() async {
+        let tracker = GitHubIssueTracker(source: CannedSource(issue: nil), currentOwner: "acme", currentRepo: "shop")
+        let ticket = await tracker.fetch(IssueRef(id: "9", tracker: .github))
+        #expect(ticket == nil)
+    }
+
+    @Test func trackerIDIsGitHub() {
+        #expect(GitHubIssueTracker(source: CannedSource(issue: nil)).id == .github)
+    }
 }
