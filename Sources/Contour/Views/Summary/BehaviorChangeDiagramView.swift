@@ -16,7 +16,10 @@ struct BehaviorChangeDiagramView: View {
     /// How tightly the chain is set. Each side must read left to right as one sequence, so
     /// rather than wrap a row onto a second line, the diagram steps down through denser
     /// settings until both rows fit, and scrolls sideways only as a last resort.
-    fileprivate enum Density {
+    ///
+    /// Internal rather than `fileprivate` so `BehaviorChangeDiagramMetrics` (below) is
+    /// directly testable from `Tests/ContourTests` against plain `Density` cases.
+    enum Density {
         /// Full-size boxes, one-line labels.
         case regular
         /// Smaller type, padding and arrows; one-line labels.
@@ -36,8 +39,8 @@ struct BehaviorChangeDiagramView: View {
     }
 
     private func diagram(_ density: Density) -> some View {
-        let dense = density != .regular
-        return Grid(alignment: .leading, horizontalSpacing: dense ? 12 : 18, verticalSpacing: dense ? 10 : 16) {
+        let spacing = BehaviorChangeDiagramMetrics.gridSpacing(for: density)
+        return Grid(alignment: .leading, horizontalSpacing: spacing.horizontal, verticalSpacing: spacing.vertical) {
             row(label: "Before", stages: change.before, isAfter: false, density: density)
             row(label: "After", stages: change.after, isAfter: true, density: density)
         }
@@ -50,7 +53,7 @@ struct BehaviorChangeDiagramView: View {
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(isAfter ? .primary : .secondary)
-                .frame(width: density == .regular ? 56 : 48, alignment: .leading)
+                .frame(width: BehaviorChangeDiagramMetrics.labelWidth(for: density), alignment: .leading)
             if stages.isEmpty {
                 Text(isAfter ? "Nothing recorded." : "Didn't happen before this PR.")
                     .font(.callout)
@@ -70,11 +73,44 @@ struct BehaviorChangeDiagramView: View {
                 .reviewContextMenu(.behaviorStage(changeId: change.id, stageId: stage.id))
             if index < stages.count - 1 {
                 Image(systemName: "arrow.right")
-                    .font(.system(size: density == .regular ? 13 : 11, weight: .semibold))
+                    .font(.system(size: BehaviorChangeDiagramMetrics.arrowFontSize(for: density), weight: .semibold))
                     .foregroundStyle(isAfter ? .secondary : .tertiary)
-                    .padding(.horizontal, density == .regular ? 10 : density == .tight ? 6 : 4)
+                    .padding(.horizontal, BehaviorChangeDiagramMetrics.arrowHorizontalPadding(for: density))
             }
         }
+    }
+}
+
+/// The density-dependent sizing `diagram`/`row`/`chain`/`StageBox` step through as the
+/// chain runs out of horizontal room — pulled out so it's directly testable against plain
+/// `Density` cases rather than through the SwiftUI view bodies that consume it.
+enum BehaviorChangeDiagramMetrics {
+    static func gridSpacing(for density: BehaviorChangeDiagramView.Density) -> (horizontal: CGFloat, vertical: CGFloat) {
+        density == .regular ? (18, 16) : (12, 10)
+    }
+
+    static func labelWidth(for density: BehaviorChangeDiagramView.Density) -> CGFloat {
+        density == .regular ? 56 : 48
+    }
+
+    static func arrowFontSize(for density: BehaviorChangeDiagramView.Density) -> CGFloat {
+        density == .regular ? 13 : 11
+    }
+
+    static func arrowHorizontalPadding(for density: BehaviorChangeDiagramView.Density) -> CGFloat {
+        switch density {
+        case .regular: return 10
+        case .tight: return 6
+        case .wrapped: return 4
+        }
+    }
+
+    static func boxHorizontalPadding(for density: BehaviorChangeDiagramView.Density) -> CGFloat {
+        density == .regular ? 14 : 10
+    }
+
+    static func boxVerticalPadding(for density: BehaviorChangeDiagramView.Density) -> CGFloat {
+        density == .regular ? 10 : 6
     }
 }
 
@@ -102,14 +138,13 @@ private struct StageBox: View {
             }
             .font(density == .regular ? .body.weight(.medium) : .callout.weight(.medium))
             .foregroundStyle(isAfter ? .primary : .secondary)
-            .padding(.horizontal, density == .regular ? 14 : 10)
-            .padding(.vertical, density == .regular ? 10 : 6)
+            .padding(.horizontal, BehaviorChangeDiagramMetrics.boxHorizontalPadding(for: density))
+            .padding(.vertical, BehaviorChangeDiagramMetrics.boxVerticalPadding(for: density))
             .frame(maxHeight: .infinity)
             .background(fill, in: RoundedRectangle(cornerRadius: 9))
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(stroke, style: StrokeStyle(lineWidth: isDelta || stage.outcome != nil ? 1.2 : 1,
-                                                             dash: !isAfter && isDelta ? [4, 3] : []))
+                    .strokeBorder(stroke, style: StrokeStyle(lineWidth: strokeStyle.lineWidth, dash: strokeStyle.dash))
             )
             .contentShape(RoundedRectangle(cornerRadius: 9))
             .scaleEffect(hovered ? 1.02 : 1)
@@ -138,6 +173,10 @@ private struct StageBox: View {
     private var fill: Color { StageBoxLogic.fill(tint: tint, hovered: hovered, isAfter: isAfter) }
 
     private var stroke: Color { StageBoxLogic.stroke(tint: tint, isAfter: isAfter) }
+
+    private var strokeStyle: (lineWidth: CGFloat, dash: [CGFloat]) {
+        StageBoxLogic.strokeStyle(isDelta: isDelta, hasOutcome: stage.outcome != nil, isAfter: isAfter)
+    }
 
     private var helpText: String { StageBoxLogic.helpText(isDelta: isDelta, isAfter: isAfter, outcome: stage.outcome) }
 }
@@ -169,6 +208,13 @@ enum StageBoxLogic {
         return Color.secondary.opacity(isAfter ? 0.3 : 0.25)
     }
 
+    /// A delta or an outcome (success/failure) draws a slightly heavier border; a removed
+    /// stage in the Before row dashes it, to read as "no longer happens" rather than an
+    /// ordinary boundary.
+    static func strokeStyle(isDelta: Bool, hasOutcome: Bool, isAfter: Bool) -> (lineWidth: CGFloat, dash: [CGFloat]) {
+        (lineWidth: isDelta || hasOutcome ? 1.2 : 1, dash: !isAfter && isDelta ? [4, 3] : [])
+    }
+
     static func helpText(isDelta: Bool, isAfter: Bool, outcome: BehaviorOutcome?) -> String {
         var parts: [String] = []
         if isDelta { parts.append(isAfter ? "New in this PR" : "No longer happens") }
@@ -188,11 +234,22 @@ private struct CappedWidth: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let subview = subviews.first else { return .zero }
-        let width = min(subview.sizeThatFits(.unspecified).width, maxWidth)
+        let width = CappedWidthLogic.cap(naturalWidth: subview.sizeThatFits(.unspecified).width, at: maxWidth)
         return CGSize(width: width, height: subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+}
+
+/// `CappedWidth`'s one piece of math, pulled out so it's directly testable: `sizeThatFits`
+/// itself needs a real SwiftUI `Subview` to measure, which this suite has no
+/// infrastructure to construct (no ViewInspector or similar dependency).
+enum CappedWidthLogic {
+    /// A natural width at or under `maxWidth` passes through unchanged (short labels keep
+    /// their own width); anything wider is capped so the label wraps instead.
+    static func cap(naturalWidth: CGFloat, at maxWidth: CGFloat) -> CGFloat {
+        min(naturalWidth, maxWidth)
     }
 }
