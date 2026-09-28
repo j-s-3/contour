@@ -34,4 +34,22 @@ final class PRReviewTests: XCTestCase {
         XCTAssertTrue(PRReview.isReady(.requestChanges, comment: "Handle the nil case"))
         XCTAssertTrue(PRReview.isReady(.approve, comment: ""))
     }
+
+    /// `mockEnabled` is an injected override rather than reading `CONTOUR_MOCK_ANALYSIS`
+    /// directly, so this exercises the short-circuit branch without touching the process
+    /// environment (which `AnalysisCache` also reads, and which Swift Testing's parallel
+    /// runner would race) or shelling out to a real `gh`.
+    func testSubmitShortCircuitsWithoutCallingGHWhenMockIsEnabled() async throws {
+        let url = "https://github.com/j-s-3/contour/pull/10"
+        try await PRReview.submit(prURL: url, verdict: .approve, mockEnabled: true)
+    }
+
+    func testReviewStateEqualityDistinguishesEveryCase() {
+        XCTAssertEqual(PRReview.State.idle, .idle)
+        XCTAssertEqual(PRReview.State.submitting(.approve), .submitting(.approve))
+        XCTAssertNotEqual(PRReview.State.submitting(.approve), .submitting(.requestChanges))
+        XCTAssertNotEqual(PRReview.State.submitting(.approve), .submitted(.approve))
+        XCTAssertEqual(PRReview.State.failed(.approve, "boom"), .failed(.approve, "boom"))
+        XCTAssertNotEqual(PRReview.State.failed(.approve, "boom"), .failed(.approve, "other"))
+    }
 }
