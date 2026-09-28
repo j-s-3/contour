@@ -10,7 +10,10 @@ extension View {
     }
 }
 
-private struct PRDropTarget: ViewModifier {
+/// Internal rather than private so `PRDropTargetTests` can call `loadPullRequest` directly
+/// against a real `NSItemProvider`, per CLAUDE.md's guidance to test this file's
+/// drop-payload parsing the same way as `PRLinkTests`.
+struct PRDropTarget: ViewModifier {
     let open: (String) -> Void
     @State private var isTargeted = false
 
@@ -38,7 +41,7 @@ private struct PRDropTarget: ViewModifier {
 
     /// A browser drag carries a URL; a text drag carries the surrounding words too, so it
     /// is searched rather than taken whole.
-    private static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
+    static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
         if provider.canLoadObject(ofClass: URL.self) {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 completion(url.flatMap(PRLink.pullRequestURL(from:)))
