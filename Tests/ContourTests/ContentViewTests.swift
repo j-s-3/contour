@@ -92,12 +92,12 @@ struct ContentViewTests {
 
     /// A consideration carries the Overview question that brought the reviewer here, resolved
     /// back to whichever decision it belongs to.
-    @Test func decisionsFocusResolvesAConsiderationToItsOwningDecision() throws {
-        let graph = ContourSampleData.publishTriggeredReindex
-        let item = try #require(graph.thingsToThinkAbout.first)
-        let decisionId = try #require(graph.reviewDecisionId(for: item))
-        #expect(ContentView.decisionsFocus(for: .consideration(item.id), graph: graph)
-                == .init(decisionId: decisionId, considerationId: item.id))
+    @Test func decisionsFocusResolvesAConsiderationToItsOwningDecision() {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
+        graph.decisions = [DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)]
+        #expect(ContentView.decisionsFocus(for: .consideration("q1"), graph: graph)
+                == .init(decisionId: "d1", considerationId: "q1"))
     }
 
     @Test func decisionsFocusIsNilForAnUnknownConsideration() {
