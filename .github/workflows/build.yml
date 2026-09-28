@@ -50,8 +50,13 @@ jobs:
         # declared `nonisolated`; anything that genuinely needs the main actor is called from
         # a `@MainActor` test. Fail here so new instances don't pile up silently again.
         run: |
-          if grep -E "main actor-isolated .* in a (synchronous )?nonisolated context" test-output.log | sort -u; then
-            echo "::error::Main-actor isolation warnings found (see above). Mark pure View helpers 'nonisolated' or make the test @MainActor."
+          PATTERN="main actor-isolated .* in a (synchronous )?nonisolated context"
+          grep -E "$PATTERN" test-output.log | sed -E "s|^$GITHUB_WORKSPACE/||" | sort -u > isolation-warnings.txt || true
+          if [ -s isolation-warnings.txt ]; then
+            cat isolation-warnings.txt
+            # One annotation carrying the whole list, so it's readable from the checks API too.
+            LIST="$(sed -E 's/%/%25/g' isolation-warnings.txt | awk '{printf "%s%%0A", $0}')"
+            echo "::error title=Main-actor isolation warnings::$(wc -l < isolation-warnings.txt | tr -d ' ') found. Mark pure View helpers 'nonisolated' or make the test @MainActor.%0A$LIST"
             exit 1
           fi
 
