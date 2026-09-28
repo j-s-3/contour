@@ -15,6 +15,11 @@ struct InspectorContent {
     var changeClaim: String?
     var refs: [CodeRef] = []
     var onShowImplementation: (() -> Void)?
+
+    /// What "CHANGED BY THIS PR" says: the author's own claim if there is one (even for an
+    /// unchanged node — "Untouched; listed for context" — since a claim always outranks the
+    /// plain yes/no), otherwise a plain yes/no from whether this node changed at all.
+    var changedByThisPRText: String { changeClaim ?? (changedByThisPR ? "Yes" : "No") }
 }
 
 struct InspectorView: View {
@@ -33,7 +38,7 @@ struct InspectorView: View {
                         HStack(spacing: 6) {
                             Image(systemName: content.changedByThisPR ? "checkmark.circle.fill" : "minus.circle")
                                 .foregroundStyle(content.changedByThisPR ? .green : .secondary)
-                            Text(content.changeClaim ?? (content.changedByThisPR ? "Yes" : "No"))
+                            Text(content.changedByThisPRText)
                                 .font(.callout)
                         }
                     }
