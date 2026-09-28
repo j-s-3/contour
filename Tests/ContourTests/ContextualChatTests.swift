@@ -485,27 +485,27 @@ struct ContextualChatTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         try "content".write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
-        #expect(ContextualChatView.resolvePath("a.swift", checkoutRoot: dir, citedPaths: []) == "a.swift")
+        #expect(ChatViewLogic.resolvePath("a.swift", checkoutRoot: dir, citedPaths: []) == "a.swift")
     }
 
     @Test func resolvePathAcceptsAPathTheModelCitedDirectly() {
-        #expect(ContextualChatView.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
+        #expect(ChatViewLogic.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
     }
 
     /// Models often cite just the bare filename (`Listener.java:353`); that resolves when
     /// it uniquely suffix-matches one of the paths the review actually cited.
     @Test func resolvePathAcceptsABareNameThatUniquelySuffixMatchesACitedPath() {
         let cited = ["src/main/Listener.java"]
-        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
+        #expect(ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
     }
 
     @Test func resolvePathDeclinesAnAmbiguousSuffixMatch() {
         let cited = ["a/Listener.java", "b/Listener.java"]
-        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == nil)
+        #expect(ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == nil)
     }
 
     @Test func resolvePathDeclinesAnUnknownPath() {
-        #expect(ContextualChatView.resolvePath("Nope.java", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == nil)
+        #expect(ChatViewLogic.resolvePath("Nope.java", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == nil)
     }
 
     // MARK: - handle
@@ -518,14 +518,14 @@ struct ContextualChatTests {
         let store = GraphStore()
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         let url = try #require(ChatLinks.url(for: ref))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .evidence(ref))
     }
 
     @Test @MainActor func handleNavigatesToADecisionsDetailTargetForANodeLink() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "index-on-publish"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .decisionDetail("index-on-publish"))
     }
 
@@ -533,14 +533,14 @@ struct ContextualChatTests {
     @Test @MainActor func handleDoesNotNavigateForADanglingNodeReference() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "does-not-exist"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .summary, "nothing to navigate to, so the path is unchanged")
     }
 
     @Test @MainActor func handleDoesNotNavigateForAnUnrecognizedURL() throws {
         let store = GraphStore()
         let url = try #require(URL(string: "https://example.com"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .summary)
     }
 
@@ -550,8 +550,8 @@ struct ContextualChatTests {
     /// "Ask about …" (the suggestions header and the composer placeholder) fall back to a
     /// generic phrase for it instead of showing an empty or nonsensical string.
     @Test func subjectPhraseFallsBackForCodeAndUsesTheTitleOtherwise() {
-        #expect(ContextualChatView.subjectPhrase(for: stub(.code)) == "this code")
-        #expect(ContextualChatView.subjectPhrase(for: stub(.decision)) == "t")
+        #expect(ChatViewLogic.subjectPhrase(for: stub(.code)) == "this code")
+        #expect(ChatViewLogic.subjectPhrase(for: stub(.decision)) == "t")
     }
 
     /// The send button (and its enabled state) both hinge on this: whitespace-only text is
@@ -559,10 +559,10 @@ struct ContextualChatTests {
     /// (preserved unchanged from the original inline check), which strips spaces and tabs
     /// but not newlines — so a draft of only newlines is, perhaps surprisingly, sendable.
     @Test func canSendRejectsWhitespaceOnlyDraftsAndAcceptsRealText() {
-        #expect(!ContextualChatView.canSend(""))
-        #expect(!ContextualChatView.canSend("   \t"))
-        #expect(ContextualChatView.canSend("Why?"))
-        #expect(ContextualChatView.canSend("  Why?  "))
+        #expect(!ChatViewLogic.canSend(""))
+        #expect(!ChatViewLogic.canSend("   \t"))
+        #expect(ChatViewLogic.canSend("Why?"))
+        #expect(ChatViewLogic.canSend("  Why?  "))
     }
 
     /// `evidenceToOffer` gates the "Include the code you're viewing" button on three
@@ -571,21 +571,81 @@ struct ContextualChatTests {
     /// subject — each of those would make the button either meaningless or redundant.
     @Test func evidenceToOfferGatesOnLookingAtCodeNotAlreadyPinnedAndNotTheThreadsOwnSubject() {
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
-        #expect(ContextualChatView.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
+        #expect(ChatViewLogic.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
     }
 
     /// The pinned/expansion chip row under "You are discussing" must not draw once there is
     /// neither a pinned ref nor an available expansion to show — an empty `FlowLayout` would
     /// otherwise still reserve its top padding for nothing.
     @Test func showsContextChipsIsFalseOnlyWhenBothExpansionsAndPinsAreEmpty() {
-        #expect(!ContextualChatView.showsContextChips(expansions: [], pinnedRefs: []))
-        #expect(ContextualChatView.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
-        #expect(ContextualChatView.showsContextChips(
+        #expect(!ChatViewLogic.showsContextChips(expansions: [], pinnedRefs: []))
+        #expect(ChatViewLogic.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
+        #expect(ChatViewLogic.showsContextChips(
             expansions: [], pinnedRefs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
         ))
+    }
+
+    /// The link outcome is what decides whether SwiftUI or the system handles a tapped
+    /// link: recognized Contour links are handled in-app, everything else goes to the system.
+    @Test @MainActor func handleReportsHandledOnlyForContourLinks() throws {
+        let store = GraphStore()
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        #expect(ChatViewLogic.handle(try #require(ChatLinks.url(for: ref)), store: store, graph: graph) == .handled)
+        #expect(ChatViewLogic.handle(try #require(URL(string: "https://example.com")), store: store, graph: graph) == .system)
+    }
+
+    /// The context card shows at most four summary lines and styles only the first as the
+    /// lead; a fifth line must not leak in, and an empty summary yields no rows.
+    @Test func summaryLinesCapAtFourAndFlagOnlyTheFirstAsLead() {
+        var resolved = stub(.decision)
+        #expect(ChatViewLogic.summaryLines(for: resolved).isEmpty)
+        resolved = ResolvedSubject(
+            subject: .pullRequest, kind: .decision, title: "t", lineage: [], summary: ["a", "b", "c", "d", "e"],
+            detail: "d", decisionIds: [], flowIds: [], refs: []
+        )
+        let lines = ChatViewLogic.summaryLines(for: resolved)
+        #expect(lines.map(\.text) == ["a", "b", "c", "d"])
+        #expect(lines.map(\.isLead) == [true, false, false, false])
+    }
+
+    /// The conversations menu falls back to a generic title for a subject the graph can
+    /// no longer resolve (e.g. after a re-analysis dropped it).
+    @Test @MainActor func menuTitleUsesTheSubjectTitleOrAGenericFallback() {
+        let known = Conversation(subject: .decision("index-on-publish"))
+        #expect(ChatViewLogic.menuTitle(for: known, in: graph) == graph.resolve(.decision("index-on-publish"))?.title)
+        #expect(ChatViewLogic.menuTitle(for: Conversation(subject: .decision("nope")), in: graph) == "Conversation")
+    }
+
+    @Test func activityTextDefaultsToThinking() {
+        #expect(ChatViewLogic.activityText(nil) == "thinking")
+        #expect(ChatViewLogic.activityText("Reading Foo.swift") == "Reading Foo.swift")
+    }
+
+    /// Expansion chips flip on and off, and their symbol and help text track the state.
+    @Test @MainActor func togglingAnExpansionFlipsItAndTheChipCopyFollows() {
+        let conversation = Conversation(subject: .pullRequest)
+        ChatViewLogic.toggle(.entirePR, in: conversation)
+        #expect(conversation.expansions.contains(.entirePR))
+        ChatViewLogic.toggle(.entirePR, in: conversation)
+        #expect(conversation.expansions.isEmpty)
+        #expect(ChatViewLogic.expansionSymbol(on: true) == "checkmark")
+        #expect(ChatViewLogic.expansionSymbol(on: false) == "plus")
+        #expect(ChatViewLogic.expansionHelp(.entirePR, on: true) == "Included in the next answer")
+        #expect(ChatViewLogic.expansionHelp(.entirePR, on: false)
+            == "Include \(ContextExpansion.entirePR.label.lowercased()) in the next answer")
+    }
+
+    /// Unpinning removes only the chosen ref and leaves other pins alone.
+    @Test @MainActor func unpinRemovesOnlyTheChosenRef() {
+        let a = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        let b = CodeRef(path: "b.swift", startLine: 3, endLine: 4)
+        let conversation = Conversation(subject: .pullRequest)
+        conversation.pinnedRefs = [a, b]
+        ChatViewLogic.unpin(a, in: conversation)
+        #expect(conversation.pinnedRefs == [b])
     }
 
     /// `citedPaths` pools refs from every source the review model can cite from — a source
