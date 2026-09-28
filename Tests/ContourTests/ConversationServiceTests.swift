@@ -4,13 +4,14 @@ import Foundation
 
 /// Fills the gap this repo's coverage series left in `ConversationService.swift`:
 /// `turnPrompt`'s history-limit/empty-history/empty-message/per-message-length branches,
-/// `mockResponse`'s no-selection and no-code-ref fallbacks, and `respond(...)`'s
-/// `CONTOUR_MOCK_ANALYSIS=1` short-circuit (previously only `mockResponse` itself was
-/// called directly, never `respond`). The real-harness path in `respond` still isn't
-/// exercised: it shells out to a real `pi`/`claude` executable, and this suite never fakes
-/// those on `PATH` (per the established `HarnessContractTests` convention — replay
-/// captured streams instead of spawning a real CLI).
-@Suite(.serialized)
+/// and `mockResponse`'s no-selection and no-code-ref fallbacks. `respond(...)`'s
+/// `CONTOUR_MOCK_ANALYSIS=1` short-circuit and its real-harness path both stay untested:
+/// the former needs setting that process-global env var, which `AnalysisCache` also reads
+/// (`ProgressiveAnalysisTests`) — Swift Testing runs both suites in the same parallel pool,
+/// so setting it here raced `AnalysisCache.save`/`load` into silently no-op'ing mid-test in
+/// an unrelated suite and broke CI twice (see #76's PR); the latter shells out to a real
+/// `pi`/`claude` executable, and this suite never fakes those on `PATH` (per the established
+/// `HarnessContractTests` convention — replay captured streams instead of spawning a real CLI).
 struct ConversationServiceTests {
 
     // MARK: - turnPrompt
@@ -71,31 +72,5 @@ struct ConversationServiceTests {
         let unwrapped = try #require(final)
         #expect(unwrapped.contains("then point at the code."))
         #expect(!unwrapped.contains("for example"))
-    }
-
-    // MARK: - respond() mock short-circuit
-
-    @Test func respondShortCircuitsToMockResponseWhenMockAnalysisIsEnabled() async throws {
-        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
-        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
-
-        let service = ConversationService(
-            harness: ClaudeHarness(),
-            checkout: RepoCheckout(rootDir: URL(fileURLWithPath: "/nonexistent"), headSha: "head", baseSha: "base")
-        )
-        let doc = "## Where the reviewer is\n- **Retry logic** ← selected (Architecture)"
-        var sawActivity = false
-        var final: String?
-        for try await event in service.respond(conversationId: UUID(), contextDocument: doc, history: [], question: "Why retry?") {
-            switch event {
-            case .activity: sawActivity = true
-            case .final(let text): final = text
-            case .delta: break
-            }
-        }
-        #expect(sawActivity)
-        let unwrapped = try #require(final)
-        #expect(unwrapped.contains("Retry logic"))
-        #expect(unwrapped.contains("Why retry?"))
     }
 }
