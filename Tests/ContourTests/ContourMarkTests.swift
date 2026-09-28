@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftUI
 @testable import Contour
 
 /// The in-app mark is drawn from a Swift port of `scripts/generate-logo.py`, so these
@@ -54,6 +55,39 @@ struct ContourMarkTests {
         // Outermost and innermost stroke colours in the SVG: #3FC1C9 and #FFC857.
         #expect(ContourMarkPalette.dark.outer == (0x3F, 0xC1, 0xC9))
         #expect(ContourMarkPalette.dark.inner == (0xFF, 0xC8, 0x57))
+    }
+
+    /// The light-appearance palette uses deeper tones of the same two hues as dark, per
+    /// its doc comment, rather than the icon's own (pale-on-dark-tile) colours.
+    @Test func lightPaletteUsesDeeperTonesOfTheSameHues() {
+        #expect(ContourMarkPalette.light.outer == (0x1F, 0x95, 0x9E))
+        #expect(ContourMarkPalette.light.inner == (0xE0, 0x98, 0x12))
+    }
+
+    @Test func forSchemePicksDarkOnlyForDarkAppearance() {
+        #expect(ContourMarkPalette.forScheme(.dark).outer == ContourMarkPalette.dark.outer)
+        #expect(ContourMarkPalette.forScheme(.light).outer == ContourMarkPalette.light.outer)
+    }
+
+    /// The line warms from the outer hue at the base to the inner (peak) hue at the summit.
+    @Test func lineColorRunsFromOuterAtTheBaseToThePeakAtTheSummit() {
+        let palette = ContourMarkPalette.dark
+        let expectedOuter = Color(.sRGB, red: palette.outer.0 / 255, green: palette.outer.1 / 255, blue: palette.outer.2 / 255)
+        #expect(palette.line(level: 0) == expectedOuter)
+        #expect(palette.line(level: 1) == palette.peak)
+    }
+
+    // MARK: - Geometry
+
+    /// The mark is documented as "about 1.4:1", wider than tall.
+    @Test func boundsAreWiderThanTallMatchingTheDocumentedAspectRatio() {
+        #expect(ContourMarkGeometry.bounds.width > 0 && ContourMarkGeometry.bounds.height > 0)
+        #expect(ContourMarkGeometry.aspectRatio > 1.3 && ContourMarkGeometry.aspectRatio < 1.5)
+    }
+
+    @Test func ringPointsReturnsExactlyTheRequestedCount() {
+        let points = ContourMarkGeometry.ringPoints(centre: .zero, radius: 10, level: 0.5, count: 12)
+        #expect(points.count == 12)
     }
 
     // MARK: - Resolving the mark
