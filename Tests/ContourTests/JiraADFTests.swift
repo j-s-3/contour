@@ -4,9 +4,12 @@ import Testing
 /// `JiraTracker.swift` was at 22.34% coverage. `flattenADF` (Atlassian Document Format →
 /// plain text, the actual "response-parsing logic" CLAUDE.md calls out for this file) was
 /// `private` and untested; made it internal so it's directly testable against constructed
-/// ADF fixtures rather than a real Jira response. `fetchTicket`/`browseURL`/
-/// `authenticatedSiteHost` all shell out to `acli` and stay uncovered here, for the same
-/// reason this suite doesn't fake `pi`/`claude`/`gh` on `PATH`.
+/// ADF fixtures rather than a real Jira response. The rest of `fetchTicket`'s request/
+/// response handling (JSON field extraction, site-host parsing, browse-URL derivation) is
+/// covered separately in `JiraTrackerFetchTests`, which pulls that logic into static
+/// functions the same way `GHCLISourceTests` does for `gh`; only the two `Shell.run` call
+/// sites themselves stay uncovered, for the same reason this suite doesn't fake
+/// `pi`/`claude`/`gh` on `PATH`.
 struct JiraADFTests {
 
     @Test func flattenADFJoinsTheTextInASingleParagraph() {
