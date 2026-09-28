@@ -24,6 +24,14 @@ struct WindowAccessor: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    /// The full decision behind `updateNSView`'s deferred toggle, pulled out so it's
+    /// testable without a live `NSWindow`: opted in, not already toggled by this view, and
+    /// the window isn't already in full screen by some other means (the user's own
+    /// green-button click, or a restored full-screen frame).
+    static func shouldEnterFullScreen(entersFullScreen: Bool, alreadyEntered: Bool, isCurrentlyFullScreen: Bool) -> Bool {
+        entersFullScreen && !alreadyEntered && !isCurrentlyFullScreen
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async { [weak view] in
@@ -39,7 +47,12 @@ struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         guard entersFullScreen, !context.coordinator.didEnterFullScreen else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak nsView] in
-            guard let window = nsView?.window, !window.styleMask.contains(.fullScreen) else { return }
+            guard let window = nsView?.window else { return }
+            guard Self.shouldEnterFullScreen(
+                entersFullScreen: entersFullScreen,
+                alreadyEntered: context.coordinator.didEnterFullScreen,
+                isCurrentlyFullScreen: window.styleMask.contains(.fullScreen)
+            ) else { return }
             context.coordinator.didEnterFullScreen = true
             window.toggleFullScreen(nil)
         }
