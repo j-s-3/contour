@@ -40,8 +40,11 @@ struct PRDropTarget: ViewModifier {
     }
 
     /// A browser drag carries a URL; a text drag carries the surrounding words too, so it
-    /// is searched rather than taken whole.
-    static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
+    /// is searched rather than taken whole. `nonisolated` because it touches no main-actor
+    /// state (`open`/`isTargeted`) — needed so `PRDropTargetTests`'s `async` helper can
+    /// await it through `withCheckedContinuation` without Swift 6 flagging the `provider`
+    /// argument as crossing an actor boundary unsafely.
+    nonisolated static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
         if provider.canLoadObject(ofClass: URL.self) {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 completion(url.flatMap(PRLink.pullRequestURL(from:)))
