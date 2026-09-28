@@ -25,6 +25,36 @@ extension FlowAnnotation.Kind {
     var caption: String { self == .decision ? "DECISION" : "REVIEW QUESTION" }
 }
 
+/// Shared Before/After/Delta styling rules — pulled out of `BehaviorDiagramView` and
+/// `StageBox` (per CLAUDE.md's guidance to move remaining selection logic beside
+/// `BehaviorDiagramLayout`) so they're directly testable, and so a connector and its stage
+/// never disagree about whether a change is unchanged, tinted, or dashed.
+enum BehaviorDiagramLogic {
+    /// In Delta, an unchanged element recedes so what the PR changed carries the eye.
+    static func fades(mode: DiagramMode, change: FlowChange) -> Bool {
+        mode == .delta && change == .existing
+    }
+
+    /// In Delta, a changed element is emphasized; Before/After never emphasize.
+    static func emphasized(mode: DiagramMode, change: FlowChange) -> Bool {
+        mode == .delta && change != .existing
+    }
+
+    /// The change's color, but only in Delta and only for an actual change.
+    static func tint(mode: DiagramMode, change: FlowChange) -> Color? {
+        guard mode == .delta, change != .existing else { return nil }
+        return change.color
+    }
+
+    /// A removed stage/edge dashes in Delta; an external call always dashes, to read as a
+    /// boundary crossing rather than a plain connection.
+    static func dash(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind) -> [CGFloat] {
+        if mode == .delta && change == .removed { return [4, 3] }
+        if kind == .external { return [5, 3] }
+        return []
+    }
+}
+
 /// A flow drawn as runtime behavior (§4.6): trigger at the top, stages below, branches side by
 /// side, notes for decisions and review questions beside the connection they sit on, and
 /// boxes around the systems it runs in. In Delta, unchanged stages recede and what the PR
@@ -128,7 +158,7 @@ struct BehaviorDiagramView: View {
 
     // MARK: - Connectors
 
-    private func fades(_ change: FlowChange) -> Bool { mode == .delta && change == .existing }
+    private func fades(_ change: FlowChange) -> Bool { BehaviorDiagramLogic.fades(mode: mode, change: change) }
 
     private func drawEdge(_ placed: BehaviorDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
         let e = placed.edge
@@ -276,8 +306,8 @@ private struct StageBox: View {
     let isHovered: Bool
     let subflowTitle: String?
 
-    private var fades: Bool { mode == .delta && node.change == .existing }
-    private var emphasized: Bool { mode == .delta && node.change != .existing }
+    private var fades: Bool { BehaviorDiagramLogic.fades(mode: mode, change: node.change) }
+    private var emphasized: Bool { BehaviorDiagramLogic.emphasized(mode: mode, change: node.change) }
 
     var body: some View {
         content
@@ -399,10 +429,7 @@ private struct StageBox: View {
         }
     }
 
-    private var tint: Color? {
-        guard mode == .delta, node.change != .existing else { return nil }
-        return node.change.color
-    }
+    private var tint: Color? { BehaviorDiagramLogic.tint(mode: mode, change: node.change) }
 
     private var fill: Color {
         if let tint { return tint.opacity(isHovered ? 0.14 : 0.08) }
@@ -422,11 +449,7 @@ private struct StageBox: View {
 
     private var strokeWidth: CGFloat { isSelected ? 2.4 : (tint != nil ? 1.8 : 1) }
 
-    private var dash: [CGFloat] {
-        if mode == .delta && node.change == .removed { return [4, 3] }
-        if node.kind == .external { return [5, 3] }
-        return []
-    }
+    private var dash: [CGFloat] { BehaviorDiagramLogic.dash(mode: mode, change: node.change, kind: node.kind) }
 
     private var helpText: String {
         var parts: [String] = []
