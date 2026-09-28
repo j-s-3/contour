@@ -145,4 +145,27 @@ struct ContourMarkTests {
         #expect(AnalysisResolution.approach(from: 0.2, to: 0.4, over: 5) == 0.4)
         #expect(AnalysisResolution.approach(from: 0.5, to: 0.3, over: 1) == 0.5)
     }
+
+    // MARK: - AnalyzingMark.Smoother (frame-to-frame memory for `approach`)
+
+    /// The first frame has no prior timestamp to measure elapsed time against, so it must
+    /// not jump straight to the target; only later frames, once `dt` is known, ease toward it.
+    @Test func smootherDoesNotMoveOnItsFirstFrameThenEasesTowardTheTarget() {
+        let smoother = AnalyzingMark.Smoother()
+        let start = Date(timeIntervalSince1970: 1000)
+        #expect(smoother.value(toward: 0.5, at: start) == 0)
+
+        let midway = smoother.value(toward: 0.5, at: start.addingTimeInterval(0.25))
+        #expect(midway > 0 && midway < 0.5)
+
+        #expect(smoother.value(toward: 0.5, at: start.addingTimeInterval(5.25)) == 0.5)
+    }
+
+    @Test func smootherNeverMovesBackwardWhenTheTargetDrops() {
+        let smoother = AnalyzingMark.Smoother()
+        let start = Date(timeIntervalSince1970: 2000)
+        _ = smoother.value(toward: 0.6, at: start)
+        #expect(smoother.value(toward: 0.6, at: start.addingTimeInterval(5)) == 0.6)
+        #expect(smoother.value(toward: 0.2, at: start.addingTimeInterval(6)) == 0.6)
+    }
 }
