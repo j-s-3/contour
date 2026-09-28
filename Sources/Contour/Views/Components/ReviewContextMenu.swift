@@ -135,6 +135,37 @@ enum ReviewContextMenuLogic {
         if let ref = resolved.refs.first, let url = actions.githubURL(for: ref) { return url }
         return actions.pullRequestURL
     }
+
+    /// The "Why did the PR choose this side?" follow-up only makes sense on a tradeoff.
+    static func showsTradeoffQuestion(for kind: SubjectKind) -> Bool {
+        kind == .tradeoff
+    }
+
+    /// The generic "Open details"/"Show in code" button and where it goes: hidden for a
+    /// tradeoff (which offers "Show Evidence" instead, via `showInCodeTitle`) and whenever
+    /// the subject has nowhere to navigate to.
+    static func detailButton(for resolved: ResolvedSubject) -> (label: String, target: NavigationTarget)? {
+        guard resolved.kind != .tradeoff, let target = resolved.detailTarget else { return nil }
+        return (resolved.kind == .code ? "Show in code" : "Open details", target)
+    }
+
+    /// "Show in Diff" applies only to a code subject right-clicked from a specific ref —
+    /// not to a code subject reached some other way, which has nothing to jump the diff to.
+    static func diffRef(for resolved: ResolvedSubject, subject: ReviewSubject) -> CodeRef? {
+        guard resolved.kind == .code, case .codeRef(let ref) = subject else { return nil }
+        return ref
+    }
+
+    /// Tradeoffs point at supporting evidence rather than "code" in the abstract.
+    static func showInCodeTitle(for kind: SubjectKind) -> String {
+        kind == .tradeoff ? "Show Evidence" : "Show in Code"
+    }
+
+    /// The submenu is capped at 12 refs so a heavily-cited statement doesn't produce an
+    /// unusably long menu.
+    static func codeRefMenuItems(for resolved: ResolvedSubject) -> [CodeRef] {
+        Array(resolved.refs.prefix(12))
+    }
 }
 
 private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
@@ -153,7 +184,7 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
                 Label("Ask about this…", systemImage: "sparkles")
             }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
-            if resolved.kind == .tradeoff {
+            if ReviewContextMenuLogic.showsTradeoffQuestion(for: resolved.kind) {
                 Button("Why did the PR choose this side?") {
                     actions.askQuestion("Why did the PR choose this side of the tradeoff?", subject)
                 }
@@ -163,10 +194,10 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
 
             extra
 
-            if let target = resolved.detailTarget, resolved.kind != .tradeoff {
-                Button(resolved.kind == .code ? "Show in code" : "Open details") { actions.navigate(target) }
+            if let (label, target) = ReviewContextMenuLogic.detailButton(for: resolved) {
+                Button(label) { actions.navigate(target) }
             }
-            if resolved.kind == .code, case .codeRef(let ref) = subject {
+            if let ref = ReviewContextMenuLogic.diffRef(for: resolved, subject: subject) {
                 Button("Show in Diff") { actions.navigate(.diffLocation(ref)) }
             }
             showInArchitecture(resolved, graph)
@@ -228,12 +259,14 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
 
     @ViewBuilder
     private func showInCode(_ resolved: ResolvedSubject) -> some View {
-        let title = resolved.kind == .tradeoff ? "Show Evidence" : "Show in Code"
+        let title = ReviewContextMenuLogic.showInCodeTitle(for: resolved.kind)
         if resolved.refs.count == 1, let ref = resolved.refs.first {
             Button(title) { actions.navigate(.evidence(ref)) }
         } else if resolved.refs.count > 1 {
             Menu(title) {
-                ForEach(resolved.refs.prefix(12)) { ref in Button(ref.display) { actions.navigate(.evidence(ref)) } }
+                ForEach(ReviewContextMenuLogic.codeRefMenuItems(for: resolved)) { ref in
+                    Button(ref.display) { actions.navigate(.evidence(ref)) }
+                }
             }
         }
     }
