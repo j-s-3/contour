@@ -106,6 +106,23 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(ReviewRequests.parse("{}"), [])
     }
 
+    func testReviewRequestIDCombinesRepoAndNumber() {
+        let request = ReviewRequest(url: "https://github.com/acme/shop/pull/7", repo: "acme/shop",
+                                     number: 7, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        XCTAssertEqual(request.id, "acme/shop#7")
+    }
+
+    /// A row with no `updatedAt` sorts as though it were the oldest possible update, so a
+    /// row that actually has a timestamp always comes first regardless of list order.
+    func testRowsMissingUpdatedAtSortLast() {
+        let json = """
+        [{"number":1,"title":"no date","url":"https://github.com/acme/shop/pull/1","repository":{"nameWithOwner":"acme/shop"}},
+         {"number":2,"title":"has date","url":"https://github.com/acme/shop/pull/2","repository":{"nameWithOwner":"acme/shop"},"updatedAt":"2026-09-25T00:00:00Z"}]
+        """
+        let requests = ReviewRequests.parse(json)
+        XCTAssertEqual(requests.map(\.title), ["has date", "no date"])
+    }
+
     /// Pinning anonymous access means "don't use gh", so the start screen doesn't either.
     func testNoReviewRequestsWhenAccessIsAnonymous() async {
         let requests = await ReviewRequests.fetch(access: .anonymous)
