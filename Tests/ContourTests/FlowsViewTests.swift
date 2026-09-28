@@ -240,4 +240,90 @@ struct FlowsViewTests {
         let n = node("n1", label: "A")
         #expect(FlowsViewLogic.focusToPublish(flow: flow("f1"), node: n) == .flowNode(flowId: "f1", nodeId: "n1"))
     }
+
+    // MARK: - changeLine
+
+    /// The model's own change sentence wins over the locally condensed one.
+    @Test func changeLinePrefersTheModelsSentence() {
+        let b = FlowBehavior(changeSummary: "Reads less.", nodes: [node("a", change: .changed, label: "A")])
+        #expect(FlowsViewLogic.changeLine(for: b) == .changed("Reads less."))
+    }
+
+    /// Older analyses have no sentence; the changed stages are named instead.
+    @Test func changeLineFallsBackToTheCondensedSummary() {
+        let b = FlowBehavior(nodes: [node("a", change: .new, label: "A")])
+        #expect(FlowsViewLogic.changeLine(for: b) == .changed("Changes “A”."))
+    }
+
+    /// An unchanged flow says so rather than leaving a gap that reads as missing data.
+    @Test func changeLineSaysUnchangedWhenNothingChanged() {
+        #expect(FlowsViewLogic.changeLine(for: FlowBehavior(nodes: [node("a", label: "A")])) == .unchanged)
+    }
+
+    /// Only an edge changed: there's a change but no stage to name, so no line at all.
+    @Test func changeLineIsNoneWhenOnlyAnEdgeChanged() {
+        let edge = FlowBehaviorEdge(fromId: "a", toId: "b", change: .new)
+        let b = FlowBehavior(nodes: [node("a", label: "A"), node("b", label: "B")], edges: [edge])
+        #expect(FlowsViewLogic.changeLine(for: b) == .none)
+    }
+
+    // MARK: - labels
+
+    /// Pins the reviewer-facing copy of the tab strip so a rewording is deliberate.
+    @Test func tabAndHeadingText() {
+        #expect(FlowsViewLogic.scenarioHeading(flowCount: 3) == "What happens when… · 3 scenarios")
+        #expect(FlowsViewLogic.changedSuffix(changed: true) == " · changed")
+        #expect(FlowsViewLogic.changedSuffix(changed: false) == "")
+        #expect(FlowsViewLogic.tabHelp(changed: true) == "This PR changes this flow")
+        #expect(FlowsViewLogic.tabHelp(changed: false) == "Unchanged by this PR — shown for context")
+        #expect(FlowsViewLogic.unchangedNote.contains("doesn't change this flow"))
+    }
+
+    /// With tabs the selected tab names the flow; a lone flow has none, so it titles itself.
+    @Test func onlyALoneFlowLeadsWithItsTitle() {
+        #expect(FlowsViewLogic.storyLeadsWithTitle(flowCount: 1))
+        #expect(!FlowsViewLogic.storyLeadsWithTitle(flowCount: 2))
+    }
+
+    // MARK: - diagram content
+
+    /// A pill pinned to a stage the mode hides must not float over nothing.
+    @Test func diagramContentDropsAnnotationsOnHiddenStages() {
+        let b = FlowBehavior(nodes: [node("old", change: .removed, label: "Old"), node("new", change: .new, label: "New")])
+        let notes = [
+            FlowAnnotation(kind: .decision, targetId: "d1", nodeId: "old", text: "x"),
+            FlowAnnotation(kind: .question, targetId: "q1", nodeId: "new", text: "y"),
+        ]
+        let after = FlowsViewLogic.diagramContent(behavior: b, annotations: notes, mode: .after)
+        #expect(after.behavior.nodes.map(\.id) == ["new"])
+        #expect(after.annotations.map(\.targetId) == ["q1"])
+        #expect(FlowsViewLogic.diagramContent(behavior: b, annotations: notes, mode: .delta).annotations.count == 2)
+    }
+
+    // MARK: - selection helpers
+
+    /// Clicking the open stage closes the inspector; clicking another opens it.
+    @Test func togglingTheSelectedStageDeselectsIt() {
+        let n = node("n1", label: "A")
+        #expect(FlowsViewLogic.togglingSelection(of: n, currentSelectedNodeId: "n1") == nil)
+        #expect(FlowsViewLogic.togglingSelection(of: n, currentSelectedNodeId: "other") == n)
+        #expect(FlowsViewLogic.togglingSelection(of: n, currentSelectedNodeId: nil) == n)
+    }
+
+    /// Decision pills open the decision; question pills open the review question.
+    @Test func annotationsNavigateToTheirDecisionOrQuestion() {
+        let d = FlowAnnotation(kind: .decision, targetId: "d1", nodeId: "n", text: "x")
+        let q = FlowAnnotation(kind: .question, targetId: "q1", nodeId: "n", text: "y")
+        #expect(FlowsViewLogic.navigationTarget(for: d) == .decisionDetail("d1"))
+        #expect(FlowsViewLogic.navigationTarget(for: q) == .consideration("q1"))
+    }
+
+    /// Switching to Before while a new stage is open would leave the inspector describing
+    /// something that isn't drawn.
+    @Test func aModeThatHidesTheSelectedStageDeselectsIt() {
+        let added = node("a", change: .new, label: "A")
+        #expect(FlowsViewLogic.shouldDeselect(added, whenModeBecomes: .before))
+        #expect(!FlowsViewLogic.shouldDeselect(added, whenModeBecomes: .after))
+        #expect(!FlowsViewLogic.shouldDeselect(nil, whenModeBecomes: .before))
+    }
 }
