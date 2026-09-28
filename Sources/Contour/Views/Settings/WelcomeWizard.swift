@@ -147,21 +147,15 @@ struct WelcomeWizard: View {
     /// Only ask when the answer isn't already determined: nothing stored, and more than
     /// one harness to choose between.
     private var needsHarnessChoice: Bool {
-        preferences.installedHarnesses.count > 1
+        WelcomeWizardLogic.needsHarnessChoice(installedHarnesses: preferences.installedHarnesses)
     }
 
     /// The two things that genuinely prevent a review from running.
     private var blocker: String? {
-        if statuses[.git]?.isInstalled == false {
-            return "git is required — Contour checks the PR out locally so analysis reads real code."
-        }
-        if preferences.installedHarnesses.isEmpty {
-            return "No AI harness found. Install pi or Claude Code, then re-check."
-        }
-        if preferences.resolvedHarness == nil {
-            return "Pick a harness to continue."
-        }
-        return nil
+        WelcomeWizardLogic.blocker(
+            statuses: statuses, installedHarnesses: preferences.installedHarnesses,
+            resolvedHarness: preferences.resolvedHarness
+        )
     }
 
     // MARK: - Pane 3
@@ -194,10 +188,10 @@ struct WelcomeWizard: View {
     }
 
     private var readySummary: String {
-        let harness = preferences.resolvedHarness?.displayName ?? "no harness"
-        let github = statuses[.gh]?.isUsable == true ? "gh (public and private PRs)"
-                                                     : "anonymous API (public PRs)"
-        return "Analyzing with \(harness), reading GitHub via \(github), and looking up issues in \(preferences.resolvedTracker.displayName)."
+        WelcomeWizardLogic.readySummary(
+            resolvedHarness: preferences.resolvedHarness, ghUsable: statuses[.gh]?.isUsable == true,
+            resolvedTracker: preferences.resolvedTracker
+        )
     }
 
     // MARK: - Footer
@@ -227,7 +221,7 @@ struct WelcomeWizard: View {
     }
 
     private func finish() {
-        guard urlText.isEmpty || GitHubService.normalize(urlText) != nil else { return }
+        guard WelcomeWizardLogic.canFinish(urlText: urlText) else { return }
         preferences.hasCompletedOnboarding = true
         onFinish(urlText.isEmpty ? nil : urlText)
     }
@@ -239,5 +233,42 @@ struct WelcomeWizard: View {
         statuses = found
         preferences.installedHarnesses = found.installedHarnesses
         preferences.jiraAvailable = found.jiraAvailable
+    }
+}
+
+/// The step-validation and precedence-derivation logic CLAUDE.md calls out for this file,
+/// pulled out of `WelcomeWizard`'s body so it's directly testable against simulated
+/// `EnvironmentProbe`/`Preferences` results rather than the SwiftUI `body`.
+enum WelcomeWizardLogic {
+    /// Only ask when the answer isn't already determined: nothing stored, and more than
+    /// one harness to choose between.
+    static func needsHarnessChoice(installedHarnesses: [HarnessID]) -> Bool {
+        installedHarnesses.count > 1
+    }
+
+    /// The two things that genuinely prevent a review from running.
+    static func blocker(statuses: [ExternalTool: ToolStatus], installedHarnesses: [HarnessID], resolvedHarness: HarnessID?) -> String? {
+        if statuses[.git]?.isInstalled == false {
+            return "git is required — Contour checks the PR out locally so analysis reads real code."
+        }
+        if installedHarnesses.isEmpty {
+            return "No AI harness found. Install pi or Claude Code, then re-check."
+        }
+        if resolvedHarness == nil {
+            return "Pick a harness to continue."
+        }
+        return nil
+    }
+
+    /// The closing pane's one-sentence summary of what Contour is set up to do.
+    static func readySummary(resolvedHarness: HarnessID?, ghUsable: Bool, resolvedTracker: TrackerID) -> String {
+        let harness = resolvedHarness?.displayName ?? "no harness"
+        let github = ghUsable ? "gh (public and private PRs)" : "anonymous API (public PRs)"
+        return "Analyzing with \(harness), reading GitHub via \(github), and looking up issues in \(resolvedTracker.displayName)."
+    }
+
+    /// The URL field is optional — empty is fine — but a non-empty value must be a PR link.
+    static func canFinish(urlText: String) -> Bool {
+        urlText.isEmpty || GitHubService.normalize(urlText) != nil
     }
 }
