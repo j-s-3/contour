@@ -141,8 +141,12 @@ struct FlowStageInspector: View {
         .padding(.vertical, 10)
     }
 
-    private var kindLabel: String {
-        switch node.kind {
+    private var kindLabel: String { Self.kindLabel(for: node.kind) }
+
+    /// The stage-kind chip shown above a node's title — pulled out as a static function
+    /// so it's directly testable against every `FlowNodeKind` without a view instance.
+    static func kindLabel(for kind: FlowNodeKind) -> String {
+        switch kind {
         case .trigger: return "Trigger"
         case .step: return "Stage"
         case .decision: return "Branch point"
