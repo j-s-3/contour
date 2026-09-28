@@ -308,7 +308,7 @@ struct ArchitectureDiagramView: View {
     }
 
     /// An orthogonal polyline with softened corners.
-    static func roundedPath(_ points: [CGPoint]) -> Path {
+    nonisolated static func roundedPath(_ points: [CGPoint]) -> Path {
         var path = Path()
         path.move(to: points[0])
         for i in 1..<points.count {

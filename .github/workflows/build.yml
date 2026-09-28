@@ -39,7 +39,21 @@ jobs:
         # This already includes BenchTests below; it's run again on its own so the
         # per-milestone numbers land in a clearly labeled step of the log rather than
         # being buried in the full suite's output.
-        run: swift test --enable-code-coverage
+        run: |
+          set -o pipefail
+          swift test --enable-code-coverage 2>&1 | tee test-output.log
+
+      - name: No main-actor isolation warnings (issue #185)
+        # Members of a `View` are implicitly `@MainActor`; calling one from a nonisolated
+        # `@Test` is only a warning today because SwiftUI's isolation is @preconcurrency, but
+        # it becomes a hard error under Swift 6 language mode (#72). Pure helpers on views are
+        # declared `nonisolated`; anything that genuinely needs the main actor is called from
+        # a `@MainActor` test. Fail here so new instances don't pile up silently again.
+        run: |
+          if grep -E "main actor-isolated .* in a (synchronous )?nonisolated context" test-output.log | sort -u; then
+            echo "::error::Main-actor isolation warnings found (see above). Mark pure View helpers 'nonisolated' or make the test @MainActor."
+            exit 1
+          fi
 
       - name: Code coverage report
         run: |

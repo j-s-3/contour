@@ -235,7 +235,7 @@ struct BehaviorDiagramView: View {
         .allowsHitTesting(false)
     }
 
-    static func glyph(_ kind: BoundaryKind) -> String {
+    nonisolated static func glyph(_ kind: BoundaryKind) -> String {
         switch kind {
         case .application: return "square.dashed"
         case .process: return "cpu"

@@ -165,7 +165,7 @@ struct ArchitectureView: View {
 
     /// Pulled out of the view (static, taking `graph`/`mode` explicitly) so it's directly
     /// testable, per the "extract layout/selection/formatting logic" guidance.
-    static func boxes(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchBox] {
+    nonisolated static func boxes(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchBox] {
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
         let neighbors = Set(level.context.map(\.id))
@@ -218,7 +218,7 @@ struct ArchitectureView: View {
         }
     }
 
-    static func containers(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchContainer] {
+    nonisolated static func containers(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchContainer] {
         let drawn = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         return level.boundaries.compactMap { b in
             let members = b.componentIds.filter(drawn.contains)

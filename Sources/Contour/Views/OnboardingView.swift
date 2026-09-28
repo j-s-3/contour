@@ -380,7 +380,7 @@ struct AnalyzingView: View {
     }
 
     /// What Contour is working out, in the reviewer's terms rather than the pipeline's.
-    static func headline(_ stage: PipelineStage) -> String {
+    nonisolated static func headline(_ stage: PipelineStage) -> String {
         switch stage {
         case .fetching, .checkingOut, .cacheCheck: return "Opening the pull request…"
         case .ticket, .behaviorChange, .understanding: return "Understanding the change…"
@@ -396,7 +396,7 @@ struct AnalyzingView: View {
     /// The console's most recent line, condensed for the one-line status under the mark:
     /// the stage name alone once a step starts, or the stage name and its detail once the
     /// harness reports one.
-    static func latestDetail(log: [PipelineProgressEntry], stage: PipelineStage) -> String {
+    nonisolated static func latestDetail(log: [PipelineProgressEntry], stage: PipelineStage) -> String {
         guard let last = log.last else { return stage.rawValue }
         return last.detail.isEmpty ? last.stage : "\(last.stage) — \(last.detail)"
     }
