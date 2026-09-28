@@ -173,7 +173,7 @@ struct SettingsView: View {
     // MARK: - Shared
 
     private func overrideNotice(_ variable: String) -> some View {
-        Label("Overridden by \(variable) in the environment.", systemImage: "terminal")
+        Label(SettingsViewLogic.overrideNoticeText(for: variable), systemImage: "terminal")
             .font(.caption)
             .foregroundStyle(.orange)
     }
@@ -253,6 +253,12 @@ enum SettingsViewLogic {
     /// disabled.
     static func jiraLabel(jiraAvailable: Bool) -> String {
         jiraAvailable ? TrackerID.jira.displayName : "Jira — acli not found"
+    }
+
+    /// The text shown under a picker whose choice is pinned by an environment variable,
+    /// naming which one so a user staring at a disabled control knows why.
+    static func overrideNoticeText(for variable: String) -> String {
+        "Overridden by \(variable) in the environment."
     }
 
     /// A detected-tool row's glyph: unknown (still probing), usable, installed but not
