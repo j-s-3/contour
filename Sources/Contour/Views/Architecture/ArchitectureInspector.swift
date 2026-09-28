@@ -47,7 +47,7 @@ struct ArchitectureInspector: View {
                 beforeAfter(before, after)
             }
             if part.delta?.summary == nil, part.delta?.before == nil || part.delta?.after == nil {
-                Text(unchangedLine(part)).font(.callout).foregroundStyle(.secondary)
+                Text(Self.unchangedLine(part)).font(.callout).foregroundStyle(.secondary)
             }
         }
 
@@ -141,7 +141,7 @@ struct ArchitectureInspector: View {
             } else {
                 Text(e.label.isEmpty ? "Not labeled" : e.label).font(.callout.weight(.medium))
             }
-            Text(properties(e)).font(.caption).foregroundStyle(.secondary)
+            Text(Self.properties(e)).font(.caption).foregroundStyle(.secondary)
         }
 
         if let note = e.note, !note.isEmpty {
