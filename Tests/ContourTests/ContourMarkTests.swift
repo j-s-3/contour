@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SwiftUI
 @testable import Contour
 
 /// The in-app mark is drawn from a Swift port of `scripts/generate-logo.py`, so these
