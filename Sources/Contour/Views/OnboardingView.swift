@@ -76,13 +76,13 @@ struct OnboardingView: View {
                         guard let provider = providers.first else { return }
                         _ = provider.loadObject(ofClass: String.self) { text, _ in
                             guard let text else { return }
-                            DispatchQueue.main.async { urlText = PRLink.extract(from: text) ?? text }
+                            DispatchQueue.main.async { urlText = OnboardingViewLogic.resolvedPasteText(text) }
                         }
                     }
                 // Fallback that never depends on keyboard-shortcut routing at all.
                 Button {
                     if let clip = NSPasteboard.general.string(forType: .string) {
-                        urlText = PRLink.extract(from: clip) ?? clip
+                        urlText = OnboardingViewLogic.resolvedPasteText(clip)
                     }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
@@ -140,8 +140,8 @@ struct OnboardingView: View {
     /// the mark off the top of a default-sized window.
     @ViewBuilder
     private var pullRequestLists: some View {
-        let requests = Array((reviewRequests ?? []).prefix(Self.rowsShown))
-        if !requests.isEmpty || !recents.isEmpty {
+        let requests = OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown)
+        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
             HStack(alignment: .top, spacing: 28) {
                 if !requests.isEmpty {
                     PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
@@ -213,7 +213,7 @@ struct OnboardingView: View {
     private func checkClipboard() async {
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
-        guard changeCount != declinedChangeCount else {
+        guard !OnboardingViewLogic.isDeclined(changeCount: changeCount, declinedChangeCount: declinedChangeCount) else {
             clipboardOffer = nil
             return
         }
@@ -221,12 +221,12 @@ struct OnboardingView: View {
         if #available(macOS 15.4, *), pasteboard.accessBehavior != .alwaysAllow {
             let patterns = pasteboard.accessBehavior == .alwaysDeny ? []
                 : (try? await pasteboard.detectedPatterns(for: [\.probableWebURL])) ?? []
-            clipboardOffer = patterns.contains(\.probableWebURL) ? .unreadLink(changeCount: changeCount) : nil
+            clipboardOffer = OnboardingViewLogic.offer(
+                detectedProbableWebURL: patterns.contains(\.probableWebURL), changeCount: changeCount
+            )
             return
         }
-        clipboardOffer = pasteboard.string(forType: .string)
-            .flatMap(PRLink.extract(from:))
-            .map(ClipboardOffer.pullRequest)
+        clipboardOffer = OnboardingViewLogic.offer(fromReadableClipboardText: pasteboard.string(forType: .string))
     }
 
     /// The reviewer asked for the clipboard, so read it now. A link that isn't a PR goes
@@ -234,11 +234,10 @@ struct OnboardingView: View {
     private func openUnreadClipboard(_ changeCount: Int) {
         clipboardOffer = nil
         declinedChangeCount = changeCount
-        guard let clip = NSPasteboard.general.string(forType: .string) else { return }
-        if let url = PRLink.extract(from: clip) {
-            onSubmit(url)
-        } else {
-            urlText = clip
+        switch OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)) {
+        case .open(let url): onSubmit(url)
+        case .fillField(let text): urlText = text
+        case .doNothing: break
         }
     }
 }
@@ -252,8 +251,10 @@ enum ClipboardOffer: Equatable {
     case unreadLink(changeCount: Int)
 }
 
-/// The row-formatting logic CLAUDE.md calls out for this file, pulled out of the private
-/// `PullRequestRow` so it's directly testable without a view instance.
+/// The row-formatting, clipboard-decision and list-visibility logic CLAUDE.md calls out
+/// for this file, pulled out of the view so it's directly testable without a view
+/// instance. `checkClipboard`, `openUnreadClipboard` and `pullRequestLists` each forward
+/// to one of these rather than deciding inline.
 enum OnboardingViewLogic {
     /// A PR row's second line: repo and number always, then whatever else is known —
     /// author or draft state, and when it happened, in that order.
@@ -262,6 +263,65 @@ enum OnboardingViewLogic {
         if let detail { parts.append(detail) }
         if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Whether the clipboard hasn't changed since the reviewer last dismissed its offer —
+    /// in which case it should stay hidden rather than reappear every time the window is
+    /// activated.
+    static func isDeclined(changeCount: Int, declinedChangeCount: Int?) -> Bool {
+        changeCount == declinedChangeCount
+    }
+
+    /// The offer once the clipboard's own text can be read directly — before macOS 15.4,
+    /// or once the reviewer has already granted clipboard access: a recognized PR link is
+    /// offered by name, anything else isn't offered at all.
+    static func offer(fromReadableClipboardText text: String?) -> ClipboardOffer? {
+        text.flatMap(PRLink.extract(from:)).map(ClipboardOffer.pullRequest)
+    }
+
+    /// The offer once only pattern detection is available (macOS 15.4+, before the
+    /// reviewer has granted clipboard access): a generic "unread link" offer when a
+    /// probable web URL was detected, since the contents themselves haven't been read.
+    static func offer(detectedProbableWebURL: Bool, changeCount: Int) -> ClipboardOffer? {
+        detectedProbableWebURL ? .unreadLink(changeCount: changeCount) : nil
+    }
+
+    /// What happens once the reviewer asks to open the clipboard's unread link.
+    enum ClipboardReadAction: Equatable {
+        /// A recognized PR link — open it directly.
+        case open(String)
+        /// Something else — put it in the URL field so the reviewer can see why it
+        /// didn't open, rather than have it vanish silently.
+        case fillField(String)
+        /// Nothing was on the clipboard to act on.
+        case doNothing
+    }
+
+    /// Resolves the clipboard's actual contents, read only once the reviewer asked for
+    /// them.
+    static func resolveClipboardRead(_ clip: String?) -> ClipboardReadAction {
+        guard let clip else { return .doNothing }
+        if let url = PRLink.extract(from: clip) { return .open(url) }
+        return .fillField(clip)
+    }
+
+    /// What pasted (or clipboard-button) text becomes in the URL field: a recognized PR
+    /// link is canonicalized, anything else is left as typed so the reviewer can see and
+    /// correct it.
+    static func resolvedPasteText(_ text: String) -> String {
+        PRLink.extract(from: text) ?? text
+    }
+
+    /// The review-requested PRs to show, capped at the number of rows the start screen has
+    /// room for.
+    static func visibleRequests(_ requests: [ReviewRequest]?, limit: Int) -> [ReviewRequest] {
+        Array((requests ?? []).prefix(limit))
+    }
+
+    /// Whether either PR list has anything to show — the section collapses entirely when
+    /// both are empty, rather than displaying two empty headings.
+    static func shouldShowLists(requests: [ReviewRequest], recents: [AnalysisCache.RecentPR]) -> Bool {
+        !requests.isEmpty || !recents.isEmpty
     }
 }
 
