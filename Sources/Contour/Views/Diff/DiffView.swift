@@ -107,14 +107,14 @@ struct DiffView: View {
     /// Opens the file a reference points into and scrolls its first cited hunk into view. A
     /// reference outside every hunk (unchanged context) still lands on its file.
     private func land(on ref: CodeRef?, _ proxy: ScrollViewProxy) {
-        guard let ref, let file = files.first(where: { $0.contains(ref) }) else { return }
-        currentFile = file.id
-        collapsed.remove(file.id)
-        let hunk = file.hunks.first { $0.overlaps(ref) }
+        guard let target = DiffViewLogic.landingTarget(for: ref, in: files) else { return }
+        currentFile = target.file.id
+        collapsed.remove(target.file.id)
         // After the expanded file has been laid out.
         DispatchQueue.main.async {
             // Just below the top, so the pinned file header doesn't cover the hunk's header.
-            if let hunk { proxy.scrollTo(hunk.id, anchor: UnitPoint(x: 0, y: 0.08)) } else { proxy.scrollTo(fileAnchor(file), anchor: .top) }
+            if let hunk = target.hunk { proxy.scrollTo(hunk.id, anchor: UnitPoint(x: 0, y: 0.08)) }
+            else { proxy.scrollTo(fileAnchor(target.file), anchor: .top) }
         }
     }
 
@@ -210,14 +210,7 @@ struct DiffView: View {
     }
 
     /// The range a hunk shows, as a reference — head side unless the file is gone.
-    private func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef {
-        if file.status == .deleted || hunk.newCount == 0 {
-            return CodeRef(path: file.oldPath ?? file.path, startLine: hunk.oldStart,
-                           endLine: max(hunk.oldStart, hunk.oldStart + hunk.oldCount - 1), side: .base)
-        }
-        return CodeRef(path: file.newPath ?? file.path, startLine: hunk.newStart,
-                       endLine: max(hunk.newStart, hunk.newStart + hunk.newCount - 1))
-    }
+    private func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef { DiffViewLogic.hunkRef(hunk, in: file) }
 
     private func lineRow(_ line: DiffLine, in file: DiffFile, gutter: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 0) {
@@ -242,7 +235,44 @@ struct DiffView: View {
         .background(background(line, in: file))
     }
 
-    private func marker(_ kind: DiffLine.Kind) -> String {
+    private func marker(_ kind: DiffLine.Kind) -> String { DiffViewLogic.marker(kind) }
+
+    private func markerColor(_ kind: DiffLine.Kind) -> Color { DiffViewLogic.markerColor(kind) }
+
+    private func background(_ line: DiffLine, in file: DiffFile) -> Color {
+        DiffViewLogic.background(line, in: file, focus: focus)
+    }
+
+    /// Wide enough for the file's largest line number on either side.
+    private func gutterWidth(_ file: DiffFile) -> CGFloat { DiffViewLogic.gutterWidth(file) }
+
+    private func fileName(_ path: String) -> String { DiffViewLogic.fileName(path) }
+
+    private func directory(_ path: String) -> String? { DiffViewLogic.directory(path) }
+}
+
+/// File/hunk navigation, line highlighting/coloring, and path formatting — pulled out of
+/// `DiffView`'s instance methods (per CLAUDE.md's guidance) so it's directly testable
+/// without a live view, the same way `UnifiedDiff` parsing is.
+enum DiffViewLogic {
+    /// Which file (and, if any, which hunk) a code reference lands on — nil for the "open
+    /// nothing" case (no reference, or one outside every file in this diff).
+    static func landingTarget(for ref: CodeRef?, in files: [DiffFile]) -> (file: DiffFile, hunk: DiffHunk?)? {
+        guard let ref, let file = files.first(where: { $0.contains(ref) }) else { return nil }
+        return (file, file.hunks.first { $0.overlaps(ref) })
+    }
+
+    /// The range a hunk shows, as a reference — head side unless the file is gone.
+    static func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef {
+        if file.status == .deleted || hunk.newCount == 0 {
+            return CodeRef(path: file.oldPath ?? file.path, startLine: hunk.oldStart,
+                           endLine: max(hunk.oldStart, hunk.oldStart + hunk.oldCount - 1), side: .base)
+        }
+        return CodeRef(path: file.newPath ?? file.path, startLine: hunk.newStart,
+                       endLine: max(hunk.newStart, hunk.newStart + hunk.newCount - 1))
+    }
+
+    static func marker(_ kind: DiffLine.Kind) -> String {
         switch kind {
         case .added: return "+"
         case .removed: return "−"
@@ -250,12 +280,12 @@ struct DiffView: View {
         }
     }
 
-    private func markerColor(_ kind: DiffLine.Kind) -> Color {
+    static func markerColor(_ kind: DiffLine.Kind) -> Color {
         kind == .added ? .green : kind == .removed ? .red : .secondary
     }
 
-    private func background(_ line: DiffLine, in file: DiffFile) -> Color {
-        if isFocused(line, in: file) { return Color.yellow.opacity(0.22) }
+    static func background(_ line: DiffLine, in file: DiffFile, focus: CodeRef?) -> Color {
+        if isFocused(line, in: file, focus: focus) { return Color.yellow.opacity(0.22) }
         switch line.kind {
         case .added: return Color.green.opacity(0.10)
         case .removed: return Color.red.opacity(0.10)
@@ -264,23 +294,23 @@ struct DiffView: View {
     }
 
     /// Whether the line is one the focused reference cites, on the side it cites.
-    private func isFocused(_ line: DiffLine, in file: DiffFile) -> Bool {
+    static func isFocused(_ line: DiffLine, in file: DiffFile, focus: CodeRef?) -> Bool {
         guard let focus, file.contains(focus),
               let number = focus.side == .base ? line.oldLine : line.newLine else { return false }
         return number >= focus.startLine && number <= focus.endLine
     }
 
     /// Wide enough for the file's largest line number on either side.
-    private func gutterWidth(_ file: DiffFile) -> CGFloat {
+    static func gutterWidth(_ file: DiffFile) -> CGFloat {
         let largest = file.hunks.map { max($0.oldStart + $0.oldCount, $0.newStart + $0.newCount) }.max() ?? 1
         return CGFloat(max(String(largest).count, 3)) * 7.5 + 12
     }
 
-    private func fileName(_ path: String) -> String {
+    static func fileName(_ path: String) -> String {
         path.split(separator: "/").last.map(String.init) ?? path
     }
 
-    private func directory(_ path: String) -> String? {
+    static func directory(_ path: String) -> String? {
         guard let slash = path.lastIndex(of: "/") else { return nil }
         return String(path[..<slash])
     }
@@ -339,7 +369,7 @@ private struct CitationBadge: View {
     }
 }
 
-private extension DiffFileStatus {
+extension DiffFileStatus {
     var color: Color {
         switch self {
         case .modified: return .secondary
