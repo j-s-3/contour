@@ -622,6 +622,48 @@ struct ContextualChatTests {
         #expect(ChatMarkdownView.blocks("   \n\n  ") == [])
     }
 
+    // MARK: - Inline attributed text
+    //
+    // `attributedText(for:linkify:)` is the pure logic behind `ChatMarkdownView.inline`
+    // (a private instance method the view's `body` calls, with no UI-testing infrastructure
+    // in this suite to host it) — extracted the same way `blocks(_:)` already is, so the
+    // markdown-parsing and linkify-then-parse-then-fallback behavior is directly testable
+    // without rendering SwiftUI.
+
+    @Test func attributedTextRendersPlainTextUnchanged() {
+        let result = ChatMarkdownView.attributedText(for: "hello world", linkify: { $0 })
+        #expect(String(result.characters) == "hello world")
+    }
+
+    /// The markers themselves must be consumed by the markdown parser, not left as literal
+    /// asterisks — this is what distinguishes a successful parse from the raw-text fallback.
+    @Test func attributedTextParsesInlineMarkdownEmphasis() {
+        let result = ChatMarkdownView.attributedText(for: "**bold** and *italic*", linkify: { $0 })
+        #expect(String(result.characters) == "bold and italic")
+    }
+
+    /// `linkify` runs before markdown parsing, so a span it rewrites into `[text](url)`
+    /// comes out as an actual link run — this is the whole reason `inline` calls `linkify`
+    /// first: it is what makes code citations and `[[kind:id]]` references clickable.
+    @Test func attributedTextAppliesLinkifyBeforeParsingSoLinksBecomeClickable() {
+        let result = ChatMarkdownView.attributedText(
+            for: "see docs", linkify: { _ in "[see docs](https://example.com/x)" }
+        )
+        #expect(String(result.characters) == "see docs")
+        #expect(result.runs.contains { $0.link == URL(string: "https://example.com/x") })
+    }
+
+    /// `^[text](attr: value)` is valid markdown syntax for a custom attribute, but the
+    /// default (unscoped) parse used here doesn't recognize an arbitrary attribute name and
+    /// throws rather than silently dropping it — model output can contain a stray `^[`
+    /// this never intended as markup, and `attributedText` must fall back to the raw,
+    /// unlinkified text (every character preserved) instead of losing the line.
+    @Test func attributedTextFallsBackToRawTextWhenMarkdownFailsToParse() {
+        let malformed = "^[bad](notARealAttribute: 1)"
+        let result = ChatMarkdownView.attributedText(for: malformed, linkify: { $0 })
+        #expect(String(result.characters) == malformed)
+    }
+
     // MARK: - Review progress
 
     /// Only a thread the reviewer wrote in counts as talking a question through — opening
