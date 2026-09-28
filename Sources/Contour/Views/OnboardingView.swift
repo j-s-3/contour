@@ -73,11 +73,7 @@ struct OnboardingView: View {
                     // in a bare SPM executable (no .app bundle/Edit menu wiring) — this is
                     // SwiftUI's own paste hook, independent of that plumbing.
                     .onPasteCommand(of: [.text, .url]) { providers in
-                        guard let provider = providers.first else { return }
-                        _ = provider.loadObject(ofClass: String.self) { text, _ in
-                            guard let text else { return }
-                            DispatchQueue.main.async { urlText = OnboardingViewLogic.resolvedPasteText(text) }
-                        }
+                        Self.loadPastedText(from: providers) { urlText = $0 }
                     }
                 // Fallback that never depends on keyboard-shortcut routing at all.
                 Button {
@@ -136,38 +132,20 @@ struct OnboardingView: View {
         }
     }
 
-    /// Side by side rather than stacked, so both lists fit under the field without pushing
-    /// the mark off the top of a default-sized window.
-    @ViewBuilder
     private var pullRequestLists: some View {
-        let requests = OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown)
-        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
-            HStack(alignment: .top, spacing: 28) {
-                if !requests.isEmpty {
-                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
-                        ForEach(requests) { request in
-                            PullRequestRow(
-                                title: request.title, repo: request.repo, number: request.number,
-                                detail: request.isDraft ? "\(request.author) · draft" : request.author,
-                                date: request.updatedAt, dateVerb: "updated", url: request.url, onOpen: onSubmit
-                            )
-                        }
-                    }
-                }
-                if !recents.isEmpty {
-                    PullRequestList(title: "Recently opened", systemImage: "clock.arrow.circlepath") {
-                        ForEach(recents) { recent in
-                            PullRequestRow(
-                                title: recent.title, repo: recent.repo, number: recent.number,
-                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onSubmit
-                            )
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: 760)
-            .padding(.horizontal, 24)
-            .transition(.opacity)
+        PullRequestLists(
+            requests: OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown),
+            recents: recents, onOpen: onSubmit
+        )
+    }
+
+    /// Reads the first pasted item as text and hands the resolved field text to `apply` on
+    /// the main queue; items that aren't text are ignored.
+    static func loadPastedText(from providers: [NSItemProvider], apply: @escaping @MainActor (String) -> Void) {
+        guard let provider = providers.first else { return }
+        _ = provider.loadObject(ofClass: String.self) { text, _ in
+            guard let text else { return }
+            DispatchQueue.main.async { apply(OnboardingViewLogic.resolvedPasteText(text)) }
         }
     }
 
@@ -177,33 +155,13 @@ struct OnboardingView: View {
     }
 
     private func clipboardOfferRow(_ offer: ClipboardOffer) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.on.clipboard")
-                .foregroundStyle(.secondary)
-            switch offer {
-            case .pullRequest(let url):
-                Button {
-                    onSubmit(url)
-                } label: {
-                    Text(verbatim: "Open \(PRLink.label(for: url) ?? url) from clipboard?")
-                }
-                .buttonStyle(.link)
-                .help(url)
-            case .unreadLink(let changeCount):
-                Button("Open the link on your clipboard?") { openUnreadClipboard(changeCount) }
-                    .buttonStyle(.link)
-            }
-            Button {
+        ClipboardOfferRow(
+            offer: offer, onOpen: onSubmit, onOpenUnread: openUnreadClipboard,
+            onDismiss: {
                 declinedChangeCount = NSPasteboard.general.changeCount
                 clipboardOffer = nil
-            } label: {
-                Image(systemName: "xmark.circle.fill")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
-            .help("Dismiss")
-        }
-        .font(.callout)
+        )
     }
 
     /// Looks for a PR link on the clipboard without tripping macOS's paste-access alert:
@@ -234,10 +192,84 @@ struct OnboardingView: View {
     private func openUnreadClipboard(_ changeCount: Int) {
         clipboardOffer = nil
         declinedChangeCount = changeCount
-        switch OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)) {
-        case .open(let url): onSubmit(url)
-        case .fillField(let text): urlText = text
-        case .doNothing: break
+        OnboardingViewLogic.perform(
+            OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)),
+            open: onSubmit, fillField: { urlText = $0 }
+        )
+    }
+}
+
+/// The inline "open the link on your clipboard?" row under the URL field.
+struct ClipboardOfferRow: View {
+    let offer: ClipboardOffer
+    var onOpen: (String) -> Void
+    var onOpenUnread: (Int) -> Void
+    var onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard")
+                .foregroundStyle(.secondary)
+            switch offer {
+            case .pullRequest(let url):
+                Button {
+                    onOpen(url)
+                } label: {
+                    Text(verbatim: "Open \(PRLink.label(for: url) ?? url) from clipboard?")
+                }
+                .buttonStyle(.link)
+                .help(url)
+            case .unreadLink(let changeCount):
+                Button("Open the link on your clipboard?") { onOpenUnread(changeCount) }
+                    .buttonStyle(.link)
+            }
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .help("Dismiss")
+        }
+        .font(.callout)
+    }
+}
+
+/// The review-requested and recently-opened lists. Side by side rather than stacked, so
+/// both fit under the field without pushing the mark off the top of a default-sized
+/// window; collapses entirely when both are empty.
+struct PullRequestLists: View {
+    let requests: [ReviewRequest]
+    let recents: [AnalysisCache.RecentPR]
+    var onOpen: (String) -> Void
+
+    var body: some View {
+        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
+            HStack(alignment: .top, spacing: 28) {
+                if !requests.isEmpty {
+                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
+                        ForEach(requests) { request in
+                            PullRequestRow(
+                                title: request.title, repo: request.repo, number: request.number,
+                                detail: request.isDraft ? "\(request.author) · draft" : request.author,
+                                date: request.updatedAt, dateVerb: "updated", url: request.url, onOpen: onOpen
+                            )
+                        }
+                    }
+                }
+                if !recents.isEmpty {
+                    PullRequestList(title: "Recently opened", systemImage: "clock.arrow.circlepath") {
+                        ForEach(recents) { recent in
+                            PullRequestRow(
+                                title: recent.title, repo: recent.repo, number: recent.number,
+                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onOpen
+                            )
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 24)
+            .transition(.opacity)
         }
     }
 }
@@ -305,6 +337,16 @@ enum OnboardingViewLogic {
         return .fillField(clip)
     }
 
+    /// Carries out a resolved clipboard read: open the PR, put the text in the field, or
+    /// nothing.
+    static func perform(_ action: ClipboardReadAction, open: (String) -> Void, fillField: (String) -> Void) {
+        switch action {
+        case .open(let url): open(url)
+        case .fillField(let text): fillField(text)
+        case .doNothing: break
+        }
+    }
+
     /// What pasted (or clipboard-button) text becomes in the URL field: a recognized PR
     /// link is canonicalized, anything else is left as typed so the reviewer can see and
     /// correct it.
@@ -326,7 +368,7 @@ enum OnboardingViewLogic {
 }
 
 /// One of the start screen's PR lists: a quiet heading over its rows.
-private struct PullRequestList<Rows: View>: View {
+struct PullRequestList<Rows: View>: View {
     let title: String
     let systemImage: String
     @ViewBuilder var rows: Rows
@@ -345,7 +387,7 @@ private struct PullRequestList<Rows: View>: View {
 }
 
 /// A PR the reviewer can open with one click: its title, then where it lives and when.
-private struct PullRequestRow: View {
+struct PullRequestRow: View {
     let title: String
     let repo: String
     let number: Int
@@ -474,7 +516,14 @@ struct AnalyzingView: View {
         .help("Every step the harness takes as it reads the repository")
     }
 
-    private var console: some View {
+    private var console: some View { AnalysisConsoleView(log: log) }
+}
+
+/// The full tool-call log under the analyzing mark, following the newest line.
+struct AnalysisConsoleView: View {
+    let log: [PipelineProgressEntry]
+
+    var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 5) {
