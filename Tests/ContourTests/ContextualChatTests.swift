@@ -659,31 +659,54 @@ struct ContextualChatTests {
         #expect(conversation.messages.isEmpty)
     }
 
-    /// With everything resolvable and `CONTOUR_MOCK_ANALYSIS=1`, `send` runs its real
-    /// streaming path end to end: it builds the context document, starts the background
-    /// task, and folds `.activity`/`.delta`/`.final` events into the placeholder reply —
-    /// exactly what a reviewer sees while an answer streams in, without a real harness.
-    @Test @MainActor func sendStreamsAMockAnswerIntoThePlaceholderReply() async throws {
-        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
-        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
+    // MARK: - ConversationStore.excerpts
 
-        let store = ConversationStore()
-        let checkout = RepoCheckout(rootDir: URL(fileURLWithPath: "/tmp"), headSha: "a", baseSha: "b")
-        let conversation = store.open(.decision("index-on-publish"))
-        store.send("Why retries?", in: conversation, graph: graph, checkout: checkout, harnessID: .claude)
+    /// Real local files, exactly like `RepoContextServiceTests`'s checkout fixtures — no
+    /// `CONTOUR_MOCK_ANALYSIS` involved, since that's a process-global env var other tests
+    /// (`ProgressiveAnalysisTests`'s `AnalysisCache` suite) read concurrently under Swift
+    /// Testing's parallel execution, and mutating it here raced them in CI.
+    private func excerptCheckout() -> (checkout: RepoCheckout, ref: CodeRef) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let lines = (1...20).map { "line \($0)" }
+        try! lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        return (checkout, CodeRef(path: "a.swift", startLine: 5, endLine: 6))
+    }
 
-        #expect(conversation.isResponding, "the task starts synchronously")
-        for _ in 0..<50 {
-            if !conversation.isResponding { break }
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        #expect(!conversation.isResponding, "the mock stream finishes on its own")
-        #expect(conversation.activity == nil)
+    @Test func excerptsIsEmptyWithNoPinsNoCodeKindAndNoImplementationExpansion() async {
+        let (checkout, ref) = excerptCheckout()
+        defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
+        let resolved = stub(.decision, refs: [ref])
+        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [], pinned: [], checkout: checkout)
+        #expect(excerpts.isEmpty)
+    }
 
-        let reply = try #require(conversation.messages.last)
-        #expect(reply.role == .assistant)
-        #expect(!reply.isStreaming)
-        #expect(reply.error == nil)
-        #expect(reply.text.contains("Why retries?"))
+    @Test func excerptsIncludesPinnedRefsRegardlessOfKind() async {
+        let (checkout, ref) = excerptCheckout()
+        defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
+        let resolved = stub(.decision)
+        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [], pinned: [ref], checkout: checkout)
+        #expect(excerpts.count == 1)
+        #expect(excerpts[0].ref == ref)
+        #expect(excerpts[0].text.contains("line 5"))
+    }
+
+    @Test func excerptsIncludesTheSubjectsOwnRefsWhenKindIsCode() async {
+        let (checkout, ref) = excerptCheckout()
+        defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
+        let resolved = stub(.code, refs: [ref])
+        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [], pinned: [], checkout: checkout)
+        #expect(excerpts.count == 1)
+        #expect(excerpts[0].ref == ref)
+    }
+
+    @Test func excerptsIncludesTheSubjectsOwnRefsUnderTheImplementationExpansion() async {
+        let (checkout, ref) = excerptCheckout()
+        defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
+        let resolved = stub(.decision, refs: [ref])
+        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [.implementation], pinned: [], checkout: checkout)
+        #expect(excerpts.count == 1)
+        #expect(excerpts[0].ref == ref)
     }
 }
