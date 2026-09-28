@@ -37,10 +37,18 @@ extension View {
     /// elsewhere (the chat, a search field) never reaches here, and modified keys aren't ours.
     func diagramModeKeys(_ mode: Binding<DiagramMode>) -> some View {
         onKeyPress(phases: .down) { press in
-            guard press.modifiers.isDisjoint(with: [.command, .control, .option]),
-                  let new = DiagramMode(key: press.characters) else { return .ignored }
-            mode.wrappedValue = new
-            return .handled
+            DiagramModeKeyHandling.handle(characters: press.characters, modifiers: press.modifiers, mode: mode)
         }
+    }
+}
+
+/// Pulled out of `diagramModeKeys` (taking the raw key info explicitly rather than a live
+/// `KeyPress`) so the switch's key handling is directly testable.
+enum DiagramModeKeyHandling {
+    static func handle(characters: String, modifiers: EventModifiers, mode: Binding<DiagramMode>) -> KeyPress.Result {
+        guard modifiers.isDisjoint(with: [.command, .control, .option]),
+              let new = DiagramMode(key: characters) else { return .ignored }
+        mode.wrappedValue = new
+        return .handled
     }
 }
