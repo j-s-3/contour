@@ -97,7 +97,7 @@ struct JiraTracker: IssueTracker {
     /// Flattens Atlassian Document Format (rich-text) JSON into plain text good enough
     /// for an LLM prompt: paragraph/heading boundaries become newlines, list items get a
     /// leading dash, inline marks are dropped (bold/italic don't matter for grounding).
-    private static func flattenADF(_ node: [String: Any]) -> String {
+    static func flattenADF(_ node: [String: Any]) -> String {
         var lines: [String] = []
         walk(node, into: &lines, listPrefix: nil)
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
