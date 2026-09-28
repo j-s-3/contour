@@ -28,8 +28,10 @@ enum MainThreadWatchdog {
 
     /// Shared between the run loop observer (fires on the main thread) and the polling
     /// timer (fires on a background queue), so its own state is behind a lock — same
-    /// pattern as `ShellProcess.swift`'s `DataBox`.
-    private final class Beat: @unchecked Sendable {
+    /// pattern as `ShellProcess.swift`'s `DataBox`. Internal rather than `private` so
+    /// `MainThreadWatchdogTests` can drive the threshold/stall logic directly with
+    /// `@testable import`, without waiting on a real run loop or timer.
+    final class Beat: @unchecked Sendable {
         private let lock = NSLock()
         private var lastBeat = DispatchTime.now()
         private var stalled = false
@@ -65,10 +67,16 @@ enum MainThreadWatchdog {
     /// Starts observing the main run loop. Safe to call more than once — only the first
     /// call does anything. Set `CONTOUR_DISABLE_WATCHDOG=1` to opt out entirely; on by
     /// default in debug builds, since it's inert (never installed) in a release build
-    /// regardless of the environment.
-    static func start(thresholdMs: Double = defaultThresholdMs) {
+    /// regardless of the environment. `environment` defaults to the real process
+    /// environment; tests override it to exercise the opt-out without touching real
+    /// process state (see the note on `CONTOUR_MOCK_ANALYSIS` in `CLAUDE.md` about why
+    /// tests must not mutate process-global env vars).
+    static func start(
+        thresholdMs: Double = defaultThresholdMs,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         guard !started else { return }
-        guard ProcessInfo.processInfo.environment["CONTOUR_DISABLE_WATCHDOG"] != "1" else { return }
+        guard environment["CONTOUR_DISABLE_WATCHDOG"] != "1" else { return }
         started = true
 
         let beat = Beat()
