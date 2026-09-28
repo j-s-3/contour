@@ -32,14 +32,19 @@ struct WindowAccessor: NSViewRepresentable {
         entersFullScreen && !alreadyEntered && !isCurrentlyFullScreen
     }
 
+    /// The belt-and-suspenders fix-up applied in `makeNSView`, pulled out as a pure
+    /// `OptionSet` operation so it's testable without a live `NSWindow`: make sure the
+    /// window is explicitly eligible for the full-screen space even if something about
+    /// running unbundled left the default collection behavior off.
+    nonisolated static func collectionBehaviorWithFullScreenPrimary(_ behavior: NSWindow.CollectionBehavior) -> NSWindow.CollectionBehavior {
+        behavior.union(.fullScreenPrimary)
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async { [weak view] in
             guard let window = view?.window else { return }
-            // Belt-and-suspenders: make sure this window is explicitly eligible for the
-            // full-screen space even if something about running unbundled left the
-            // default collection behavior off.
-            window.collectionBehavior.insert(.fullScreenPrimary)
+            window.collectionBehavior = Self.collectionBehaviorWithFullScreenPrimary(window.collectionBehavior)
         }
         return view
     }
