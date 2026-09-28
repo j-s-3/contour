@@ -38,9 +38,15 @@ enum PRReview {
     }
 
     /// With `CONTOUR_MOCK_ANALYSIS=1` nothing is sent: the fixtures' PR isn't the
-    /// reviewer's to review.
-    static func submit(prURL: String, verdict: Verdict, comment: String = "") async throws {
-        if MockAnalysisFixtures.isEnabled {
+    /// reviewer's to review. `mockEnabled` defaults to the real environment check; tests
+    /// override it directly rather than mutating the process environment, which
+    /// `AnalysisCache` and friends also read and which Swift Testing's parallel runner
+    /// would race.
+    static func submit(
+        prURL: String, verdict: Verdict, comment: String = "",
+        mockEnabled: Bool = MockAnalysisFixtures.isEnabled
+    ) async throws {
+        if mockEnabled {
             try await Task.sleep(for: .milliseconds(400))
             return
         }
