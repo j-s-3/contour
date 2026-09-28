@@ -441,47 +441,37 @@ struct ContextualChatTests {
 
     // MARK: - handle
 
-    /// `OpenURLAction.Result` isn't `Equatable`, so these match it by pattern rather than `==`.
+    /// `OpenURLAction.Result` is an opaque type (no `Equatable`, no matchable cases), so these
+    /// pin `handle`'s actual logic — which URL navigates where — via its `store` side effect
+    /// rather than its return value; `targetDeclinesUnrecognizedOrIncompleteURLs` above already
+    /// covers which URLs `ChatLinks.target(for:)` itself accepts or declines.
     @Test @MainActor func handleNavigatesToTheCodeReferenceForACodeLink() throws {
         let store = GraphStore()
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         let url = try #require(ChatLinks.url(for: ref))
-        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
-            Issue.record("expected .handled")
-            return
-        }
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
         #expect(store.current == .evidence(ref))
     }
 
     @Test @MainActor func handleNavigatesToADecisionsDetailTargetForANodeLink() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "index-on-publish"))
-        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
-            Issue.record("expected .handled")
-            return
-        }
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
         #expect(store.current == .decisionDetail("index-on-publish"))
     }
 
-    /// A node link naming an id the graph doesn't have has nowhere to navigate — the URL is
-    /// still consumed (not handed back to the system) but the current destination is unchanged.
-    @Test @MainActor func handleStillReportsHandledForADanglingNodeReference() throws {
+    /// A node link naming an id the graph doesn't have has nowhere to navigate.
+    @Test @MainActor func handleDoesNotNavigateForADanglingNodeReference() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "does-not-exist"))
-        guard case .handled = ContextualChatView.handle(url, store: store, graph: graph) else {
-            Issue.record("expected .handled")
-            return
-        }
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
         #expect(store.current == .summary, "nothing to navigate to, so the path is unchanged")
     }
 
-    @Test @MainActor func handleFallsBackToSystemActionForAnUnrecognizedURL() throws {
+    @Test @MainActor func handleDoesNotNavigateForAnUnrecognizedURL() throws {
         let store = GraphStore()
         let url = try #require(URL(string: "https://example.com"))
-        guard case .systemAction = ContextualChatView.handle(url, store: store, graph: graph) else {
-            Issue.record("expected .systemAction")
-            return
-        }
+        _ = ContextualChatView.handle(url, store: store, graph: graph)
         #expect(store.current == .summary)
     }
 
