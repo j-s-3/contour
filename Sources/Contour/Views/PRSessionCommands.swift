@@ -14,9 +14,10 @@ struct PRSessionActions {
     /// Leaves the PR for the start screen.
     var close: () -> Void
 
-    /// Opens the PR in the browser.
-    func openOnGitHub() {
-        if let pullRequestURL { NSWorkspace.shared.open(pullRequestURL) }
+    /// Opens the PR in the browser. `opener` defaults to the real browser launch and is
+    /// overridable so tests can assert the dispatch without actually opening one.
+    func openOnGitHub(opener: (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+        if let pullRequestURL { opener(pullRequestURL) }
     }
 
     /// Puts the PR's link on the clipboard.
