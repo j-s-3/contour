@@ -5,12 +5,14 @@ import AppKit
 /// `PRSessionCommandsLogic` is the menu's enablement logic CLAUDE.md calls out for this
 /// file, pulled out of `PRSessionCommands`'s `Commands` closures so it's directly testable
 /// against a plain `PRSessionActions?`. `PRSessionActions` itself holds the dispatch
-/// methods: `copyLink` is safe to drive against the real pasteboard (a legitimate macOS
-/// API, like the established `NSPasteboard` usage elsewhere); `openOnGitHub` isn't
+/// methods: `copyLink` is safe to drive against the real pasteboard; `openOnGitHub` isn't
 /// exercised past its nil guard, since actually invoking `NSWorkspace.shared.open` would
 /// launch a real browser from CI — the same caution this suite already applies to
 /// `NSItemProvider.loadObject`. `PRSessionCommands` itself is a SwiftUI `Commands` scene
 /// with no UI-testing infrastructure in this suite to host it.
+/// `.serialized`: `NSPasteboard.general` is a process-wide resource, like `AnonymousAPISourceTests`'
+/// static handler — concurrent reads/writes from parallel tests crashed CI.
+@Suite(.serialized)
 struct PRSessionCommandsTests {
 
     // MARK: - PRSessionCommandsLogic
