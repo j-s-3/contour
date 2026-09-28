@@ -90,6 +90,91 @@ struct ContourMarkTests {
         #expect(points.count == 12)
     }
 
+    // MARK: - ContourMarkView's pure draw-state helpers
+    //
+    // `draw(in:size:)` itself needs a live GraphicsContext, which tests can't construct, so
+    // the state it derives (compact threshold, stroke widths, ring visibility, peak
+    // geometry) is pulled out into nonisolated static helpers and pinned here instead.
+
+    /// The compact threshold is exclusive: exactly `compactHeight` (40) still gets the full
+    /// mark, matching `size.height < Self.compactHeight` in `draw`.
+    @Test func isCompactOnlyBelowTheThreshold() {
+        #expect(ContourMarkView.isCompact(height: 39.999) == true)
+        #expect(ContourMarkView.isCompact(height: 40) == false)
+        #expect(ContourMarkView.isCompact(height: 104) == false)
+    }
+
+    /// Compact drops every other ring (an optical simplification at favicon size); the full
+    /// mark keeps them all, in the same outermost-first order as `ContourMarkGeometry.rings`.
+    @Test func visibleRingIndicesDropsEveryOtherRingWhenCompact() {
+        #expect(ContourMarkGeometry.ringCount == 7, "the expectations below are written for 7 rings")
+        #expect(ContourMarkView.visibleRingIndices(compact: false) == [0, 1, 2, 3, 4, 5, 6])
+        #expect(ContourMarkView.visibleRingIndices(compact: true) == [0, 2, 4, 6])
+    }
+
+    @Test func lineWeightIsHeavierWhenCompact() {
+        #expect(ContourMarkView.lineWeight(compact: false) == 1.25)
+        #expect(ContourMarkView.lineWeight(compact: true) == 1.4)
+        #expect(ContourMarkView.lineWeight(compact: true) > ContourMarkView.lineWeight(compact: false))
+    }
+
+    @Test func minStrokeWidthScalesInverselyWithTheDrawScale() {
+        #expect(ContourMarkView.minStrokeWidth(compact: false, scale: 1) == 0.9)
+        #expect(ContourMarkView.minStrokeWidth(compact: true, scale: 1) == 1.1)
+        #expect(ContourMarkView.minStrokeWidth(compact: false, scale: 2) == 0.45)
+    }
+
+    /// The floor only bites when the geometric width would be thinner than `minWidth`;
+    /// otherwise the ring keeps its own proportional width.
+    @Test func strokeWidthNeverGoesBelowTheMinimum() {
+        let proportional = ContourMarkGeometry.stroke * 1.0 * 1.25
+        #expect(ContourMarkView.strokeWidth(widthFactor: 1.0, weight: 1.25, minWidth: 0) == proportional)
+        #expect(ContourMarkView.strokeWidth(widthFactor: 0, weight: 1.25, minWidth: 5) == 5)
+    }
+
+    @Test func traceAlphaScalesWithRingOpacity() {
+        #expect(ContourMarkView.traceAlpha(ringOpacity: 1.0) == 0.12)
+        #expect(ContourMarkView.traceAlpha(ringOpacity: 0.5) == 0.06)
+    }
+
+    /// The peak dot is drawn bigger when compact so it still reads at favicon size.
+    @Test func dotRadiusIsLargerWhenCompact() {
+        #expect(ContourMarkView.dotRadius(compact: false) == ContourMarkGeometry.peakRadius)
+        #expect(ContourMarkView.dotRadius(compact: true) == ContourMarkGeometry.peakRadius * 1.5)
+    }
+
+    @Test func circleRectIsCenteredOnThePointWithSideTwiceTheRadius() {
+        let rect = ContourMarkView.circleRect(center: CGPoint(x: 10, y: 20), radius: 5)
+        #expect(rect == CGRect(x: 5, y: 15, width: 10, height: 10))
+    }
+
+    /// The halo is centred on the peak and sized off the geometry's own `haloRadius`, so the
+    /// two never drift apart.
+    @Test func haloRectIsCenteredOnThePeakWithTheHaloRadius() {
+        let expected = CGRect(x: ContourMarkGeometry.peak.x - ContourMarkGeometry.haloRadius,
+                              y: ContourMarkGeometry.peak.y - ContourMarkGeometry.haloRadius,
+                              width: ContourMarkGeometry.haloRadius * 2,
+                              height: ContourMarkGeometry.haloRadius * 2)
+        #expect(ContourMarkView.haloRect == expected)
+        #expect(ContourMarkGeometry.haloRadius == ContourMarkGeometry.peakRadius * 2.2)
+    }
+
+    @Test func haloOpacityFadesInWithThePeakStage() {
+        #expect(ContourMarkView.haloOpacity(peakStage: 0) == 0)
+        #expect(ContourMarkView.haloOpacity(peakStage: 1) == 0.18)
+    }
+
+    /// Floored at `traceOpacity` (never fully invisible) and reaches full opacity only once
+    /// the peak has completely resolved.
+    @Test func peakDotOpacityIsFlooredThenReachesFullOpacity() {
+        #expect(ContourMarkView.peakDotOpacity(peakStage: 0) == 0.12)
+        #expect(ContourMarkView.peakDotOpacity(peakStage: 1) == 1)
+    }
+
+    @Test func heroHeightIsUsedOnTheWelcomeAndAnalysisScreens() {
+        #expect(ContourMarkView.heroHeight == 104)
+    }
+
     // MARK: - Resolving the mark
 
     @Test func nothingIsResolvedAtZeroAndEverythingAtOne() {
