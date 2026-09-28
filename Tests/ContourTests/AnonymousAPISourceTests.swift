@@ -71,6 +71,12 @@ struct AnonymousAPISourceTests {
         let checkRuns: [String: Any] = ["check_runs": [["status": "completed", "conclusion": "success"]]]
         let statuses: [String: Any] = ["statuses": []]
 
+        // Serialized up front: a closure typed `@Sendable` can't capture `[String: Any]`
+        // (it isn't Sendable), but `Data` is.
+        let prData = json(pr), filesData = json(files), commitsData = json(commits)
+        let commentsData = json(comments), reviewsData = json(reviews)
+        let checkRunsData = json(checkRuns), statusesData = json(statuses)
+
         MockURLProtocol.handler = { request in
             let path = request.url!.path
             let accept = request.value(forHTTPHeaderField: "Accept")
@@ -78,19 +84,19 @@ struct AnonymousAPISourceTests {
             case ("/repos/acme/shop/pulls/5", "application/vnd.github.v3.diff"):
                 return .init(status: 200, body: Data("diff --git a/x b/x\n+hi".utf8))
             case ("/repos/acme/shop/pulls/5", _):
-                return .init(status: 200, body: json(pr))
+                return .init(status: 200, body: prData)
             case ("/repos/acme/shop/pulls/5/files", _):
-                return .init(status: 200, body: json(files))
+                return .init(status: 200, body: filesData)
             case ("/repos/acme/shop/pulls/5/commits", _):
-                return .init(status: 200, body: json(commits))
+                return .init(status: 200, body: commitsData)
             case ("/repos/acme/shop/issues/5/comments", _):
-                return .init(status: 200, body: json(comments))
+                return .init(status: 200, body: commentsData)
             case ("/repos/acme/shop/pulls/5/reviews", _):
-                return .init(status: 200, body: json(reviews))
+                return .init(status: 200, body: reviewsData)
             case ("/repos/acme/shop/commits/headsha1/check-runs", _):
-                return .init(status: 200, body: json(checkRuns))
+                return .init(status: 200, body: checkRunsData)
             case ("/repos/acme/shop/commits/headsha1/status", _):
-                return .init(status: 200, body: json(statuses))
+                return .init(status: 200, body: statusesData)
             default:
                 return .init(status: 404, body: Data())
             }
