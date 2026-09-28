@@ -20,6 +20,23 @@ struct InspectorContent {
     /// unchanged node — "Untouched; listed for context" — since a claim always outranks the
     /// plain yes/no), otherwise a plain yes/no from whether this node changed at all.
     var changedByThisPRText: String { changeClaim ?? (changedByThisPR ? "Yes" : "No") }
+
+    /// The header's kind eyebrow, upper-cased the way it renders.
+    var kindLabelDisplay: String { kindLabel.uppercased() }
+
+    /// Whether the "USED BY" field has anything to show — the field is hidden entirely
+    /// rather than rendered empty.
+    var showsUsedBy: Bool { !usedBy.isEmpty }
+
+    /// Whether the "IMPLEMENTATION" field has anything to show.
+    var showsImplementedBy: Bool { !implementedBy.isEmpty }
+
+    /// Whether the "EVIDENCE" field has anything to show. "Show diff" reuses `primaryRef`,
+    /// so it hides under the same condition.
+    var showsEvidence: Bool { !refs.isEmpty }
+
+    /// The ref "Show diff" opens: the first piece of evidence, if there is one.
+    var primaryRef: CodeRef? { refs.first }
 }
 
 struct InspectorView: View {
@@ -36,20 +53,20 @@ struct InspectorView: View {
                     }
                     field("CHANGED BY THIS PR") {
                         HStack(spacing: 6) {
-                            Image(systemName: content.changedByThisPR ? "checkmark.circle.fill" : "minus.circle")
-                                .foregroundStyle(content.changedByThisPR ? .green : .secondary)
+                            Image(systemName: Self.changedIconName(content.changedByThisPR))
+                                .foregroundStyle(Self.changedIconTint(content.changedByThisPR))
                             Text(content.changedByThisPRText)
                                 .font(.callout)
                         }
                     }
-                    if !content.usedBy.isEmpty {
+                    if content.showsUsedBy {
                         field("USED BY") {
                             VStack(alignment: .leading, spacing: 3) {
                                 ForEach(content.usedBy, id: \.self) { Text($0).font(.callout) }
                             }
                         }
                     }
-                    if !content.implementedBy.isEmpty {
+                    if content.showsImplementedBy {
                         field("IMPLEMENTATION") {
                             VStack(alignment: .leading, spacing: 3) {
                                 ForEach(content.implementedBy, id: \.self) { name in
@@ -58,7 +75,7 @@ struct InspectorView: View {
                             }
                         }
                     }
-                    if !content.refs.isEmpty {
+                    if content.showsEvidence {
                         field("EVIDENCE") {
                             WrapChips(content.refs) { ref in CodeRefChip(ref: ref) { onOpenEvidence(ref) } }
                         }
@@ -67,7 +84,7 @@ struct InspectorView: View {
                         if let showImpl = content.onShowImplementation {
                             Button("Show implementation") { showImpl() }.buttonStyle(.bordered)
                         }
-                        if let ref = content.refs.first {
+                        if let ref = content.primaryRef {
                             Button("Show diff") { onOpenEvidence(ref) }.buttonStyle(.bordered)
                         }
                     }
@@ -83,7 +100,7 @@ struct InspectorView: View {
 
     private func header(_ content: InspectorContent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(content.kindLabel.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Text(content.kindLabelDisplay).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             Text(content.title).font(.title3.weight(.semibold))
         }
     }
@@ -93,5 +110,16 @@ struct InspectorView: View {
             Text(label).font(.caption2.weight(.bold)).foregroundStyle(.secondary).tracking(0.5)
             content()
         }
+    }
+
+    /// The "CHANGED BY THIS PR" icon: a filled checkmark when it did, a plain minus when
+    /// it didn't.
+    nonisolated static func changedIconName(_ changed: Bool) -> String {
+        changed ? "checkmark.circle.fill" : "minus.circle"
+    }
+
+    /// The icon's tint, matching `changedIconName`.
+    nonisolated static func changedIconTint(_ changed: Bool) -> Color {
+        changed ? .green : .secondary
     }
 }
