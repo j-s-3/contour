@@ -2,20 +2,26 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
-    @State private var store = GraphStore()
+    @State private var store: GraphStore
     @State private var showPalette = false
     @State private var confirmApprove = false
     @State private var composingChangeRequest = false
-    @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
+    @State private var needsOnboarding: Bool
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @Namespace private var markNamespace
     @State private var urlFieldFocusRequest = 0
 
+    init(store: GraphStore = GraphStore(), needsOnboarding: Bool? = nil) {
+        _store = State(initialValue: store)
+        _needsOnboarding = State(initialValue: needsOnboarding ?? !Preferences.shared.hasCompletedOnboarding)
+    }
+
     var body: some View {
-        Group {            if needsOnboarding {
+        Group {
+            if needsOnboarding {
                 WelcomeWizard { firstURL in
                     needsOnboarding = false
-                    if let firstURL { store.load(prURL: firstURL) }
+                    Self.openFirstPR(firstURL) { store.load(prURL: $0) }
                 }
             } else {
                 mainBody
@@ -33,30 +39,53 @@ struct ContentView: View {
         .focusedSceneValue(\.reviewStore, store.phase == .review ? store : nil)
         .focusedSceneValue(\.prSession, needsOnboarding ? nil : sessionActions)
         .onAppear {
-            if !needsOnboarding, case .idle = store.phase,
-               let url = ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"], !url.isEmpty {
-                store.load(prURL: url)
+            if !needsOnboarding, case .idle = store.phase {
+                Self.openFirstPR(ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"]) { store.load(prURL: $0) }
             }
         }
         .onChange(of: store.phase) { _, phase in
             guard phase == .review,
-                  let lens = ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"] else { return }
-            switch lens {
-            case "architecture": store.navigate(to: .architecture)
-            case "flows": store.navigate(to: .flows)
-            case "decisions": store.navigate(to: .decisions)
-            default: break
-            }
+                  let target = Self.lensTarget(named: ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"])
+            else { return }
+            store.navigate(to: target)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
-        .onOpenURL { url in
-            guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
-            store.load(prURL: prURL)
-        }
+        .onOpenURL { url in Self.openLink(url, needsOnboarding: needsOnboarding) { store.load(prURL: $0) } }
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
+
+    nonisolated static func openFirstPR(_ url: String?, load: (String) -> Void) {
+        if let url, !url.isEmpty { load(url) }
+    }
+
+    nonisolated static func openLink(_ url: URL, needsOnboarding: Bool, load: (String) -> Void) {
+        guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
+        load(prURL)
+    }
+
+    static func reviewActions(graph: PRGraph, store: GraphStore) -> ReviewActions {
+        ReviewActions(
+            graph: graph,
+            prURL: store.lastPRURL,
+            ask: { subject in withAnimation(spring) { store.ask(about: subject) } },
+            askQuestion: { question, subject in withAnimation(spring) { store.ask(question, about: subject) } },
+            navigate: { store.navigate(to: $0) },
+            focus: { store.focusedSubject = $0 }
+        )
+    }
+
+    nonisolated static func lensTarget(named name: String?) -> NavigationTarget? {
+        switch name {
+        case "architecture": return .architecture
+        case "flows": return .flows
+        case "decisions": return .decisions
+        default: return nil
+        }
+    }
+
+    static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
     private var sessionActions: PRSessionActions {
         PRSessionActions(
@@ -67,10 +96,7 @@ struct ContentView: View {
         )
     }
 
-    private func openDifferentPR() {
-        store.close()
-        urlFieldFocusRequest += 1
-    }
+    private func openDifferentPR() { store.close(); urlFieldFocusRequest += 1 }
 
     @ViewBuilder
     private var mainBody: some View {
@@ -127,20 +153,9 @@ struct ContentView: View {
                         .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
                 }
         }
-        .environment(\.reviewActions, ReviewActions(
-            graph: graph,
-            prURL: store.lastPRURL,
-            ask: { subject in withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: subject) } },
-            askQuestion: { question, subject in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(question, about: subject) }
-            },
-            navigate: { store.navigate(to: $0) },
-            focus: { store.focusedSubject = $0 }
-        ))
+        .environment(\.reviewActions, Self.reviewActions(graph: graph, store: store))
         .background(
-            Button("") {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: store.subjectForCurrentLocation) }
-            }
+            Button("") { withAnimation(Self.spring) { store.ask(about: store.subjectForCurrentLocation) } }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
             .opacity(0)
         )
@@ -163,9 +178,7 @@ struct ContentView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
-                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }) {
-                    store.retry($0)
-                }
+                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }, onRetry: { store.retry($0) })
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
                 Button { store.copyReviewSummary() } label: { Image(systemName: "doc.on.clipboard") }
@@ -175,17 +188,7 @@ struct ContentView: View {
                     .disabled(store.pullRequestWebURL == nil)
                 approveButton(graph)
                 requestChangesButton(graph)
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                        if store.conversations.isPresented {
-                            store.conversations.close()
-                        } else if store.conversations.active != nil {
-                            store.conversations.isPresented = true
-                        } else {
-                            store.ask(about: store.subjectForCurrentLocation)
-                        }
-                    }
-                } label: {
+                Button { withAnimation(Self.spring) { store.toggleConversations() } } label: {
                     Image(systemName: store.conversations.isPresented ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
                 }
                 .help("Conversations — ask about what you're looking at (⌘⇧A)")
@@ -228,9 +231,7 @@ struct ContentView: View {
         .help(store.reviewUnavailableReason(.requestChanges) ?? "Request changes on GitHub")
         .disabled(!store.canSubmitReview(.requestChanges))
         .sheet(isPresented: $composingChangeRequest) {
-            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { comment in
-                store.submitReview(.requestChanges, comment: comment)
-            }
+            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { store.submitReview(.requestChanges, comment: $0) }
         }
     }
 
@@ -479,9 +480,8 @@ struct ContentView: View {
         case .content(showsOverlay: false):
             content()
         case .failed(let message):
-            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
-            }
+            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) },
+                              onAsk: { withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) } })
         case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }
         case .pending:

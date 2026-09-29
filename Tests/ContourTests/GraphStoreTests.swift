@@ -352,4 +352,26 @@ struct GraphStoreTests {
         store.send("does this matter?", in: conversation)
         #expect(conversation.messages.isEmpty)
     }
+
+    @Test @MainActor func toggleConversationsStartsClosesAndReopens() {
+        let store = GraphStore()
+        store.handle(.graph(sampleGraph))
+        store.toggleConversations()
+        #expect(store.conversations.isPresented)
+        #expect(store.conversations.active != nil)
+        store.toggleConversations()
+        #expect(!store.conversations.isPresented)
+        store.toggleConversations()
+        #expect(store.conversations.isPresented)
+        #expect(store.conversations.conversations.count == 1)
+    }
+
+    @Test @MainActor func initCanStartInAGivenPhaseAndReviewState() {
+        let store = GraphStore(phase: .opening, review: .submitted(.approve))
+        #expect(store.phase == .opening)
+        #expect(store.review == .submitted(.approve))
+        store.handle(.graph(sampleGraph))
+        #expect(store.phase == .review)
+    }
 }
+

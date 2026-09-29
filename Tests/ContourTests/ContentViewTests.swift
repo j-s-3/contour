@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import Contour
 
 struct ContentViewTests {
@@ -167,4 +168,47 @@ struct ContentViewTests {
         #expect(ContentView.diffRowStatus(diffText: nil) == .pending)
         #expect(ContentView.diffRowStatus(diffText: "diff --git a b") == .done)
     }
+
+    @Test func lensTargetResolvesTheThreeNamedLenses() {
+        #expect(ContentView.lensTarget(named: "architecture") == .architecture)
+        #expect(ContentView.lensTarget(named: "flows") == .flows)
+        #expect(ContentView.lensTarget(named: "decisions") == .decisions)
+        #expect(ContentView.lensTarget(named: "diff") == nil)
+        #expect(ContentView.lensTarget(named: nil) == nil)
+    }
+
+    @Test func openFirstPROpensOnlyANonEmptyURL() {
+        var opened: [String] = []
+        ContentView.openFirstPR(nil) { opened.append($0) }
+        ContentView.openFirstPR("") { opened.append($0) }
+        ContentView.openFirstPR("https://github.com/o/r/pull/1") { opened.append($0) }
+        #expect(opened == ["https://github.com/o/r/pull/1"])
+    }
+
+    @Test func openLinkRequiresFinishedSetupAndAPullRequestLink() throws {
+        var opened: [String] = []
+        let pr = try #require(URL(string: "https://github.com/o/r/pull/7"))
+        ContentView.openLink(pr, needsOnboarding: true) { opened.append($0) }
+        #expect(opened.isEmpty)
+        ContentView.openLink(try #require(URL(string: "https://example.com/nope")), needsOnboarding: false) { opened.append($0) }
+        #expect(opened.isEmpty)
+        ContentView.openLink(pr, needsOnboarding: false) { opened.append($0) }
+        #expect(opened == ["https://github.com/o/r/pull/7"])
+    }
+
+    @Test @MainActor func reviewActionsDriveTheStore() {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let store = GraphStore()
+        store.handle(.graph(graph))
+        let actions = ContentView.reviewActions(graph: graph, store: store)
+        actions.navigate(.decisions)
+        #expect(store.current == .decisions)
+        actions.focus(.pullRequest)
+        #expect(store.focusedSubject == .pullRequest)
+        actions.ask(.pullRequest)
+        #expect(store.conversations.isPresented)
+        actions.askQuestion("Why?", .pullRequest)
+        #expect(store.conversations.active?.messages.isEmpty == false)
+    }
 }
+

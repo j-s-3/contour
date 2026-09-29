@@ -51,6 +51,11 @@ final class GraphStore {
 
     var current: NavigationTarget { path.last ?? .summary }
 
+    init(phase: SessionPhase = .idle, review: PRReview.State = .idle) {
+        self.phase = phase
+        self.review = review
+    }
+
     private var runTask: Task<Void, Never>?
 
     @MainActor
@@ -246,6 +251,17 @@ final class GraphStore {
     func ask(about subject: ReviewSubject) {
         noteEngagement()
         conversations.open(subject)
+    }
+
+    @MainActor
+    func toggleConversations() {
+        if conversations.isPresented {
+            conversations.close()
+        } else if conversations.active != nil {
+            conversations.isPresented = true
+        } else {
+            ask(about: subjectForCurrentLocation)
+        }
     }
 
     @MainActor
