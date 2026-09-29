@@ -12,13 +12,26 @@ struct OnboardingView: View {
     var markNamespace: Namespace.ID
     var focusRequest: Int
     var onSubmit: (String) -> Void
+    nonisolated(unsafe) private let pasteboard: NSPasteboard
+    private let loadRecents: () -> [AnalysisCache.RecentPR]
+    private let loadReviewRequests: @MainActor () async -> [ReviewRequest]?
 
     static let rowsShown = 5
 
     init(
         initialURL: String? = nil, markNamespace: Namespace.ID, focusRequest: Int = 0,
+        pasteboard: NSPasteboard = .general,
+        loadRecents: @escaping () -> [AnalysisCache.RecentPR] = {
+            AnalysisCache().recentPRs(limit: OnboardingView.rowsShown)
+        },
+        loadReviewRequests: @escaping @MainActor () async -> [ReviewRequest]? = {
+            await ReviewRequests.fetch(access: Preferences.shared.resolvedGitHubAccess)
+        },
         onSubmit: @escaping (String) -> Void
     ) {
+        self.pasteboard = pasteboard
+        self.loadRecents = loadRecents
+        self.loadReviewRequests = loadReviewRequests
         _urlText = State(initialValue: initialURL ?? "")
         self.markNamespace = markNamespace
         self.focusRequest = focusRequest
@@ -54,7 +67,7 @@ struct OnboardingView: View {
                         Self.loadPastedText(from: providers) { urlText = $0 }
                     }
                 Button {
-                    if let clip = NSPasteboard.general.string(forType: .string) {
+                    if let clip = pasteboard.string(forType: .string) {
                         urlText = OnboardingViewLogic.resolvedPasteText(clip)
                     }
                 } label: {
@@ -93,9 +106,9 @@ struct OnboardingView: View {
         .onChange(of: focusRequest) { urlFieldFocused = true }
         .animation(.easeInOut(duration: 0.2), value: clipboardOffer)
         .task {
-            recents = AnalysisCache().recentPRs(limit: Self.rowsShown)
+            recents = loadRecents()
             await checkClipboard()
-            let requests = await ReviewRequests.fetch(access: Preferences.shared.resolvedGitHubAccess)
+            let requests = await loadReviewRequests()
             withAnimation(.easeInOut(duration: 0.25)) { reviewRequests = requests }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -133,14 +146,13 @@ struct OnboardingView: View {
         ClipboardOfferRow(
             offer: offer, onOpen: onSubmit, onOpenUnread: openUnreadClipboard,
             onDismiss: {
-                declinedChangeCount = NSPasteboard.general.changeCount
+                declinedChangeCount = pasteboard.changeCount
                 clipboardOffer = nil
             }
         )
     }
 
     private func checkClipboard() async {
-        let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
         guard !OnboardingViewLogic.isDeclined(changeCount: changeCount, declinedChangeCount: declinedChangeCount) else {
             clipboardOffer = nil
@@ -163,7 +175,7 @@ struct OnboardingView: View {
         clipboardOffer = nil
         declinedChangeCount = changeCount
         OnboardingViewLogic.perform(
-            OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)),
+            OnboardingViewLogic.resolveClipboardRead(pasteboard.string(forType: .string)),
             open: onSubmit, fillField: { urlText = $0 }
         )
     }
