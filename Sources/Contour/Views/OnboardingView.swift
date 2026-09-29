@@ -49,15 +49,7 @@ struct OnboardingView: View {
                     .focused($urlFieldFocused)
                     .onSubmit(submit)
                     .onPasteCommand(of: [.text, .url]) { providers in
-                        guard let provider = providers.first else { return }
-                        Task {
-                            guard let text = await withCheckedContinuation({ continuation in
-                                _ = provider.loadObject(ofClass: String.self) { text, _ in
-                                    continuation.resume(returning: text)
-                                }
-                            }) else { return }
-                            urlText = OnboardingViewLogic.resolvedPasteText(text)
-                        }
+                        Self.loadPastedText(from: providers) { urlText = $0 }
                     }
                 Button {
                     if let clip = NSPasteboard.general.string(forType: .string) {
@@ -109,36 +101,22 @@ struct OnboardingView: View {
         }
     }
 
-    @ViewBuilder
     private var pullRequestLists: some View {
-        let requests = OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown)
-        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
-            HStack(alignment: .top, spacing: 28) {
-                if !requests.isEmpty {
-                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
-                        ForEach(requests) { request in
-                            PullRequestRow(
-                                title: request.title, repo: request.repo, number: request.number,
-                                detail: request.isDraft ? "\(request.author) · draft" : request.author,
-                                date: request.updatedAt, dateVerb: "updated", url: request.url, onOpen: onSubmit
-                            )
-                        }
-                    }
+        PullRequestLists(
+            requests: OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown),
+            recents: recents, onOpen: onSubmit
+        )
+    }
+
+    static func loadPastedText(from providers: [NSItemProvider], apply: @escaping @MainActor (String) -> Void) {
+        guard let provider = providers.first else { return }
+        Task { @MainActor in
+            guard let text = await withCheckedContinuation({ continuation in
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    continuation.resume(returning: text)
                 }
-                if !recents.isEmpty {
-                    PullRequestList(title: "Recently opened", systemImage: "clock.arrow.circlepath") {
-                        ForEach(recents) { recent in
-                            PullRequestRow(
-                                title: recent.title, repo: recent.repo, number: recent.number,
-                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onSubmit
-                            )
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: 760)
-            .padding(.horizontal, 24)
-            .transition(.opacity)
+            }) else { return }
+            apply(OnboardingViewLogic.resolvedPasteText(text))
         }
     }
 
@@ -148,33 +126,13 @@ struct OnboardingView: View {
     }
 
     private func clipboardOfferRow(_ offer: ClipboardOffer) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.on.clipboard")
-                .foregroundStyle(.secondary)
-            switch offer {
-            case .pullRequest(let url):
-                Button {
-                    onSubmit(url)
-                } label: {
-                    Text(verbatim: "Open \(PRLink.label(for: url) ?? url) from clipboard?")
-                }
-                .buttonStyle(.link)
-                .help(url)
-            case .unreadLink(let changeCount):
-                Button("Open the link on your clipboard?") { openUnreadClipboard(changeCount) }
-                    .buttonStyle(.link)
-            }
-            Button {
+        ClipboardOfferRow(
+            offer: offer, onOpen: onSubmit, onOpenUnread: openUnreadClipboard,
+            onDismiss: {
                 declinedChangeCount = NSPasteboard.general.changeCount
                 clipboardOffer = nil
-            } label: {
-                Image(systemName: "xmark.circle.fill")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
-            .help("Dismiss")
-        }
-        .font(.callout)
+        )
     }
 
     private func checkClipboard() async {
@@ -198,10 +156,80 @@ struct OnboardingView: View {
     private func openUnreadClipboard(_ changeCount: Int) {
         clipboardOffer = nil
         declinedChangeCount = changeCount
-        switch OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)) {
-        case .open(let url): onSubmit(url)
-        case .fillField(let text): urlText = text
-        case .doNothing: break
+        OnboardingViewLogic.perform(
+            OnboardingViewLogic.resolveClipboardRead(NSPasteboard.general.string(forType: .string)),
+            open: onSubmit, fillField: { urlText = $0 }
+        )
+    }
+}
+
+struct ClipboardOfferRow: View {
+    let offer: ClipboardOffer
+    var onOpen: (String) -> Void
+    var onOpenUnread: (Int) -> Void
+    var onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard")
+                .foregroundStyle(.secondary)
+            switch offer {
+            case .pullRequest(let url):
+                Button {
+                    onOpen(url)
+                } label: {
+                    Text(verbatim: "Open \(PRLink.label(for: url) ?? url) from clipboard?")
+                }
+                .buttonStyle(.link)
+                .help(url)
+            case .unreadLink(let changeCount):
+                Button("Open the link on your clipboard?") { onOpenUnread(changeCount) }
+                    .buttonStyle(.link)
+            }
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .help("Dismiss")
+        }
+        .font(.callout)
+    }
+}
+
+struct PullRequestLists: View {
+    let requests: [ReviewRequest]
+    let recents: [AnalysisCache.RecentPR]
+    var onOpen: (String) -> Void
+
+    var body: some View {
+        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
+            HStack(alignment: .top, spacing: 28) {
+                if !requests.isEmpty {
+                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
+                        ForEach(requests) { request in
+                            PullRequestRow(
+                                title: request.title, repo: request.repo, number: request.number,
+                                detail: request.isDraft ? "\(request.author) · draft" : request.author,
+                                date: request.updatedAt, dateVerb: "updated", url: request.url, onOpen: onOpen
+                            )
+                        }
+                    }
+                }
+                if !recents.isEmpty {
+                    PullRequestList(title: "Recently opened", systemImage: "clock.arrow.circlepath") {
+                        ForEach(recents) { recent in
+                            PullRequestRow(
+                                title: recent.title, repo: recent.repo, number: recent.number,
+                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onOpen
+                            )
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 24)
+            .transition(.opacity)
         }
     }
 }
@@ -243,6 +271,14 @@ enum OnboardingViewLogic {
         return .fillField(clip)
     }
 
+    static func perform(_ action: ClipboardReadAction, open: (String) -> Void, fillField: (String) -> Void) {
+        switch action {
+        case .open(let url): open(url)
+        case .fillField(let text): fillField(text)
+        case .doNothing: break
+        }
+    }
+
     static func resolvedPasteText(_ text: String) -> String {
         PRLink.extract(from: text) ?? text
     }
@@ -256,7 +292,7 @@ enum OnboardingViewLogic {
     }
 }
 
-private struct PullRequestList<Rows: View>: View {
+struct PullRequestList<Rows: View>: View {
     let title: String
     let systemImage: String
     @ViewBuilder var rows: Rows
@@ -274,7 +310,7 @@ private struct PullRequestList<Rows: View>: View {
     }
 }
 
-private struct PullRequestRow: View {
+struct PullRequestRow: View {
     let title: String
     let repo: String
     let number: Int
@@ -391,7 +427,13 @@ struct AnalyzingView: View {
         .help("Every step the harness takes as it reads the repository")
     }
 
-    private var console: some View {
+    private var console: some View { AnalysisConsoleView(log: log) }
+}
+
+struct AnalysisConsoleView: View {
+    let log: [PipelineProgressEntry]
+
+    var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 5) {
