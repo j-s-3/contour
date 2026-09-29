@@ -1,25 +1,7 @@
 import XCTest
 @testable import Contour
 
-/// Full end-to-end pipeline run against a real, tiny, **public** PR. Hits the network and
-/// shells out to a real model for every stage — not a unit test, a genuine integration
-/// smoke test. Gated behind an env var so it doesn't run in normal `swift test` (cost +
-/// network + external-service flakiness).
-///
-///   RUN_CONTOUR_INTEGRATION=1 swift test --filter IntegrationSmokeTests
-///
-/// The PR is public on purpose: the run needs no private-repo access, and with
-/// `CONTOUR_GITHUB_ACCESS=anonymous` it needs no `gh` either, which is the only way to
-/// exercise the bare-machine path end to end.
-///
-/// Both the harness and the GitHub access mode come from the environment, so the same
-/// test covers every combination:
-///
-///   RUN_CONTOUR_INTEGRATION=1 CONTOUR_HARNESS=claude swift test --filter IntegrationSmoke
-///   RUN_CONTOUR_INTEGRATION=1 CONTOUR_GITHUB_ACCESS=anonymous swift test --filter IntegrationSmoke
 final class IntegrationSmokeTests: XCTestCase {
-
-    /// Small, public, and long-merged, so the run stays cheap and the target doesn't move.
     static let defaultPR = "https://github.com/cli/cli/pull/1"
 
     func testFullPipelineAgainstRealTinyPR() async throws {
@@ -30,9 +12,6 @@ final class IntegrationSmokeTests: XCTestCase {
         let harness = env["CONTOUR_HARNESS"].flatMap(HarnessID.init(rawValue:)) ?? .claude
         let access = env["CONTOUR_GITHUB_ACCESS"].flatMap(GitHubAccessMode.init(rawValue:)) ?? .auto
 
-        // CONTOUR_PR_URL retargets the run, which is how MockAnalysisFixtures gets
-        // regenerated (alongside CONTOUR_DUMP_STAGES) against a PR rich enough to be worth
-        // capturing.
         let prURL = env["CONTOUR_PR_URL"] ?? Self.defaultPR
         let expected = try GitHubService.parse(prURL: prURL)
 
@@ -78,8 +57,6 @@ final class IntegrationSmokeTests: XCTestCase {
         print("How it was solved:", result.graph.pr.howItWasSolved?.text ?? "nil")
     }
 
-    /// The anonymous path on its own, without the model spend. This is the check that
-    /// matters most for "works on a bare machine": no `gh`, no token, just HTTPS.
     func testAnonymousSourceFetchesAPublicPR() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
                           "Set RUN_CONTOUR_INTEGRATION=1 to run this (network).")
@@ -94,9 +71,6 @@ final class IntegrationSmokeTests: XCTestCase {
         XCTAssertFalse(ctx.files.isEmpty)
     }
 
-    /// Both sources must produce the same `RawPRContext` for the same PR. Since `gh` is
-    /// preferred whenever it's installed, the anonymous path is the rarely-exercised one —
-    /// this is what keeps it from drifting unnoticed.
     func testBothSourcesAgreeOnTheSamePR() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
                           "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + gh).")

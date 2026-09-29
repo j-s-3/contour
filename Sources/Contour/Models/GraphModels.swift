@@ -1,13 +1,9 @@
 import Foundation
 
-// MARK: - Provenance primitives (the trust spine, §15)
-
-/// Where a statement's truth comes from. Rendered with distinct color/iconography
-/// everywhere in the UI — never blended together.
 enum Provenance: String, Codable, Hashable, Sendable {
-    case fact             // directly observable from repo/diff
-    case claim            // stated by the PR author (description, commit, comment)
-    case interpretation   // AI-derived; must be hedged in its own text
+    case fact
+    case claim
+    case interpretation
 }
 
 enum Confidence: String, Codable, Hashable, Sendable, Comparable {
@@ -23,9 +19,6 @@ enum Confidence: String, Codable, Hashable, Sendable, Comparable {
     static func < (lhs: Confidence, rhs: Confidence) -> Bool { lhs.rank < rhs.rank }
 }
 
-/// The atomic unit of every claim the app displays. See design doc §11 and §15.
-/// Note: `id` is deliberately excluded from the wire format — the AI never assigns
-/// identity to a Statement, only to the nodes that own one.
 struct Statement: Codable, Hashable, Sendable, Identifiable {
     var id: String = UUID().uuidString
     var text: String
@@ -55,11 +48,8 @@ struct Statement: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-// MARK: - Code evidence
-
 enum RefSide: String, Codable, Hashable, Sendable { case head, base }
 
-/// A pointer into real source. The terminal leaf of every concept in the graph (§11).
 struct CodeRef: Codable, Hashable, Sendable, Identifiable {
     var path: String
     var startLine: Int
@@ -85,80 +75,40 @@ struct CodeRef: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-// MARK: - Change classification shared by components / entry points / flow steps
-
 enum ChangeKind: String, Codable, Hashable, Sendable {
     case new, changed, touched, unchanged
-    /// Only architecture parts use this: a responsibility the PR takes out of the system.
     case removed
 }
 
-// MARK: - Architecture as a whiteboard drawing (§4.3)
-//
-// Architecture is the handful of boxes a staff engineer would draw to explain where a change
-// sits: conceptual parts ("Content Inspection", not `InputReader::try_new`), each with a
-// one-line responsibility, joined by edges that say what crosses them ("bytes", "content
-// type"). The changed files and call graph are evidence for that drawing, never the drawing.
-// A part may contain parts (`ComponentNode.parentId`), which is how the reviewer zooms from
-// system to subsystem; implementation-level nodes and code refs sit below that.
-//
-// Most PRs change little about this structure, and saying so is the point: the delta is
-// carried by `ArchitectureAssessment` (how much the structure changed, in words),
-// `ResponsibilityDelta` (what a part now does differently) and `ArchitectureEdge.change` /
-// `previousLabel` (what now crosses a boundary). Edges and boundaries are separate from
-// nodes so a PR can change a relationship without touching either endpoint.
-
-/// Whether a relationship is synchronous (solid arrow, on the caller's critical path) or
-/// asynchronous/queued (dashed arrow, decoupled). This is the one architectural fact a
-/// reviewer most wants at a glance — did new work land on the request's critical path?
 enum EdgeFlow: String, Codable, Hashable, Sendable {
     case sync
     case async
 }
 
-/// Change classification carried by an *edge*, so the diagram can emphasize the
-/// architectural delta (a newly-introduced interaction) and fade unchanged context.
 enum EdgeChange: String, Codable, Hashable, Sendable {
-    case new       // interaction introduced by this PR — the delta the eye should go to
-    case changed   // interaction existed but its shape/semantics changed
-    case existing  // unchanged context — renders faint
-    case removed   // interaction deleted by this PR — before-only, struck through
+    case new
+    case changed
+    case existing
+    case removed
 }
 
-/// Which snapshot an element belongs to, for the Before / After / Delta modes.
 enum ArchPresence: String, Codable, Hashable, Sendable {
     case before, after, both
 }
 
-/// A directed edge between two `ComponentNode`s, labeled with what crosses it — data, an
-/// event, a request ("bytes", "content type", "order event"). Direction is the direction of
-/// travel (from → to), so the layout reads left-to-right along it. Edges may join parts
-/// inside different parents; a zoomed-out diagram lifts them to the visible ancestors.
 struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var fromId: String
     var toId: String
-    /// What crosses the edge, e.g. "buffered bytes", "content type". Older graphs carry a
-    /// verb ("triggers") instead. Never a class/method name.
     var label: String
-    /// What crossed before this PR, when that changed ("first line" → now "buffered sample").
     var previousLabel: String?
     var flow: EdgeFlow = .sync
     var change: EdgeChange = .existing
-    /// True when this edge crosses a security/trust boundary (into another process, a
-    /// queue, an external service, or a privilege boundary).
     var isTrustBoundary: Bool = false
-    /// True when this edge sits on a user-facing or operationally important critical path
-    /// (e.g. the synchronous upload path). Combined with `change == .new` this is the
-    /// "new work on the critical path" case the redesign most wants to surface.
     var onCriticalPath: Bool = false
-    /// Decisions this relationship embodies — the bridge from architecture to review
-    /// judgment ("run this synchronously after upload?").
     var decisionIds: [String] = []
-    /// Optional one-line annotation shown on the edge, e.g. "NEW WORK ON CRITICAL PATH".
     var note: String?
 
-    /// Which Before/After snapshot this edge belongs to, derived from its change kind.
     var presence: ArchPresence {
         switch change {
         case .new: return .after
@@ -212,9 +162,6 @@ enum BoundaryKind: String, Codable, Hashable, Sendable {
     }
 }
 
-/// A named grouping drawn as a container behind the nodes it holds — the application
-/// process, an external service, a datastore, a trust boundary. Only boundaries relevant
-/// to understanding the PR should be emitted.
 struct SystemBoundary: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var label: String
@@ -234,16 +181,10 @@ struct SystemBoundary: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// How much a PR changes the system's structure. Words, not a score: "low" means the boxes
-/// and arrows are the same and something about one of them moved.
 enum ArchitecturalImpact: String, Codable, Hashable, Sendable, CaseIterable {
-    /// Same parts, same relationships, same information crossing them.
     case none
-    /// Same parts and relationships; a responsibility or what crosses one boundary changed.
     case low
-    /// A relationship or part added, removed, or moved.
     case moderate
-    /// The shape of the system changed — new work on a critical path, a new boundary crossed.
     case significant
 
     var label: String {
@@ -256,15 +197,10 @@ enum ArchitecturalImpact: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// The architecture stage's answer to "what did this PR change about the structure?" — the
-/// first thing the Architecture lens says, above the diagram.
 struct ArchitectureAssessment: Codable, Hashable, Sendable {
     var impact: ArchitecturalImpact
-    /// One short line, e.g. "No structural change" or "Publishing now reindexes search".
     var headline: String
-    /// One to three sentences naming the relationship or responsibility that changed.
     var explanation: Statement?
-    /// The part and relationship ids where the change lives, most important first.
     var focusIds: [String] = []
 
     init(impact: ArchitecturalImpact, headline: String, explanation: Statement? = nil, focusIds: [String] = []) {
@@ -280,8 +216,6 @@ struct ArchitectureAssessment: Codable, Hashable, Sendable {
     }
 }
 
-/// What a part does differently after this PR, as two short phrases ("first line" →
-/// "buffered sample") plus one sentence for the inspector.
 struct ResponsibilityDelta: Codable, Hashable, Sendable {
     var before: String?
     var after: String?
@@ -299,25 +233,12 @@ struct ResponsibilityDelta: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - Abstraction levels (Behavior → System → Components → Implementation → Code)
-//
-// The reviewer's mental model is a strict hierarchy, never bottom-up. Every major node
-// carries an explicit level so views can filter/zoom instead of dumping everything at
-// once. Lower rawValue = higher (more conceptual) in the hierarchy.
 enum AbstractionLevel: String, Codable, Comparable, Hashable, Sendable, CaseIterable {
-    // String-backed, not Int-backed: every prompt asks `pi` for a level as a string label
-    // ("behavior"/"system"/"component"/"implementation", per PromptBuilder), and a real
-    // response confirmed it comes back that way (`"level":"system"`). An Int raw value
-    // decodes fine against `pi`'s own JSON.encode round-trip in tests but throws a
-    // typeMismatch the first time it meets a real string from the model — exactly the kind
-    // of mismatch this type exists to prevent everywhere else in this file.
     case behavior
     case system
     case component
     case implementation
 
-    /// Ordering for the Comparable conformance (lower = higher/more conceptual), independent
-    /// of the raw string so callers can't rely on rawValue for sort order by accident.
     private var rank: Int {
         switch self {
         case .behavior: return 0
@@ -339,8 +260,6 @@ enum AbstractionLevel: String, Codable, Comparable, Hashable, Sendable, CaseIter
     }
 }
 
-// MARK: - Reviewer state on decisions (§4.4)
-
 enum ReviewerState: String, Codable, Hashable, Sendable, CaseIterable {
     case unreviewed, accepted, questioned, discuss
 
@@ -354,22 +273,9 @@ enum ReviewerState: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-// MARK: - Review significance (§4.4)
-//
-// Where human judgment adds the most value, assessed independently of abstraction level:
-// an implementation-level choice about retries or transaction boundaries can matter more
-// than an architectural-looking one about where a helper lives. Significance decides what
-// Decisions asks the reviewer to judge; `AbstractionLevel` only says what kind of choice it is.
-
-/// How much a decision deserves the reviewer's conscious agreement before approving.
-/// Internal ranking only — never shown as a score.
 enum ReviewSignificance: String, Codable, Hashable, Sendable, Comparable {
-    /// Getting it wrong could materially hurt correctness, data, reliability, compatibility…
-    /// A strong engineer would want to stop and consciously agree with it.
     case high
-    /// Real but contained consequences — worth knowing, not worth stopping for.
     case medium
-    /// Local, easily reversed, or with no material consequence identified.
     case low
 
     private var rank: Int {
@@ -382,12 +288,9 @@ enum ReviewSignificance: String, Codable, Hashable, Sendable, Comparable {
 
     static func < (lhs: ReviewSignificance, rhs: ReviewSignificance) -> Bool { lhs.rank < rhs.rank }
 
-    /// One step more significant, for a signal (like an Overview concern) that raises it.
     var raised: ReviewSignificance { self == .low ? .medium : .high }
 }
 
-/// What a decision could affect if it's wrong. A decision names the one to three that
-/// explain its significance.
 enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
     case correctness, security, dataIntegrity, reliability, concurrency, performance,
          scalability, compatibility, failureBehavior, operability, maintainability,
@@ -403,8 +306,6 @@ enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
         }
     }
 
-    /// Tolerates the spellings a model writes: "data integrity", "data-integrity",
-    /// "dataIntegrity", "Failure behavior".
     init?(lenient raw: String) {
         let key = raw.lowercased().filter(\.isLetter)
         let aliases: [String: DecisionImpact] = [
@@ -418,38 +319,18 @@ enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// The reviewer's own call on where a decision belongs, overriding the analysis. The AI
-/// proposes the review surface; the human controls it.
 enum ReviewPlacement: String, Codable, Hashable, Sendable {
-    /// Added to Decisions to Review by the reviewer.
     case review
-    /// Marked "Not worth reviewing" by the reviewer.
     case other
 }
 
-// MARK: - A decision as the question it answered (§4.4)
-//
-// The Decisions lens is where the reviewer makes judgments, so a decision is drawn as the
-// question the engineer had to answer, the options on the table, and which one this PR
-// took — not as a paragraph describing the implementation.
-
-/// How the options of a decision are best drawn. Not every choice is a two-sided spectrum.
 enum DecisionShape: String, Codable, Hashable, Sendable {
-    /// Two approaches: A ○────● B.
     case binary
-    /// An ordered scale (sizes, limits, strictness): 1 line ── 256B ── 1KB ● ── 4KB.
     case threshold
-    /// Three or more unordered alternatives, drawn as a radio list.
     case options
-    /// An architectural change: the structure before (the first option) and after (the
-    /// second, chosen), each label a short chain like "Reader → Inspector", drawn as two
-    /// tiny diagrams.
     case beforeAfter
 }
 
-/// One option on the table for a decision. `label` is a short noun phrase ("First 1 KB",
-/// "Use what's buffered"); `detail` is the property it buys, in a few words
-/// ("non-blocking streaming").
 struct DecisionOption: Codable, Hashable, Sendable {
     var label: String
     var detail: String?
@@ -467,30 +348,17 @@ struct DecisionOption: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - Behavior change (the hero of Summary — "what does the system do differently now")
-//
-// This is the top of the hierarchy: a before/after pipeline of short, present-tense,
-// scannable stage labels, tagged so the UI can render them as a compact branching
-// diagram rather than prose. Everything else in the graph is reachable as a drill-down
-// from this node.
-
 enum BehaviorStageTag: String, Codable, Hashable, Sendable {
     case beforeOnly
     case afterOnly
     case both
 }
 
-/// How a pipeline ends, when the ending is the point — "Server rejects the request" before,
-/// "Start session" after. Only a pipeline's final stage normally carries one; every other
-/// stage leaves it nil and renders as a plain step.
 enum BehaviorOutcome: String, Codable, Hashable, Sendable {
     case success
     case failure
 }
 
-/// One box in the before/after pipeline diagram. Label is deliberately short (2-5 words,
-/// present tense, e.g. "Publish page") — class/method names belong in `componentIds`/
-/// `refs`, never in the label itself.
 struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
     var id: String = UUID().uuidString
     var label: String
@@ -516,23 +384,15 @@ struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
         flowId = try c.decodeIfPresent(String.self, forKey: .flowId)
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        // An unrecognized outcome string degrades to a plain step rather than failing the
-        // whole behavior change.
         outcome = (try? c.decodeIfPresent(BehaviorOutcome.self, forKey: .outcome)) ?? nil
     }
 }
 
-/// "What does the system do differently now" — the single most important thing about a
-/// PR, rendered as a before/after stage pipeline plus why/consequence/human-question, in
-/// under ~20 seconds. This is the hero of Summary; everything else is drill-down from it.
 struct BehaviorChange: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
     var before: [BehaviorStage] = []
     var after: [BehaviorStage] = []
-    // Only the dominant behaviorChanges entry is required (by the prompt) to carry these —
-    // a secondary, less-important entry may omit all three, so decoding must not hard-fail
-    // when they're missing (same "honest truncation" rule as everywhere else in this file).
     var why: Statement?
     var consequence: Statement?
     var humanQuestion: Statement?
@@ -555,16 +415,6 @@ struct BehaviorChange: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-// MARK: - Graph node types (§3, §11)
-//
-// Every node type below is decoded from AI-produced JSON that will, in practice,
-// sometimes omit fields that have a natural empty default (an empty `refs` array, no
-// `dependsOnIds`, etc). Swift's synthesized Decodable treats every stored property as
-// required regardless of its default value, so each type provides its own lenient
-// init(from:) — decodeIfPresent with a fallback — while keeping a normal memberwise
-// init for constructing nodes directly (mock data, tests, pipeline synthesis) and
-// relying on synthesized Encodable for the outbound direction, which needs no leniency.
-
 struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
@@ -576,19 +426,9 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
     var dependsOnIds: [String] = []
     var isTrustBoundaryEdge: Bool = false
     var filesChanged: Int = 0
-    /// Conceptual level of this node. The architecture graph's default rendering only
-    /// shows `.system`-level nodes; `.implementation` nodes (real classes/files) become
-    /// inspector content rather than graph boxes.
     var level: AbstractionLevel = .system
-    /// Free-text names of the classes/files that realize this conceptual responsibility
-    /// (e.g. ["SearchIndexCoordinator", "PagePublisher"]). Populated on
-    /// `.system`-level nodes; empty on `.implementation`-level nodes, which *are* the
-    /// implementation.
     var implementedBy: [String] = []
-    /// The part this one sits inside, for zooming from system to subsystem. Nil for the
-    /// top-level boxes of the drawing.
     var parentId: String?
-    /// What this part does differently after the PR. Nil when it's unchanged context.
     var delta: ResponsibilityDelta?
 
     init(id: String, title: String, changeKind: ChangeKind, summary: Statement? = nil,
@@ -634,35 +474,18 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     var consequences: [Statement] = []
     var confidence: Confidence
     var refs: [CodeRef] = []
-    /// What this choice traded, most prominent first. Empty when the choice had no
-    /// meaningful tradeoff — one is never manufactured just because the schema allows it.
     var tradeoffs: [DecisionTradeoff] = []
     var componentIds: [String] = []
     var reviewerState: ReviewerState = .unreviewed
     var reviewerNote: String = ""
-    /// The kind of choice this is — product behavior, system, component or implementation.
-    /// Descriptive only: it never decides whether the reviewer is asked to judge it
-    /// (`significance` does).
     var level: AbstractionLevel = .system
-    /// How much this deserves the reviewer's conscious judgment. Nil on graphs from before
-    /// significance was assessed; `PRGraph.significance(of:)` infers it for those.
     var significance: ReviewSignificance?
-    /// What getting this wrong would affect, most relevant first.
     var impacts: [DecisionImpact] = []
-    /// One sentence on why the decision does, or doesn't, need the reviewer's attention
-    /// ("Classification can vary with how the stream is chunked.").
     var significanceReason: String?
-    /// The reviewer moved this decision in or out of Decisions to Review.
     var reviewerPlacement: ReviewPlacement?
-    /// The decision phrased as the question the engineer had to answer ("How much data
-    /// should binary detection inspect?"). Nil on graphs from before the Decisions redesign;
-    /// `PRGraph.brief(for:)` falls back to `title`.
     var question: String?
-    /// The options that were on the table, exactly one `chosen`. Empty on older graphs.
     var options: [DecisionOption] = []
     var shape: DecisionShape?
-    /// Why this side was chosen, in at most two short lines. The full reasoning stays in
-    /// `rationale`.
     var why: Statement?
 
     init(id: String, title: String, decision: Statement, rationale: [Statement] = [],
@@ -697,7 +520,6 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         consequences = try c.decodeIfPresent([Statement].self, forKey: .consequences) ?? []
         confidence = try c.decodeIfPresent(Confidence.self, forKey: .confidence) ?? .medium
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        // A malformed tradeoff drops that one tradeoff, never the decision around it.
         tradeoffs = ((try? c.decodeIfPresent([LenientDecodable<DecisionTradeoff>].self, forKey: .tradeoffs)) ?? nil)?
             .compactMap(\.value) ?? []
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
@@ -706,10 +528,8 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         level = try c.decodeIfPresent(AbstractionLevel.self, forKey: .level) ?? .system
         question = try c.decodeIfPresent(String.self, forKey: .question)
         options = (try? c.decodeIfPresent([DecisionOption].self, forKey: .options)) ?? []
-        // An unrecognized shape degrades to one inferred from the options.
         shape = (try? c.decodeIfPresent(DecisionShape.self, forKey: .shape)) ?? nil
         why = try? c.decodeIfPresent(Statement.self, forKey: .why)
-        // An unrecognized significance is treated as unassessed, and falls back to inference.
         significance = (try? c.decodeIfPresent(ReviewSignificance.self, forKey: .significance)) ?? nil
         impacts = ((try? c.decodeIfPresent([String].self, forKey: .impacts)) ?? nil)?
             .compactMap(DecisionImpact.init(lenient:)) ?? []
@@ -719,30 +539,19 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// How much a tradeoff matters to the decision that made it. A decision usually has at most
-/// one primary tradeoff — the tension that makes it worth reviewing — which is drawn on the
-/// decision itself. Secondary tradeoffs are real but smaller, and wait in the drill-down.
 enum TradeoffProminence: String, Codable, Hashable, Sendable {
     case primary
     case secondary
 }
 
-/// Decodes one element of an array, yielding nil instead of failing the whole array.
 struct LenientDecodable<T: Decodable>: Decodable {
     var value: T?
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
 
-/// What a decision gave up to get what it chose — a property of the decision, never a
-/// review object of its own. A tradeoff exists because a decision was made, so it lives
-/// inside that decision and is judged along with it.
 struct DecisionTradeoff: Codable, Hashable, Sendable {
-    /// Short phrase naming the quality on one side, e.g. "detection completeness".
     var dimensionA: String
-    /// Short phrase naming the quality on the other side, e.g. "streaming behavior".
     var dimensionB: String
-    /// Where the choice landed: 0 = fully `dimensionA`, 1 = fully `dimensionB` — drawn as a
-    /// point on a line rather than explained in a paragraph.
     var chosenPosition: Double = 0.5
     var explanation: Statement?
     var prominence: TradeoffProminence = .primary
@@ -765,7 +574,6 @@ struct DecisionTradeoff: Codable, Hashable, Sendable {
         refs = (try? c.decodeIfPresent([CodeRef].self, forKey: .refs)) ?? []
     }
 
-    /// Which side the choice leans toward, for "why this side?".
     var chosenDimension: String { chosenPosition >= 0.5 ? dimensionB : dimensionA }
     var otherDimension: String { chosenPosition >= 0.5 ? dimensionA : dimensionB }
 }
@@ -817,17 +625,9 @@ struct FlowStep: Codable, Hashable, Sendable, Identifiable {
 struct FlowNode: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var title: String
-    /// Implementation-level detail — class/method-level steps. This is what a reviewer
-    /// sees after clicking a story step or hitting a "show implementation" affordance,
-    /// never the default view.
     var steps: [FlowStep] = []
     var entryPointId: String?
-    /// Story-level steps: 3-6 short present-tense labels ("Publish page", "Save revision",
-    /// "Rebuild search entry", ...) that render first — the default view of a flow.
     var storySteps: [Statement] = []
-    /// The flow as runtime behavior — trigger, stages, branches, boundaries, and what this PR
-    /// changed. Nil on graphs from before the Flows redesign; `PRGraph.behavior(for:)`
-    /// condenses one from `storySteps` for those.
     var behavior: FlowBehavior?
 
     init(id: String, title: String, steps: [FlowStep] = [], entryPointId: String? = nil, storySteps: [Statement] = [],
@@ -843,7 +643,6 @@ struct FlowNode: Codable, Hashable, Sendable, Identifiable {
         steps = try c.decodeIfPresent([FlowStep].self, forKey: .steps) ?? []
         entryPointId = try c.decodeIfPresent(String.self, forKey: .entryPointId)
         storySteps = try c.decodeIfPresent([Statement].self, forKey: .storySteps) ?? []
-        // A malformed behavior model falls back to the condensed one, never drops the flow.
         behavior = (try? c.decodeIfPresent(FlowBehavior.self, forKey: .behavior)) ?? nil
         if behavior?.nodes.isEmpty == true { behavior = nil }
     }
@@ -856,8 +655,6 @@ struct EntryPointNode: Codable, Hashable, Sendable, Identifiable {
     var changeKind: ChangeKind
     var refs: [CodeRef] = []
     var flowId: String?
-    /// e.g. "Search reindex" — a short label for what this trigger causes,
-    /// used by the "what causes this?" diagram without requiring a flow lookup.
     var triggersLabel: String?
 
     init(id: String, title: String, kind: String, changeKind: ChangeKind, refs: [CodeRef] = [], flowId: String? = nil, triggersLabel: String? = nil) {
@@ -896,36 +693,21 @@ struct QuestionNode: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-// MARK: - Things to think about (the reviewer's judgment, as questions)
-
-/// Whether an item is a judgment call the reviewer should weigh (a concern or decision) or
-/// something the analysis could not establish (an open question). The Overview renders both
-/// in one list; this only picks a subtle glyph.
 enum ConsiderationKind: String, Codable, Hashable, Sendable {
     case concern
     case question
 }
 
-/// One "thing to think about": a question a staff engineer would put to the reviewer, plus
-/// one short sentence of why it matters. Deliberately tiny — it must be understood in about
-/// five seconds. Everything longer (`explanation`, evidence, related nodes) is drill-down.
 struct Consideration: Codable, Hashable, Sendable, Identifiable {
     var id: String
-    /// Phrased as a question, roughly a dozen words.
     var question: String
-    /// One short sentence of context.
     var detail: String
     var kind: ConsiderationKind = .concern
     var provenance: Provenance = .interpretation
     var confidence: Confidence?
-    /// Longer reasoning, shown only on expansion or in contextual chat.
     var explanation: String?
-    /// Decision/component/flow ids this item concerns.
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
-    /// The exact points in flow diagrams where this matters, so the question can be shown
-    /// where it happens in the runtime behavior. Empty on older graphs; `PRGraph.anchors(for:)`
-    /// infers a point from `relatedIds` for those.
     var flowAnchors: [FlowAnchor] = []
 
     init(id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
@@ -989,18 +771,10 @@ struct PRSummary: Codable, Hashable, Sendable {
     var ticket: TicketInfo?
     var problemToBeSolved: Statement?
     var howItWasSolved: Statement?
-    /// Short, question-shaped review items from the judgment stage. Optional so graphs
-    /// produced before it existed still decode; `PRGraph.thingsToThinkAbout` falls back to
-    /// `needsJudgment`/`uncertainties` for those.
     var considerations: [Consideration]?
-    /// CI, review and thread state for the Overview's facts line. Optional so graphs saved
-    /// before it existed still decode; `refreshMetadata` fills it in on the next open.
     var glance: PRGlance?
 }
 
-/// The full knowledge graph for one PR. This is what the pipeline assembles (from
-/// per-stage AI results plus raw GitHub facts) and GraphStore holds. Every lens in the
-/// UI is a query over this single structure — never a separate document per lens.
 struct PRGraph: Codable, Hashable, Sendable {
     var pr: PRSummary
     var components: [ComponentNode] = []
@@ -1008,24 +782,12 @@ struct PRGraph: Codable, Hashable, Sendable {
     var flows: [FlowNode] = []
     var entryPoints: [EntryPointNode] = []
     var questions: [QuestionNode] = []
-    /// The top of the hierarchy: "what does the system do differently now." Usually one
-    /// dominant entry (`dominantBehaviorChange`), but a PR can surface several distinct
-    /// behavior changes.
     var behaviorChanges: [BehaviorChange] = []
-    /// Directed, labeled architecture relationships — the redesigned Architecture view's
-    /// primary content. When empty (old cached graphs, a model that hasn't produced them
-    /// yet), `resolvedEdges` falls back to synthesizing plain edges from `dependsOnIds`.
     var architectureEdges: [ArchitectureEdge] = []
-    /// System/trust/datastore boundaries to draw as containers behind the nodes.
     var boundaries: [SystemBoundary] = []
-    /// How much this PR changes the structure, in words. Nil on graphs from before the
-    /// Architecture redesign; `pr.architectureImpact` still carries their prose.
     var architecture: ArchitectureAssessment?
-    /// How each stage's code refs fared against the checkout, keyed by `PipelineStage`
-    /// raw value (see `CodeRefVerifier`). Nil on graphs from before verification existed.
     var refChecks: [String: RefCheck]?
 
-    /// Every stage's ref check added up, for "3 of 41 references couldn't be verified".
     var refCheckTotal: RefCheck? {
         refChecks.map { $0.values.reduce(RefCheck(), +) }
     }
@@ -1035,7 +797,6 @@ struct PRGraph: Codable, Hashable, Sendable {
     func flow(_ id: String?) -> FlowNode? { flows.first { $0.id == id } }
     func entryPoint(_ id: String?) -> EntryPointNode? { entryPoints.first { $0.id == id } }
 
-    /// The single clearest behavior change, if there is one — the hero of Summary.
     var dominantBehaviorChange: BehaviorChange? { behaviorChanges.first }
 
     func decisions(affecting componentId: String) -> [DecisionNode] {
@@ -1045,9 +806,6 @@ struct PRGraph: Codable, Hashable, Sendable {
         flows.filter { flow in flow.steps.contains { $0.componentId == componentId } }
     }
 
-    /// Components implementing a given `.system`-level node, resolved by matching
-    /// `implementedBy` free-text names against implementation-level component titles when
-    /// possible, falling back to `dependsOnIds` for AI-linked implementation nodes.
     func implementationComponents(for systemComponentId: String) -> [ComponentNode] {
         guard let system = component(systemComponentId) else { return [] }
         let byName = components.filter { impl in
@@ -1057,18 +815,11 @@ struct PRGraph: Codable, Hashable, Sendable {
         return components.filter { $0.dependsOnIds.contains(systemComponentId) && $0.level >= .component }
     }
 
-    /// The one measure of "am I done?": how many of the Overview's things to think about the
-    /// reviewer has resolved. The list is the checklist and Decisions is where a judgment is
-    /// recorded, so the Overview, its Decisions tile, the Decisions header and the sidebar all
-    /// show this same n of m. `discussed` is the questions talked through in a conversation.
     func reviewProgress(discussed: Set<String> = []) -> (reviewed: Int, total: Int) {
         let items = thingsToThinkAbout
         return (items.filter { isResolved($0, discussed: discussed) }.count, items.count)
     }
 
-    /// A thing to think about is resolved by judging the decision it's reviewed on. When
-    /// there's no decision to judge it on — none at all, or one outside Decisions to Review,
-    /// which has no judgment buttons — talking it through in a conversation resolves it.
     func isResolved(_ item: Consideration, discussed: Set<String>) -> Bool {
         let decision = decision(reviewDecisionId(for: item))
         if let decision, decision.reviewerState != .unreviewed { return true }
@@ -1076,9 +827,6 @@ struct PRGraph: Codable, Hashable, Sendable {
         return !judgedOnDecision && discussed.contains(item.id)
     }
 
-    /// The architecture edges to render. Prefers the rich labeled edges; when none were
-    /// produced, degrades gracefully by synthesizing an edge per `dependsOnIds` link so a
-    /// pre-redesign graph still draws a (labeled "depends on") diagram rather than nothing.
     var resolvedEdges: [ArchitectureEdge] {
         if !architectureEdges.isEmpty { return architectureEdges }
         var out: [ArchitectureEdge] = []
@@ -1095,10 +843,6 @@ struct PRGraph: Codable, Hashable, Sendable {
         return out
     }
 
-    /// Decisions embodied by a relationship. Prefers explicit `edge.decisionIds`; when the
-    /// architecture stage didn't link any (decisions are extracted in a later stage), falls
-    /// back to decisions whose `componentIds` span both endpoints — a decision about this
-    /// very interaction.
     func decisions(forEdge edge: ArchitectureEdge) -> [DecisionNode] {
         if !edge.decisionIds.isEmpty {
             return decisions.filter { edge.decisionIds.contains($0.id) }

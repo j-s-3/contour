@@ -1,7 +1,5 @@
 import Foundation
 
-/// Raw material pulled from GitHub for one PR, before any analysis. Corresponds to
-/// design doc §9 "Repository-context acquisition", tier 1.
 struct RawPRContext: Sendable {
     var url: String
     var owner: String
@@ -16,16 +14,15 @@ struct RawPRContext: Sendable {
     var headSha: String
     var baseSha: String
     var isCrossRepository: Bool
-    var headCloneURL: String       // where to fetch the head ref from (fork-aware)
+    var headCloneURL: String
     var additions: Int
     var deletions: Int
     var changedFiles: Int
-    var files: [String]            // changed file paths
+    var files: [String]
     var commits: [CommitInfo]
-    var comments: [String]         // issue-thread comments, author + body flattened
-    var reviews: [String]          // review bodies, for author-stated rationale extraction
+    var comments: [String]
+    var reviews: [String]
     var diff: String
-    /// Best-effort CI, review and thread state; whatever the source couldn't read stays nil.
     var glance = PRGlance()
 }
 

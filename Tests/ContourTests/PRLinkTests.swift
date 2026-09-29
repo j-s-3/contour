@@ -9,7 +9,6 @@ final class PRLinkTests: XCTestCase {
         XCTAssertEqual(PRLink.extract(from: "  \(canonical)\n"), canonical)
     }
 
-    /// Links arrive inside a sentence, on a sub-page, or with an anchor.
     func testExtractsFromSurroundingTextAndDropsTheTail() {
         XCTAssertEqual(PRLink.extract(from: "can you look at \(canonical) today?"), canonical)
         XCTAssertEqual(PRLink.extract(from: "<\(canonical)|sharkdp/bat#3877>"), canonical)

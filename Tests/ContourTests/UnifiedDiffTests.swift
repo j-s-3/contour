@@ -2,13 +2,8 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// The Raw diff lens reads `gh pr diff` as files and hunks, with both sides' line numbers,
-/// and links each hunk back to the decisions and flow stages that cite it.
 struct UnifiedDiffTests {
-
     private func lines(_ text: String) -> String { text + "\n" }
-
-    // MARK: - Files
 
     @Test func aModifiedFileWithSeveralHunksNumbersBothSides() throws {
         let files = UnifiedDiff.parse(lines("""
@@ -73,7 +68,6 @@ struct UnifiedDiffTests {
         #expect(added.additions == 2 && added.deletions == 0)
         #expect(added.hunks[0].lines.map(\.newLine) == [1, 2])
         #expect(deleted.status == .deleted && deleted.newPath == nil && deleted.path == "old.txt")
-        // "-1" with no count is one line.
         #expect(deleted.hunks[0].oldCount == 1)
         #expect(deleted.hunks[0].lines.map(\.oldLine) == [1])
     }
@@ -183,9 +177,6 @@ struct UnifiedDiffTests {
         #expect(UnifiedDiff.parse("").isEmpty)
     }
 
-    /// git quotes a `diff --git` header's paths when they contain characters like tabs or
-    /// newlines; that's a different code path from the ambiguous-unquoted-path split used
-    /// for every other test here.
     @Test func gitHeaderPathsHandlesQuotedPaths() throws {
         let files = UnifiedDiff.parse(lines("""
         diff --git "a/weird name.rs" "b/weird name.rs"
@@ -199,8 +190,6 @@ struct UnifiedDiffTests {
         #expect(file.oldPath == "weird name.rs" && file.newPath == "weird name.rs")
     }
 
-    /// `copy from`/`copy to` mark a copied file, same as rename does for a moved one — no
-    /// existing test exercised this status at all.
     @Test func copyFromAndToMarkACopiedFile() throws {
         let files = UnifiedDiff.parse(lines("""
         diff --git a/orig.rs b/copy.rs
@@ -213,8 +202,6 @@ struct UnifiedDiffTests {
         #expect(file.oldPath == "orig.rs" && file.newPath == "copy.rs")
     }
 
-    /// A quoted `rename from`/`rename to` path must come back unquoted — same `unquote`
-    /// helper the `---`/`+++` markers use, but no test exercised it on a rename line.
     @Test func quotedRenamePathsAreUnquoted() throws {
         let files = UnifiedDiff.parse(lines("""
         diff --git a/old.txt b/new.txt
@@ -226,9 +213,6 @@ struct UnifiedDiffTests {
         #expect(file.oldPath == "old file.txt" && file.newPath == "new file.txt")
     }
 
-    /// A `@@` line that doesn't parse as a hunk header (no diff tool writes one, but the
-    /// raw diff is "evidence of last resort" and must not crash on garbage) is ignored
-    /// entirely, along with the body lines that would have belonged to it.
     @Test func aMalformedHunkHeaderIsIgnoredEntirely() throws {
         let files = UnifiedDiff.parse(lines("""
         diff --git a/a.txt b/a.txt
@@ -240,8 +224,6 @@ struct UnifiedDiffTests {
         let file = try #require(files.first)
         #expect(file.hunks.isEmpty)
     }
-
-    // MARK: - Landing and citations
 
     private let sample = UnifiedDiff.parse("""
     diff --git a/src/a.rs b/src/a.rs
@@ -265,7 +247,6 @@ struct UnifiedDiffTests {
         #expect(file.hunks[0].overlaps(CodeRef(path: "src/a.rs", startLine: 12, endLine: 40)))
         #expect(!file.hunks[0].overlaps(CodeRef(path: "src/a.rs", startLine: 14, endLine: 40)))
         #expect(file.hunks[1].overlaps(CodeRef(path: "src/a.rs", startLine: 52, endLine: 52)))
-        // Base line 50 is in the second hunk; head line 50 is in neither.
         #expect(file.hunks[1].overlaps(CodeRef(path: "src/a.rs", startLine: 50, endLine: 50, side: .base)))
         #expect(!file.hunks[1].overlaps(CodeRef(path: "src/a.rs", startLine: 50, endLine: 50)))
     }

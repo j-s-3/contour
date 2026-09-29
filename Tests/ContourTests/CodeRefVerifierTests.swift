@@ -2,12 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// Every ref the analysis shows is checked against the checkout: refs that don't resolve are
-/// dropped, and a statement resting only on them loses its standing.
 struct CodeRefVerifierTests {
-
-    /// A throwaway git repo whose base commit has `old.rs` (3 lines) and `lib.rs` (2 lines),
-    /// and whose working tree (head) deletes `old.rs` and grows `lib.rs` to 5 lines.
     private final class TempRepo {
         let root: URL
         let baseSha: String
@@ -37,8 +32,6 @@ struct CodeRefVerifierTests {
         var verifier: CodeRefVerifier { CodeRefVerifier(rootDir: root, baseSha: baseSha) }
     }
 
-    // MARK: - One ref
-
     @Test func aRefInsideAHeadFileResolves() async throws {
         let repo = try await TempRepo()
         let ref = CodeRef(path: "src/lib.rs", startLine: 2, endLine: 4)
@@ -65,7 +58,6 @@ struct CodeRefVerifierTests {
         let repo = try await TempRepo()
         let v = repo.verifier
         #expect(await v.resolve(CodeRef(path: "src/lib.rs", startLine: 1, endLine: 2, side: .base)) != nil)
-        // lib.rs had only two lines before the PR.
         #expect(await v.resolve(CodeRef(path: "src/lib.rs", startLine: 4, endLine: 5, side: .base)) == nil)
     }
 
@@ -82,8 +74,6 @@ struct CodeRefVerifierTests {
         #expect(CodeRefVerifier.lineCount(of: Data("a\n".utf8)) == 1)
         #expect(CodeRefVerifier.lineCount(of: Data("a\nb".utf8)) == 2)
     }
-
-    // MARK: - A stage's slice
 
     @Test func aDecisionWhoseRefsAllFailIsDemotedAndCounted() async throws {
         let repo = try await TempRepo()
@@ -149,8 +139,6 @@ struct CodeRefVerifierTests {
         #expect(j.considerations[0].confidence == .low)
         #expect(check.unresolvedCount == 1)
     }
-
-    // MARK: - On the graph
 
     @Test func aStagesTallyIsReplacedOnRetryAndClearedWithItsSlice() {
         var graph = ContourSampleData.publishTriggeredReindex

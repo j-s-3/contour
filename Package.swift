@@ -8,7 +8,6 @@ let package = Package(
         .executableTarget(
             name: "Contour",
             path: "Sources/Contour",
-            // No .app bundle under `swift run`, so the Dock icon is set at launch from here.
             resources: [.copy("Resources/AppIcon.icns")],
             swiftSettings: [
                 .swiftLanguageMode(.v6)

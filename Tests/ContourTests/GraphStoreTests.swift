@@ -2,28 +2,9 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// `GraphStore.swift` was at 14.00% coverage. `graph`/`checkout`/`diffText`/`analysis`/
-/// `phase` are all `private(set)`, and the only production path that populates them is
-/// `load()`, which needs a real harness, git checkout and GitHub network call — none of
-/// which this suite shells out to or fakes (same category of risk as not faking `pi`/
-/// `claude` on `PATH` elsewhere). `handle(_:)` was made `internal` instead of `private` so
-/// these can drive the same state transitions the real pipeline drives, with synthetic
-/// `PipelineEvent`s, exercising the pure state-machine logic without any of that.
-///
-/// `load()` itself is still left uncovered for the same PATH/network reason (it resolves a
-/// harness and, once it has one, spawns a `Task` that runs the real pipeline against the
-/// network). But every guard in `submitReview`/`retry`/`stopAnalysis`/`ask`/`send` that
-/// short-circuits *before* touching a pipeline, a harness or the network is reachable from a
-/// store that never called `load()` — `pipeline`, `graph`, `checkout` and `lastPRURL` are all
-/// `nil` in that state, which is exactly the branch every one of those guards takes first.
-/// This second block of tests drives those guard-only paths, plus the navigation-adjacent
-/// `hasOpenPR`/`pullRequestURL` computed properties and the contextual-chat entry points.
 @MainActor
 struct GraphStoreTests {
-
     private var sampleGraph: PRGraph { ContourSampleData.publishTriggeredReindex }
-
-    // MARK: - handle(_:) state transitions
 
     @Test @MainActor func logEventsAppendToTheProgressLog() {
         let store = GraphStore()
@@ -39,8 +20,6 @@ struct GraphStoreTests {
         #expect(store.analysis.status(.architecture) == .running(detail: "2 components found"))
     }
 
-    /// A stage that reopens after the analysis had already finished (a retry) must clear
-    /// `isComplete`, or the UI would keep showing the old "done" state while it reruns.
     @Test @MainActor func aRetriedAnalysisStageReopensACompletedAnalysis() {
         let store = GraphStore()
         store.handle(.complete)
@@ -49,8 +28,6 @@ struct GraphStoreTests {
         #expect(!store.analysis.isComplete)
     }
 
-    /// A non-analysis stage (fetch/checkout/cache/ticket) running again must not reopen
-    /// the analysis — only the six analysis stages count.
     @Test @MainActor func aNonAnalysisStageRunningAgainDoesNotReopenTheAnalysis() {
         let store = GraphStore()
         store.handle(.complete)
@@ -72,7 +49,6 @@ struct GraphStoreTests {
         store.setReviewerState(.accepted, forDecision: "index-on-publish")
         #expect(store.graph?.decisions.first(where: { $0.id == "index-on-publish" })?.reviewerState == .accepted)
 
-        // A later snapshot of the same PR (e.g. a retried stage) must not lose that mark.
         store.handle(.graph(sampleGraph))
         #expect(store.graph?.decisions.first(where: { $0.id == "index-on-publish" })?.reviewerState == .accepted)
     }
@@ -117,8 +93,6 @@ struct GraphStoreTests {
         #expect(store.phase == .failed("network unreachable"))
     }
 
-    /// A fatal error once the PR shell is on screen keeps that shell up and degrades every
-    /// unfinished analysis section instead of blanking the window.
     @Test @MainActor func fatalEventWithAGraphKeepsTheShellAndDegradesUnfinishedStages() {
         let store = GraphStore()
         store.handle(.graph(sampleGraph))
@@ -132,8 +106,6 @@ struct GraphStoreTests {
         #expect(store.analysis.status(.architecture).failure != nil, "an unfinished stage is degraded to failed")
         #expect(store.analysis.isComplete)
     }
-
-    // MARK: - Navigation stack
 
     @Test func aFreshStoreStartsOnSummaryWithNoHistory() {
         let store = GraphStore()
@@ -185,8 +157,6 @@ struct GraphStoreTests {
         #expect(store.current == .summary)
     }
 
-    /// Pushing a new target after going back must clear the forward stack, like a browser:
-    /// the abandoned "future" shouldn't come back once the reviewer has gone somewhere new.
     @Test func navigatingAfterGoingBackDiscardsTheAbandonedForwardHistory() {
         let store = GraphStore()
         store.navigate(to: .architecture)
@@ -198,8 +168,6 @@ struct GraphStoreTests {
         #expect(!store.canGoForward)
     }
 
-    // MARK: - NavigationTarget.showsDiagram
-
     @Test func onlyArchitectureAndFlowsRelatedTargetsShowADiagram() {
         let diagramTargets: [NavigationTarget] = [.architecture, .componentDetail("c"), .edgeDetail("e"), .flows, .flowDetail("f"), .flowNodeDetail(flowId: "f", nodeId: "n")]
         for target in diagramTargets {
@@ -210,8 +178,6 @@ struct GraphStoreTests {
             #expect(!target.showsDiagram, "\(target) should not show a diagram")
         }
     }
-
-    // MARK: - subjectForCurrentLocation
 
     @Test func subjectDefaultsToPullRequestWithNoGraphAndNoSpecificLocation() {
         let store = GraphStore()
@@ -259,8 +225,6 @@ struct GraphStoreTests {
         store.focusedSubject = .decision("something-else")
         #expect(store.subjectForCurrentLocation == .decision("something-else"))
     }
-
-    // MARK: - Reviewer actions
 
     @Test @MainActor func setReviewerStateTogglesOffWhenSetToItsCurrentValue() {
         let store = GraphStore()
@@ -313,8 +277,6 @@ struct GraphStoreTests {
         #expect(store.graph?.decisions.allSatisfy { $0.reviewerNote.isEmpty } == true)
     }
 
-    // MARK: - Session lifecycle
-
     @Test @MainActor func closingEndsTheSessionAndReturnsToIdle() {
         let store = GraphStore()
         store.handle(.graph(sampleGraph))
@@ -334,9 +296,6 @@ struct GraphStoreTests {
         #expect(!store.canStopAnalysis, "no pipeline exists outside of load()")
     }
 
-    /// `stopAnalysis()` guards on `canStopAnalysis` before touching `pipeline`; pins that
-    /// calling it on a store that never `load()`ed is a silent no-op, not a crash on a nil
-    /// pipeline.
     @Test @MainActor func stopAnalysisWithoutAPipelineIsANoOp() {
         let store = GraphStore()
         store.handle(.graph(sampleGraph))
@@ -344,10 +303,6 @@ struct GraphStoreTests {
         #expect(store.graph != nil, "the guard exits before anything about the store changes")
     }
 
-    /// `retry(_:)` falls back to `reopen()` whenever there's no pipeline or checkout to retry
-    /// a single stage against — true for every store that never `load()`ed — and `reopen()`
-    /// with no `lastPRURL` on file falls further back to `close()`. Pins that whole chain
-    /// rather than a crash or a stuck state.
     @Test @MainActor func retryWithoutAPipelineFallsBackToReopenAndThenToClose() {
         let store = GraphStore()
         store.handle(.graph(sampleGraph))
@@ -355,8 +310,6 @@ struct GraphStoreTests {
         #expect(store.phase == .idle, "no checkout/pipeline exists outside load(), so retry() reopens, which closes")
     }
 
-    /// `reopen()` with no `lastPRURL` (true for any store that never `load()`ed) closes the
-    /// session instead of trying to reload an empty URL.
     @Test @MainActor func reopenWithNoPriorPRJustCloses() {
         let store = GraphStore()
         store.handle(.graph(sampleGraph))
@@ -364,20 +317,12 @@ struct GraphStoreTests {
         #expect(store.phase == .idle)
     }
 
-    /// `submitReview` guards on `canSubmitReview`, which requires a graph; pins that a store
-    /// with nothing open leaves `review` untouched rather than submitting against a URL that
-    /// doesn't exist.
     @Test @MainActor func submitReviewWithoutAGraphIsANoOp() {
         let store = GraphStore()
         store.submitReview(.approve)
         #expect(store.review == .idle)
     }
 
-    // MARK: - hasOpenPR / pullRequestURL
-
-    /// `hasOpenPR` tracks `phase != .idle`, not whether the analysis ever produced a graph —
-    /// a session that failed to open (no graph at all) still counts as "open" for the
-    /// purposes of File ▸ Close Pull Request and the toolbar.
     @Test @MainActor func hasOpenPRIsTrueOnceASessionHasFailedToOpen() {
         let store = GraphStore()
         #expect(!store.hasOpenPR)
@@ -388,19 +333,12 @@ struct GraphStoreTests {
         #expect(store.pullRequestURL == nil, "no graph and no stored PR URL means nothing to link to")
     }
 
-    // MARK: - Contextual chat
-
-    /// `ask(about:)` opens (or reuses) that subject's conversation thread; pins the wiring
-    /// without needing a harness, since `ConversationStore.open` never touches one.
     @Test @MainActor func askOpensTheThreadForItsSubject() {
         let store = GraphStore()
         store.ask(about: .pullRequest)
         #expect(store.conversations.active?.subject == .pullRequest)
     }
 
-    /// `ask(_:about:)` opens the thread and then calls `send`, whose own guard requires a
-    /// graph. Pins that asking a specific question with nothing loaded still opens the
-    /// thread (so the reviewer sees where their question went) but sends nothing into it.
     @Test @MainActor func askWithAQuestionOpensTheThreadButSendsNothingWithoutAGraph() {
         let store = GraphStore()
         store.ask("Why this side?", about: .pullRequest)
@@ -408,9 +346,6 @@ struct GraphStoreTests {
         #expect(store.conversations.active?.messages.isEmpty == true, "send()'s graph guard exits before appending anything")
     }
 
-    /// `send(_:in:)` guards on `graph` before ever reaching `ConversationStore.send` (and
-    /// therefore the harness); pins that calling it on an unloaded store is a no-op rather
-    /// than a crash on force-unwrapping a nil graph.
     @Test @MainActor func sendWithoutAGraphIsANoOp() {
         let store = GraphStore()
         let conversation = store.conversations.open(.pullRequest)

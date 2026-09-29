@@ -1,17 +1,5 @@
 import CoreGraphics
 
-/// Layout for the architecture drawing (§4.3): a deliberate, left-to-right diagram of a
-/// handful of parts, never a force-directed graph.
-///
-/// - Columns follow the direction of travel: a part sits one column right of the furthest
-///   part that feeds it.
-/// - A boundary (a process, an external system, the part being zoomed into) is laid out as a
-///   block. Blocks whose columns overlap are stacked in separate bands, so a container never
-///   encloses a part that isn't in it.
-/// - Every connector is orthogonal. Adjacent columns are joined straight across, or with one
-///   elbow in the gap between them; anything else runs in a channel reserved below its band,
-///   so no line ever crosses a box.
-/// - Gaps are sized to the labels that sit in them, so a label never needs truncating to fit.
 struct ArchDiagramLayout {
     struct PlacedNode: Identifiable {
         var id: String
@@ -19,7 +7,6 @@ struct ArchDiagramLayout {
     }
     struct PlacedEdge: Identifiable {
         var id: String
-        /// The connector's corners, source to target.
         var points: [CGPoint]
         var labelCenter: CGPoint
     }
@@ -60,8 +47,6 @@ enum GraphLayoutEngine {
     static let boundaryLabelHeight: CGFloat = 26
     static let laneSpacing: CGFloat = 26
 
-    /// Lays the drawing out left-to-right, or top-to-bottom when `vertical` — the same
-    /// algorithm on transposed sizes, so a tall, narrow pane can still show it comfortably.
     static func layout(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec], vertical: Bool) -> ArchDiagramLayout {
         guard vertical else { return layout(nodes: nodes, edges: edges, groups: groups) }
         func flip(_ s: CGSize) -> CGSize { CGSize(width: s.height, height: s.width) }
@@ -69,13 +54,9 @@ enum GraphLayoutEngine {
         func flip(_ r: CGRect) -> CGRect { CGRect(x: r.minY, y: r.minX, width: r.height, height: r.width) }
         let turned = layout(
             nodes: nodes.map { NodeSpec(id: $0.id, size: flip($0.size)) },
-            // A label on a vertical line sits across it, so the gap between rows only needs
-            // its height.
             edges: edges.map { EdgeSpec(id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: flip($0.labelSize)) },
             groups: groups
         )
-        // The room reserved for a container's label ends up on its left once turned; the
-        // label is drawn at the top, so grow the container upward into the gap above it.
         return ArchDiagramLayout(
             nodes: turned.nodes.map { .init(id: $0.id, frame: flip($0.frame)) },
             edges: turned.edges.map { .init(id: $0.id, points: $0.points.map(flip), labelCenter: flip($0.labelCenter)) },
@@ -89,9 +70,6 @@ enum GraphLayoutEngine {
         )
     }
 
-    /// Picks the orientation that reads best: left-to-right, unless it doesn't already fit
-    /// the available space and top-to-bottom fits it clearly better (not just marginally —
-    /// a small edge for going vertical isn't worth losing the left-to-right reading order).
     static func bestFit(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec], available: CGSize) -> (ArchDiagramLayout, CGFloat) {
         func fit(_ l: ArchDiagramLayout) -> CGFloat {
             min(1, available.width / max(l.size.width, 1), available.height / max(l.size.height, 1))
@@ -108,10 +86,9 @@ enum GraphLayoutEngine {
         let sizes = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.size) })
         let live = edges.filter { index[$0.fromId] != nil && index[$0.toId] != nil && $0.fromId != $0.toId }
 
-        // MARK: Columns — longest path along edges, ignoring the edges that close a cycle.
         var outgoing: [String: [String]] = [:]
         for e in live { outgoing[e.fromId, default: []].append(e.toId) }
-        var state: [String: Int] = [:]          // 1 = on stack, 2 = done
+        var state: [String: Int] = [:]
         var backEdges = Set<String>()
         func visit(_ id: String) {
             state[id] = 1
@@ -134,14 +111,10 @@ enum GraphLayoutEngine {
         for n in nodes { _ = column(n.id) }
         let columnCount = (layer.values.max() ?? 0) + 1
 
-        // MARK: Blocks — each boundary is one block; every other part is its own block.
         var groupOf: [String: Int] = [:]
         var blocks: [(id: String?, members: [String])] = []
         for g in groups {
             let members = g.memberIds.filter { index[$0] != nil && groupOf[$0] == nil }
-            // A boundary whose members sit in non-adjacent columns (inputs on the left, the
-            // terminal on the right) is drawn as one container per contiguous run, never as
-            // a container stretched over everything in between.
             var runs: [[String]] = []
             for m in members.sorted(by: { (layer[$0] ?? 0, index[$0]!) < (layer[$1] ?? 0, index[$1]!) }) {
                 if let last = runs.last?.last, (layer[m] ?? 0) - (layer[last] ?? 0) <= 1 {
@@ -164,7 +137,6 @@ enum GraphLayoutEngine {
             return ls.min()!...ls.max()!
         }
 
-        // MARK: Bands — pack blocks whose columns don't overlap side by side.
         let blockOrder = blocks.indices.sorted {
             if spans[$0].lowerBound != spans[$1].lowerBound { return spans[$0].lowerBound < spans[$1].lowerBound }
             let a = blocks[$0].members.compactMap { index[$0] }.min() ?? 0
@@ -182,7 +154,6 @@ enum GraphLayoutEngine {
         var bandOf: [Int: Int] = [:]
         for (i, band) in bands.enumerated() { for b in band { bandOf[b] = i } }
 
-        // MARK: Rows — within a block, order each column by where its neighbors sit.
         var row: [String: Int] = [:]
         for block in blocks {
             var byColumn: [Int: [String]] = [:]
@@ -200,7 +171,6 @@ enum GraphLayoutEngine {
             }
         }
 
-        // MARK: Column x positions, with gaps sized to the labels that sit in them.
         var gapWidth = [CGFloat](repeating: minGap, count: max(columnCount - 1, 0))
         for e in live {
             let a = layer[e.fromId] ?? 0, b = layer[e.toId] ?? 0
@@ -215,7 +185,6 @@ enum GraphLayoutEngine {
             columnX[l] = columnX[l - 1] + columnWidth[l - 1] + gapWidth[l - 1]
         }
 
-        // MARK: Channel routes, counted per band so each band reserves room for its lanes.
         enum Route { case straight, elbow, vertical, channel(band: Int, lane: Int) }
         var routes: [String: Route] = [:]
         var lanesPerBand: [Int: Int] = [:]
@@ -237,7 +206,6 @@ enum GraphLayoutEngine {
             }
         }
 
-        // MARK: Band y positions and node frames.
         var frames: [String: CGRect] = [:]
         var bandBottom: [CGFloat] = []
         var y = margin
@@ -252,7 +220,6 @@ enum GraphLayoutEngine {
             for b in band {
                 for m in blocks[b].members {
                     let l = layer[m] ?? 0, r = row[m] ?? 0
-                    // Every box in a row shares its height, so arrows along a row run straight.
                     let width = sizes[m]!.width
                     let x = columnX[l] + (columnWidth[l] - width) / 2
                     frames[m] = CGRect(x: x, y: rowY[r], width: width, height: rowHeight[r])
@@ -264,7 +231,6 @@ enum GraphLayoutEngine {
             y = bottom + (lanes > 0 ? CGFloat(lanes) * laneSpacing + 12 : 0) + bandGap
         }
 
-        // MARK: Boundaries.
         var placedBoundaries: [ArchDiagramLayout.PlacedBoundary] = []
         for block in blocks {
             guard let id = block.id else { continue }
@@ -276,7 +242,6 @@ enum GraphLayoutEngine {
             placedBoundaries.append(.init(id: id, frame: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)))
         }
 
-        // MARK: Connectors.
         var placedEdges: [ArchDiagramLayout.PlacedEdge] = []
         for e in live {
             guard let f = frames[e.fromId], let t = frames[e.toId], let route = routes[e.id] else { continue }
