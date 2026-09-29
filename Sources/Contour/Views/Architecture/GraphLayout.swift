@@ -96,7 +96,7 @@ enum GraphLayoutEngine {
         var backEdges = Set<String>()
         func visit(_ id: String) {
             state[id] = 1
-            for next in outgoing[id] ?? [] {
+            for next in outgoing[id, default: []] {
                 if state[next] == 1 { backEdges.insert("\(id)→\(next)") } else if state[next] == nil { visit(next) }
             }
             state[id] = 2
@@ -107,20 +107,20 @@ enum GraphLayoutEngine {
         func column(_ id: String) -> Int {
             if let l = layer[id] { return l }
             let preds = forward.filter { $0.toId == id }.map(\.fromId)
-            let l = preds.isEmpty ? 0 : (preds.map(column).max() ?? 0) + 1
+            let l = preds.isEmpty ? 0 : preds.map(column).max()! + 1
             layer[id] = l
             return l
         }
         for n in nodes { _ = column(n.id) }
-        let columnCount = (layer.values.max() ?? 0) + 1
+        let columnCount = layer.values.max()! + 1
 
         var groupOf: [String: Int] = [:]
         var blocks: [(id: String?, members: [String])] = []
         for g in groups {
             let members = g.memberIds.filter { index[$0] != nil && groupOf[$0] == nil }
             var runs: [[String]] = []
-            for m in members.sorted(by: { (layer[$0] ?? 0, index[$0]!) < (layer[$1] ?? 0, index[$1]!) }) {
-                if let last = runs.last?.last, (layer[m] ?? 0) - (layer[last] ?? 0) <= 1 {
+            for m in members.sorted(by: { (layer[$0]!, index[$0]!) < (layer[$1]!, index[$1]!) }) {
+                if let last = runs.last?.last, layer[m]! - layer[last]! <= 1 {
                     runs[runs.count - 1].append(m)
                 } else {
                     runs.append([m])
@@ -136,14 +136,14 @@ enum GraphLayoutEngine {
             blocks.append((nil, [n.id]))
         }
         let spans = blocks.map { b -> ClosedRange<Int> in
-            let ls = b.members.map { layer[$0] ?? 0 }
+            let ls = b.members.map { layer[$0]! }
             return ls.min()!...ls.max()!
         }
 
         let blockOrder = blocks.indices.sorted {
             if spans[$0].lowerBound != spans[$1].lowerBound { return spans[$0].lowerBound < spans[$1].lowerBound }
-            let a = blocks[$0].members.compactMap { index[$0] }.min() ?? 0
-            let b = blocks[$1].members.compactMap { index[$0] }.min() ?? 0
+            let a = blocks[$0].members.compactMap { index[$0] }.min()!
+            let b = blocks[$1].members.compactMap { index[$0] }.min()!
             return a < b
         }
         var bands: [[Int]] = []
@@ -160,7 +160,7 @@ enum GraphLayoutEngine {
         var row: [String: Int] = [:]
         for block in blocks {
             var byColumn: [Int: [String]] = [:]
-            for m in block.members { byColumn[layer[m] ?? 0, default: []].append(m) }
+            for m in block.members { byColumn[layer[m]!, default: []].append(m) }
             for l in byColumn.keys.sorted() {
                 var members = byColumn[l]!.sorted { index[$0]! < index[$1]! }
                 if l > 0 {
@@ -176,14 +176,14 @@ enum GraphLayoutEngine {
 
         var gapWidth = [CGFloat](repeating: minGap, count: max(columnCount - 1, 0))
         for e in live {
-            let a = layer[e.fromId] ?? 0
-            let b = layer[e.toId] ?? 0
+            let a = layer[e.fromId]!
+            let b = layer[e.toId]!
             if b == a + 1 {
                 gapWidth[a] = min(maxGap, max(gapWidth[a], e.labelSize.width + 36))
             }
         }
         var columnWidth = [CGFloat](repeating: 0, count: columnCount)
-        for n in nodes { columnWidth[layer[n.id] ?? 0] = max(columnWidth[layer[n.id] ?? 0], n.size.width) }
+        for n in nodes { columnWidth[layer[n.id]!] = max(columnWidth[layer[n.id]!], n.size.width) }
         var columnX = [CGFloat](repeating: margin + boundaryPad, count: columnCount)
         for l in 1..<max(columnCount, 1) where l < columnCount {
             columnX[l] = columnX[l - 1] + columnWidth[l - 1] + gapWidth[l - 1]
@@ -197,8 +197,8 @@ enum GraphLayoutEngine {
         var lanesPerBand: [Int: Int] = [:]
         var elbowsPerGap: [Int: [String]] = [:]
         for e in live {
-            let a = layer[e.fromId] ?? 0
-            let b = layer[e.toId] ?? 0
+            let a = layer[e.fromId]!
+            let b = layer[e.toId]!
             let bandA = bandOf[groupOf[e.fromId]!]!
             let bandB = bandOf[groupOf[e.toId]!]!
             if b == a + 1 {
@@ -221,17 +221,17 @@ enum GraphLayoutEngine {
         for (i, band) in bands.enumerated() {
             let framed = band.contains { blocks[$0].id != nil }
             let top = y + (framed ? boundaryPad + boundaryLabelHeight : 0)
-            let rowCount = band.map { b in blocks[b].members.map { (row[$0] ?? 0) + 1 }.max() ?? 1 }.max() ?? 1
+            let rowCount = band.map { b in blocks[b].members.map { row[$0]! + 1 }.max()! }.max()!
             var rowHeight = [CGFloat](repeating: 0, count: rowCount)
             for b in band {
-                for m in blocks[b].members { rowHeight[row[m] ?? 0] = max(rowHeight[row[m] ?? 0], sizes[m]!.height) }
+                for m in blocks[b].members { rowHeight[row[m]!] = max(rowHeight[row[m]!], sizes[m]!.height) }
             }
             var rowY = [CGFloat](repeating: top, count: rowCount)
             for r in 1..<max(rowCount, 1) where r < rowCount { rowY[r] = rowY[r - 1] + rowHeight[r - 1] + rowGap }
             for b in band {
                 for m in blocks[b].members {
-                    let l = layer[m] ?? 0
-                    let r = row[m] ?? 0
+                    let l = layer[m]!
+                    let r = row[m]!
                     let width = sizes[m]!.width
                     let x = columnX[l] + (columnWidth[l] - width) / 2
                     frames[m] = CGRect(x: x, y: rowY[r], width: width, height: rowHeight[r])
@@ -258,7 +258,7 @@ enum GraphLayoutEngine {
         var placedEdges: [ArchDiagramLayout.PlacedEdge] = []
         for e in live {
             guard let f = frames[e.fromId], let t = frames[e.toId], let route = routes[e.id] else { continue }
-            let a = layer[e.fromId] ?? 0
+            let a = layer[e.fromId]!
             switch route {
             case .straight:
                 let yMid = (f.midY + t.midY) / 2
@@ -269,8 +269,8 @@ enum GraphLayoutEngine {
                         id: e.id, points: [start, end],
                         labelCenter: CGPoint(x: (start.x + end.x) / 2, y: yMid)))
             case .elbow:
-                let siblings = elbowsPerGap[a] ?? [e.id]
-                let k = CGFloat(siblings.firstIndex(of: e.id) ?? 0)
+                let siblings = elbowsPerGap[a]!
+                let k = CGFloat(siblings.firstIndex(of: e.id)!)
                 let gapMid = columnX[a] + columnWidth[a] + gapWidth[a] / 2
                 let x = gapMid + (k - CGFloat(siblings.count - 1) / 2) * 14
                 let points = [
@@ -288,7 +288,7 @@ enum GraphLayoutEngine {
                         id: e.id, points: [start, end],
                         labelCenter: CGPoint(x: start.x, y: (start.y + end.y) / 2)))
             case .channel(let band, let lane):
-                let b = layer[e.toId] ?? 0
+                let b = layer[e.toId]!
                 let offset = CGFloat(lane) * 8
                 let exitX = columnX[a] + columnWidth[a] + 16 + offset
                 let entryX = columnX[b] - 16 - offset
