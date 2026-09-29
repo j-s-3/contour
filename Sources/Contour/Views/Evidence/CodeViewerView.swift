@@ -8,7 +8,14 @@ struct CodeViewerView: View {
     let checkout: RepoCheckout?
     var onBack: () -> Void
 
-    @State private var state = CodeViewerState()
+    @State private var state: CodeViewerState
+
+    init(ref: CodeRef, checkout: RepoCheckout?, initialState: CodeViewerState = CodeViewerState(), onBack: @escaping () -> Void) {
+        self.ref = ref
+        self.checkout = checkout
+        self.onBack = onBack
+        _state = State(initialValue: initialState)
+    }
 
     private let repoContext = RepoContextService()
     @Environment(\.reviewActions) private var actions
