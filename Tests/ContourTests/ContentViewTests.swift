@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import Contour
 
 /// `ContentView` is the `NavigationSplitView` shell (§4.1); per CLAUDE.md's guidance, its
@@ -217,4 +218,49 @@ struct ContentViewTests {
         #expect(ContentView.lensTarget(named: "diff") == nil)
         #expect(ContentView.lensTarget(named: nil) == nil)
     }
+
+    // MARK: - openFirstPR / openLink
+
+    /// The wizard's optional first PR and the CONTOUR_OPEN_PR_URL hook: nothing to open for
+    /// nil or empty, otherwise exactly the URL given.
+    @Test func openFirstPROpensOnlyANonEmptyURL() {
+        var opened: [String] = []
+        ContentView.openFirstPR(nil) { opened.append($0) }
+        ContentView.openFirstPR("") { opened.append($0) }
+        ContentView.openFirstPR("https://github.com/o/r/pull/1") { opened.append($0) }
+        #expect(opened == ["https://github.com/o/r/pull/1"])
+    }
+
+    /// System-handed links are ignored during first-run setup and when they don't name a PR;
+    /// otherwise the PR opens, so a stray link can never replace a review by accident.
+    @Test func openLinkRequiresFinishedSetupAndAPullRequestLink() throws {
+        var opened: [String] = []
+        let pr = try #require(URL(string: "https://github.com/o/r/pull/7"))
+        ContentView.openLink(pr, needsOnboarding: true) { opened.append($0) }
+        #expect(opened.isEmpty)
+        ContentView.openLink(try #require(URL(string: "https://example.com/nope")), needsOnboarding: false) { opened.append($0) }
+        #expect(opened.isEmpty)
+        ContentView.openLink(pr, needsOnboarding: false) { opened.append($0) }
+        #expect(opened == ["https://github.com/o/r/pull/7"])
+    }
+
+    // MARK: - reviewActions
+
+    /// The closures the lens views call are wired to the store: asking opens a conversation,
+    /// navigating pushes a target, and focusing publishes the subject for the shortcut.
+    @Test @MainActor func reviewActionsDriveTheStore() {
+        let graph = ContourSampleData.publishTriggeredReindex
+        let store = GraphStore()
+        store.handle(.graph(graph))
+        let actions = ContentView.reviewActions(graph: graph, store: store)
+        actions.navigate(.decisions)
+        #expect(store.current == .decisions)
+        actions.focus(.pullRequest)
+        #expect(store.focusedSubject == .pullRequest)
+        actions.ask(.pullRequest)
+        #expect(store.conversations.isPresented)
+        actions.askQuestion("Why?", .pullRequest)
+        #expect(store.conversations.active?.messages.isEmpty == false)
+    }
 }
+

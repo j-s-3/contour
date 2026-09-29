@@ -35,7 +35,7 @@ struct ContentView: View {
             if needsOnboarding {
                 WelcomeWizard { firstURL in
                     needsOnboarding = false
-                    if let firstURL { store.load(prURL: firstURL) }
+                    Self.openFirstPR(firstURL) { store.load(prURL: $0) }
                 }
             } else {
                 mainBody
@@ -58,9 +58,8 @@ struct ContentView: View {
         .onAppear {
             // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
             // rather than pasting a URL on every launch.
-            if !needsOnboarding, case .idle = store.phase,
-               let url = ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"], !url.isEmpty {
-                store.load(prURL: url)
+            if !needsOnboarding, case .idle = store.phase {
+                Self.openFirstPR(ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"]) { store.load(prURL: $0) }
             }
         }
         .onChange(of: store.phase) { _, phase in
@@ -76,12 +75,35 @@ struct ContentView: View {
         // `contour://…` and GitHub PR links handed to the app by the system. Only live once
         // Contour runs from a bundle whose Info.plist declares the scheme; a bare SwiftPM
         // executable is never sent them.
-        .onOpenURL { url in
-            guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
-            store.load(prURL: prURL)
-        }
+        .onOpenURL { url in Self.openLink(url, needsOnboarding: needsOnboarding) { store.load(prURL: $0) } }
         // Route incoming links to this window rather than opening a second one.
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+    }
+
+    /// Opens `url` when there is one to open; the wizard's optional first PR and the
+    /// `CONTOUR_OPEN_PR_URL` hook both go through here.
+    nonisolated static func openFirstPR(_ url: String?, load: (String) -> Void) {
+        if let url, !url.isEmpty { load(url) }
+    }
+
+    /// A `contour://` or GitHub PR link handed to the app: opened only once first-run setup
+    /// is done and only if it actually names a pull request.
+    nonisolated static func openLink(_ url: URL, needsOnboarding: Bool, load: (String) -> Void) {
+        guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
+        load(prURL)
+    }
+
+    /// What the lens views can ask of the shell: ask about a subject (with or without a
+    /// question), follow a link, and publish their selection for ⌘⇧A.
+    static func reviewActions(graph: PRGraph, store: GraphStore) -> ReviewActions {
+        ReviewActions(
+            graph: graph,
+            prURL: store.lastPRURL,
+            ask: { subject in withAnimation(spring) { store.ask(about: subject) } },
+            askQuestion: { question, subject in withAnimation(spring) { store.ask(question, about: subject) } },
+            navigate: { store.navigate(to: $0) },
+            focus: { store.focusedSubject = $0 }
+        )
     }
 
     /// The lens `CONTOUR_OPEN_LENS` names; nil for an unset or unrecognized value.
@@ -95,7 +117,7 @@ struct ContentView: View {
     }
 
     /// The spring the conversation inspector and "ask" actions animate with.
-    private static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
+    static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
     private var sessionActions: PRSessionActions {
         PRSessionActions(
@@ -107,10 +129,7 @@ struct ContentView: View {
     }
 
     /// Back to the start screen, ready to paste the next URL.
-    private func openDifferentPR() {
-        store.close()
-        urlFieldFocusRequest += 1
-    }
+    private func openDifferentPR() { store.close(); urlFieldFocusRequest += 1 }
 
     @ViewBuilder
     private var mainBody: some View {
@@ -177,20 +196,9 @@ struct ContentView: View {
                         .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
                 }
         }
-        .environment(\.reviewActions, ReviewActions(
-            graph: graph,
-            prURL: store.lastPRURL,
-            ask: { subject in withAnimation(Self.spring) { store.ask(about: subject) } },
-            askQuestion: { question, subject in
-                withAnimation(Self.spring) { store.ask(question, about: subject) }
-            },
-            navigate: { store.navigate(to: $0) },
-            focus: { store.focusedSubject = $0 }
-        ))
+        .environment(\.reviewActions, Self.reviewActions(graph: graph, store: store))
         .background(
-            Button("") {
-                withAnimation(Self.spring) { store.ask(about: store.subjectForCurrentLocation) }
-            }
+            Button("") { withAnimation(Self.spring) { store.ask(about: store.subjectForCurrentLocation) } }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
             .opacity(0)
         )
@@ -218,9 +226,7 @@ struct ContentView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
-                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }) {
-                    store.retry($0)
-                }
+                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }, onRetry: { store.retry($0) })
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
                 // The ways out once the PR is understood: back to GitHub, or with the
@@ -280,9 +286,7 @@ struct ContentView: View {
         .help(store.reviewUnavailableReason(.requestChanges) ?? "Request changes on GitHub")
         .disabled(!store.canSubmitReview(.requestChanges))
         .sheet(isPresented: $composingChangeRequest) {
-            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { comment in
-                store.submitReview(.requestChanges, comment: comment)
-            }
+            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { store.submitReview(.requestChanges, comment: $0) }
         }
     }
 
@@ -564,9 +568,8 @@ struct ContentView: View {
         case .content(showsOverlay: false):
             content()
         case .failed(let message):
-            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
-                withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) }
-            }
+            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) },
+                              onAsk: { withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) } })
         case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }
         case .pending:
