@@ -44,7 +44,7 @@ enum ChatViewLogic {
         on ? "Included in the next answer" : "Include \(expansion.label.lowercased()) in the next answer"
     }
 
-    static func toggle(_ expansion: ContextExpansion, in conversation: Conversation) {
+    @MainActor static func toggle(_ expansion: ContextExpansion, in conversation: Conversation) {
         if conversation.expansions.contains(expansion) {
             conversation.expansions.remove(expansion)
         } else {
@@ -52,7 +52,7 @@ enum ChatViewLogic {
         }
     }
 
-    static func unpin(_ ref: CodeRef, in conversation: Conversation) {
+    @MainActor static func unpin(_ ref: CodeRef, in conversation: Conversation) {
         conversation.pinnedRefs.removeAll { $0 == ref }
     }
 

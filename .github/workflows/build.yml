@@ -40,7 +40,8 @@ jobs:
         # variable: does --enable-code-coverage's instrumentation matter, or does the full
         # suite crash here even without it? Skips the benchmark suites (timing-only, not
         # relevant to this crash) to keep the run focused.
-        run: swift test --no-parallel --skip BenchmarkTests --skip BenchTests || echo "FULL SUITE, NO COVERAGE failed: exit $?"
+        run: |
+          swift test --no-parallel --skip BenchmarkTests --skip BenchTests || echo "FULL SUITE, NO COVERAGE failed: exit $?"
 
       - name: Test
         # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
