@@ -24,8 +24,7 @@ struct ContourApp: App {
 
     var body: some Scene {
         WindowGroup(id: "review") {
-            ContentView()
-                .frame(minWidth: 1080, minHeight: 720)
+            ReviewWindowContent()
         }
         .defaultSize(width: 1280, height: 820)
         .windowStyle(.automatic)
@@ -40,11 +39,18 @@ struct ContourApp: App {
     }
 }
 
-private struct ReviewCommands: View {
+struct ReviewCommands: View {
     @FocusedValue(\.reviewStore) private var store
 
     var body: some View {
         Button("Copy Review Summary") { store?.copyReviewSummary() }
             .disabled(store?.graph == nil)
+    }
+}
+
+struct ReviewWindowContent: View {
+    var body: some View {
+        ContentView()
+            .frame(minWidth: 1080, minHeight: 720)
     }
 }
