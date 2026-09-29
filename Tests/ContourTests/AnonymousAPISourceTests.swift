@@ -35,7 +35,7 @@ final class MockURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-final class NonHTTPURLProtocol: URLProtocol {
+private final class NonHTTPURLProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
