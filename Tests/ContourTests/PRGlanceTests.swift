@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct PRGlanceTests {
@@ -31,7 +32,7 @@ struct PRGlanceTests {
             ("ana", "CHANGES_REQUESTED"), ("ana", "APPROVED"),
             ("bo", "APPROVED"), ("bo", "COMMENTED"),
             ("cy", "APPROVED"), ("cy", "DISMISSED"),
-            ("di", "changes_requested")
+            ("di", "changes_requested"),
         ])
         #expect(tally.approvals == 2)
         #expect(tally.changesRequested == 1)
@@ -57,11 +58,16 @@ struct PRGlanceTests {
 
     @Test func fullLineReadsInOrder() {
         let now = Date()
-        let facts = summary(PRGlance(
-            checks: .passing, approvals: 2, changesRequested: 0, unresolvedThreads: 3,
-            createdAt: now.addingTimeInterval(-2 * 86_400)
-        )).glanceFacts(now: now)
-        #expect(facts.prefix(5).map(\.text) == ["12 files", "+148 \u{2212}37", "CI passing", "2 approvals", "3 unresolved threads"])
+        let facts = summary(
+            PRGlance(
+                checks: .passing, approvals: 2, changesRequested: 0, unresolvedThreads: 3,
+                createdAt: now.addingTimeInterval(-2 * 86_400)
+            )
+        ).glanceFacts(now: now)
+        #expect(
+            facts.prefix(5).map(\.text) == [
+                "12 files", "+148 \u{2212}37", "CI passing", "2 approvals", "3 unresolved threads",
+            ])
         #expect(facts.last?.text.hasPrefix("opened ") == true)
         #expect(facts[2].tone == .good)
         #expect(facts[4].tone == .caution)
@@ -73,7 +79,8 @@ struct PRGlanceTests {
     }
 
     @Test func failingCIAndRequestedChangesStandOut() {
-        let facts = summary(PRGlance(checks: .failing, approvals: 0, changesRequested: 1, unresolvedThreads: 0)).glanceFacts()
+        let facts = summary(PRGlance(checks: .failing, approvals: 0, changesRequested: 1, unresolvedThreads: 0))
+            .glanceFacts()
         #expect(facts.map(\.text) == ["12 files", "+148 \u{2212}37", "CI failing", "changes requested"])
         #expect(facts[2].tone == .bad)
         #expect(facts[3].tone == .caution)

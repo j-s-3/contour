@@ -29,7 +29,10 @@ struct Statement: Codable, Hashable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey { case text, provenance, confidence, source }
 
     init(text: String, provenance: Provenance, confidence: Confidence? = nil, source: String? = nil) {
-        self.text = text; self.provenance = provenance; self.confidence = confidence; self.source = source
+        self.text = text
+        self.provenance = provenance
+        self.confidence = confidence
+        self.source = source
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -61,8 +64,11 @@ struct CodeRef: Codable, Hashable, Sendable, Identifiable {
     var display: String { "\(path):\(startLine)-\(endLine)" }
 
     init(path: String, startLine: Int, endLine: Int, blobSha: String? = nil, side: RefSide = .head) {
-        self.path = path; self.startLine = startLine; self.endLine = endLine
-        self.blobSha = blobSha; self.side = side
+        self.path = path
+        self.startLine = startLine
+        self.endLine = endLine
+        self.blobSha = blobSha
+        self.side = side
     }
     enum CodingKeys: String, CodingKey { case path, startLine, endLine, blobSha, side }
     init(from decoder: Decoder) throws {
@@ -117,14 +123,23 @@ struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
-    init(id: String = UUID().uuidString, fromId: String, toId: String, label: String,
-         flow: EdgeFlow = .sync, change: EdgeChange = .existing, isTrustBoundary: Bool = false,
-         onCriticalPath: Bool = false, decisionIds: [String] = [], note: String? = nil,
-         previousLabel: String? = nil) {
-        self.id = id; self.fromId = fromId; self.toId = toId; self.label = label
+    init(
+        id: String = UUID().uuidString, fromId: String, toId: String, label: String,
+        flow: EdgeFlow = .sync, change: EdgeChange = .existing, isTrustBoundary: Bool = false,
+        onCriticalPath: Bool = false, decisionIds: [String] = [], note: String? = nil,
+        previousLabel: String? = nil
+    ) {
+        self.id = id
+        self.fromId = fromId
+        self.toId = toId
+        self.label = label
         self.previousLabel = previousLabel
-        self.flow = flow; self.change = change; self.isTrustBoundary = isTrustBoundary
-        self.onCriticalPath = onCriticalPath; self.decisionIds = decisionIds; self.note = note
+        self.flow = flow
+        self.change = change
+        self.isTrustBoundary = isTrustBoundary
+        self.onCriticalPath = onCriticalPath
+        self.decisionIds = decisionIds
+        self.note = note
     }
     enum CodingKeys: String, CodingKey {
         case id, fromId, toId, label, previousLabel, flow, change, isTrustBoundary, onCriticalPath, decisionIds, note
@@ -135,7 +150,9 @@ struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
         fromId = try c.decode(String.self, forKey: .fromId)
         toId = try c.decode(String.self, forKey: .toId)
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-        previousLabel = (try? c.decodeIfPresent(String.self, forKey: .previousLabel)).flatMap { $0?.isEmpty == false ? $0 : nil }
+        previousLabel = (try? c.decodeIfPresent(String.self, forKey: .previousLabel)).flatMap {
+            $0?.isEmpty == false ? $0 : nil
+        }
         flow = try c.decodeIfPresent(EdgeFlow.self, forKey: .flow) ?? .sync
         change = try c.decodeIfPresent(EdgeChange.self, forKey: .change) ?? .existing
         isTrustBoundary = try c.decodeIfPresent(Bool.self, forKey: .isTrustBoundary) ?? false
@@ -168,8 +185,12 @@ struct SystemBoundary: Codable, Hashable, Sendable, Identifiable {
     var kind: BoundaryKind = .application
     var componentIds: [String] = []
 
-    init(id: String = UUID().uuidString, label: String, kind: BoundaryKind = .application, componentIds: [String] = []) {
-        self.id = id; self.label = label; self.kind = kind; self.componentIds = componentIds
+    init(id: String = UUID().uuidString, label: String, kind: BoundaryKind = .application, componentIds: [String] = [])
+    {
+        self.id = id
+        self.label = label
+        self.kind = kind
+        self.componentIds = componentIds
     }
     enum CodingKeys: String, CodingKey { case id, label, kind, componentIds }
     init(from decoder: Decoder) throws {
@@ -204,7 +225,10 @@ struct ArchitectureAssessment: Codable, Hashable, Sendable {
     var focusIds: [String] = []
 
     init(impact: ArchitecturalImpact, headline: String, explanation: Statement? = nil, focusIds: [String] = []) {
-        self.impact = impact; self.headline = headline; self.explanation = explanation; self.focusIds = focusIds
+        self.impact = impact
+        self.headline = headline
+        self.explanation = explanation
+        self.focusIds = focusIds
     }
     enum CodingKeys: String, CodingKey { case impact, headline, explanation, focusIds }
     init(from decoder: Decoder) throws {
@@ -222,7 +246,9 @@ struct ResponsibilityDelta: Codable, Hashable, Sendable {
     var summary: Statement?
 
     init(before: String? = nil, after: String? = nil, summary: Statement? = nil) {
-        self.before = before; self.after = after; self.summary = summary
+        self.before = before
+        self.after = after
+        self.summary = summary
     }
     enum CodingKeys: String, CodingKey { case before, after, summary }
     init(from decoder: Decoder) throws {
@@ -293,8 +319,8 @@ enum ReviewSignificance: String, Codable, Hashable, Sendable, Comparable {
 
 enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
     case correctness, security, dataIntegrity, reliability, concurrency, performance,
-         scalability, compatibility, failureBehavior, operability, maintainability,
-         userBehavior, architecture, evolution, complexity
+        scalability, compatibility, failureBehavior, operability, maintainability,
+        userBehavior, architecture, evolution, complexity
 
     var label: String {
         switch self {
@@ -312,9 +338,11 @@ enum DecisionImpact: String, Codable, Hashable, Sendable, CaseIterable {
             "userbehavior": .userBehavior, "uservisiblebehavior": .userBehavior, "ux": .userBehavior,
             "failuresemantics": .failureBehavior, "errorhandling": .failureBehavior,
             "architecturalconstraints": .architecture, "futureevolution": .evolution,
-            "backwardscompatibility": .compatibility, "backwardcompatibility": .compatibility
+            "backwardscompatibility": .compatibility, "backwardcompatibility": .compatibility,
         ]
-        guard let match = Self.allCases.first(where: { $0.rawValue.lowercased() == key }) ?? aliases[key] else { return nil }
+        guard let match = Self.allCases.first(where: { $0.rawValue.lowercased() == key }) ?? aliases[key] else {
+            return nil
+        }
         self = match
     }
 }
@@ -337,7 +365,9 @@ struct DecisionOption: Codable, Hashable, Sendable {
     var chosen: Bool = false
 
     init(label: String, detail: String? = nil, chosen: Bool = false) {
-        self.label = label; self.detail = detail; self.chosen = chosen
+        self.label = label
+        self.detail = detail
+        self.chosen = chosen
     }
     enum CodingKeys: String, CodingKey { case label, detail, chosen }
     init(from decoder: Decoder) throws {
@@ -368,11 +398,17 @@ struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
     var refs: [CodeRef] = []
     var outcome: BehaviorOutcome?
 
-    init(id: String = UUID().uuidString, label: String, tag: BehaviorStageTag,
-         componentIds: [String] = [], flowId: String? = nil, refs: [CodeRef] = [],
-         outcome: BehaviorOutcome? = nil) {
-        self.id = id; self.label = label; self.tag = tag
-        self.componentIds = componentIds; self.flowId = flowId; self.refs = refs
+    init(
+        id: String = UUID().uuidString, label: String, tag: BehaviorStageTag,
+        componentIds: [String] = [], flowId: String? = nil, refs: [CodeRef] = [],
+        outcome: BehaviorOutcome? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.tag = tag
+        self.componentIds = componentIds
+        self.flowId = flowId
+        self.refs = refs
         self.outcome = outcome
     }
     enum CodingKeys: String, CodingKey { case id, label, tag, componentIds, flowId, refs, outcome }
@@ -397,10 +433,17 @@ struct BehaviorChange: Codable, Hashable, Sendable, Identifiable {
     var consequence: Statement?
     var humanQuestion: Statement?
 
-    init(id: String, title: String, before: [BehaviorStage] = [], after: [BehaviorStage] = [],
-         why: Statement? = nil, consequence: Statement? = nil, humanQuestion: Statement? = nil) {
-        self.id = id; self.title = title; self.before = before; self.after = after
-        self.why = why; self.consequence = consequence; self.humanQuestion = humanQuestion
+    init(
+        id: String, title: String, before: [BehaviorStage] = [], after: [BehaviorStage] = [],
+        why: Statement? = nil, consequence: Statement? = nil, humanQuestion: Statement? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.before = before
+        self.after = after
+        self.why = why
+        self.consequence = consequence
+        self.humanQuestion = humanQuestion
     }
     enum CodingKeys: String, CodingKey { case id, title, before, after, why, consequence, humanQuestion }
     init(from decoder: Decoder) throws {
@@ -431,20 +474,31 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
     var parentId: String?
     var delta: ResponsibilityDelta?
 
-    init(id: String, title: String, changeKind: ChangeKind, summary: Statement? = nil,
-         refs: [CodeRef] = [], decisionIds: [String] = [], flowIds: [String] = [],
-         dependsOnIds: [String] = [], isTrustBoundaryEdge: Bool = false, filesChanged: Int = 0,
-         level: AbstractionLevel = .system, implementedBy: [String] = [],
-         parentId: String? = nil, delta: ResponsibilityDelta? = nil) {
-        self.parentId = parentId; self.delta = delta
-        self.id = id; self.title = title; self.changeKind = changeKind; self.summary = summary
-        self.refs = refs; self.decisionIds = decisionIds; self.flowIds = flowIds
-        self.dependsOnIds = dependsOnIds; self.isTrustBoundaryEdge = isTrustBoundaryEdge
+    init(
+        id: String, title: String, changeKind: ChangeKind, summary: Statement? = nil,
+        refs: [CodeRef] = [], decisionIds: [String] = [], flowIds: [String] = [],
+        dependsOnIds: [String] = [], isTrustBoundaryEdge: Bool = false, filesChanged: Int = 0,
+        level: AbstractionLevel = .system, implementedBy: [String] = [],
+        parentId: String? = nil, delta: ResponsibilityDelta? = nil
+    ) {
+        self.parentId = parentId
+        self.delta = delta
+        self.id = id
+        self.title = title
+        self.changeKind = changeKind
+        self.summary = summary
+        self.refs = refs
+        self.decisionIds = decisionIds
+        self.flowIds = flowIds
+        self.dependsOnIds = dependsOnIds
+        self.isTrustBoundaryEdge = isTrustBoundaryEdge
         self.filesChanged = filesChanged
-        self.level = level; self.implementedBy = implementedBy
+        self.level = level
+        self.implementedBy = implementedBy
     }
     enum CodingKeys: String, CodingKey {
-        case id, title, changeKind, summary, refs, decisionIds, flowIds, dependsOnIds, isTrustBoundaryEdge, filesChanged, level, implementedBy, parentId, delta
+        case id, title, changeKind, summary, refs, decisionIds, flowIds, dependsOnIds, isTrustBoundaryEdge,
+            filesChanged, level, implementedBy, parentId, delta
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -488,27 +542,42 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
     var shape: DecisionShape?
     var why: Statement?
 
-    init(id: String, title: String, decision: Statement, rationale: [Statement] = [],
-         alternatives: [Statement] = [], consequences: [Statement] = [], confidence: Confidence,
-         refs: [CodeRef] = [], tradeoffs: [DecisionTradeoff] = [], componentIds: [String] = [],
-         reviewerState: ReviewerState = .unreviewed, reviewerNote: String = "",
-         level: AbstractionLevel = .system, question: String? = nil, options: [DecisionOption] = [],
-         shape: DecisionShape? = nil, why: Statement? = nil, significance: ReviewSignificance? = nil,
-         impacts: [DecisionImpact] = [], significanceReason: String? = nil,
-         reviewerPlacement: ReviewPlacement? = nil) {
-        self.id = id; self.title = title; self.decision = decision; self.rationale = rationale
-        self.alternatives = alternatives; self.consequences = consequences; self.confidence = confidence
-        self.refs = refs; self.tradeoffs = tradeoffs; self.componentIds = componentIds
-        self.reviewerState = reviewerState; self.reviewerNote = reviewerNote
+    init(
+        id: String, title: String, decision: Statement, rationale: [Statement] = [],
+        alternatives: [Statement] = [], consequences: [Statement] = [], confidence: Confidence,
+        refs: [CodeRef] = [], tradeoffs: [DecisionTradeoff] = [], componentIds: [String] = [],
+        reviewerState: ReviewerState = .unreviewed, reviewerNote: String = "",
+        level: AbstractionLevel = .system, question: String? = nil, options: [DecisionOption] = [],
+        shape: DecisionShape? = nil, why: Statement? = nil, significance: ReviewSignificance? = nil,
+        impacts: [DecisionImpact] = [], significanceReason: String? = nil,
+        reviewerPlacement: ReviewPlacement? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.decision = decision
+        self.rationale = rationale
+        self.alternatives = alternatives
+        self.consequences = consequences
+        self.confidence = confidence
+        self.refs = refs
+        self.tradeoffs = tradeoffs
+        self.componentIds = componentIds
+        self.reviewerState = reviewerState
+        self.reviewerNote = reviewerNote
         self.level = level
-        self.question = question; self.options = options; self.shape = shape; self.why = why
-        self.significance = significance; self.impacts = impacts
-        self.significanceReason = significanceReason; self.reviewerPlacement = reviewerPlacement
+        self.question = question
+        self.options = options
+        self.shape = shape
+        self.why = why
+        self.significance = significance
+        self.impacts = impacts
+        self.significanceReason = significanceReason
+        self.reviewerPlacement = reviewerPlacement
     }
     enum CodingKeys: String, CodingKey {
         case id, title, decision, rationale, alternatives, consequences, confidence, refs,
-             tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why,
-             significance, impacts, significanceReason, reviewerPlacement
+            tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why,
+            significance, impacts, significanceReason, reviewerPlacement
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -520,7 +589,8 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         consequences = try c.decodeIfPresent([Statement].self, forKey: .consequences) ?? []
         confidence = try c.decodeIfPresent(Confidence.self, forKey: .confidence) ?? .medium
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        tradeoffs = ((try? c.decodeIfPresent([LenientDecodable<DecisionTradeoff>].self, forKey: .tradeoffs)) ?? nil)?
+        tradeoffs =
+            ((try? c.decodeIfPresent([LenientDecodable<DecisionTradeoff>].self, forKey: .tradeoffs)) ?? nil)?
             .compactMap(\.value) ?? []
         componentIds = try c.decodeIfPresent([String].self, forKey: .componentIds) ?? []
         reviewerState = try c.decodeIfPresent(ReviewerState.self, forKey: .reviewerState) ?? .unreviewed
@@ -531,7 +601,8 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
         shape = (try? c.decodeIfPresent(DecisionShape.self, forKey: .shape)) ?? nil
         why = try? c.decodeIfPresent(Statement.self, forKey: .why)
         significance = (try? c.decodeIfPresent(ReviewSignificance.self, forKey: .significance)) ?? nil
-        impacts = ((try? c.decodeIfPresent([String].self, forKey: .impacts)) ?? nil)?
+        impacts =
+            ((try? c.decodeIfPresent([String].self, forKey: .impacts)) ?? nil)?
             .compactMap(DecisionImpact.init(lenient:)) ?? []
         significanceReason = (try? c.decodeIfPresent(String.self, forKey: .significanceReason))
             .flatMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
@@ -557,10 +628,16 @@ struct DecisionTradeoff: Codable, Hashable, Sendable {
     var prominence: TradeoffProminence = .primary
     var refs: [CodeRef] = []
 
-    init(dimensionA: String, dimensionB: String, chosenPosition: Double = 0.5, explanation: Statement? = nil,
-         prominence: TradeoffProminence = .primary, refs: [CodeRef] = []) {
-        self.dimensionA = dimensionA; self.dimensionB = dimensionB; self.chosenPosition = chosenPosition
-        self.explanation = explanation; self.prominence = prominence; self.refs = refs
+    init(
+        dimensionA: String, dimensionB: String, chosenPosition: Double = 0.5, explanation: Statement? = nil,
+        prominence: TradeoffProminence = .primary, refs: [CodeRef] = []
+    ) {
+        self.dimensionA = dimensionA
+        self.dimensionB = dimensionB
+        self.chosenPosition = chosenPosition
+        self.explanation = explanation
+        self.prominence = prominence
+        self.refs = refs
     }
     enum CodingKeys: String, CodingKey { case dimensionA, dimensionB, chosenPosition, explanation, prominence, refs }
     init(from decoder: Decoder) throws {
@@ -592,18 +669,28 @@ struct FlowStep: Codable, Hashable, Sendable, Identifiable {
     var isAsyncBoundaryAfter: Bool = false
     var caution: String?
 
-    init(id: String, index: Int, title: String, componentId: String? = nil, refs: [CodeRef] = [],
-         stateDelta: String? = nil, branches: [String] = [], externalCalls: [String] = [],
-         errorPaths: [String] = [], changeKind: ChangeKind = .unchanged,
-         isAsyncBoundaryAfter: Bool = false, caution: String? = nil) {
-        self.id = id; self.index = index; self.title = title; self.componentId = componentId
-        self.refs = refs; self.stateDelta = stateDelta; self.branches = branches
-        self.externalCalls = externalCalls; self.errorPaths = errorPaths; self.changeKind = changeKind
-        self.isAsyncBoundaryAfter = isAsyncBoundaryAfter; self.caution = caution
+    init(
+        id: String, index: Int, title: String, componentId: String? = nil, refs: [CodeRef] = [],
+        stateDelta: String? = nil, branches: [String] = [], externalCalls: [String] = [],
+        errorPaths: [String] = [], changeKind: ChangeKind = .unchanged,
+        isAsyncBoundaryAfter: Bool = false, caution: String? = nil
+    ) {
+        self.id = id
+        self.index = index
+        self.title = title
+        self.componentId = componentId
+        self.refs = refs
+        self.stateDelta = stateDelta
+        self.branches = branches
+        self.externalCalls = externalCalls
+        self.errorPaths = errorPaths
+        self.changeKind = changeKind
+        self.isAsyncBoundaryAfter = isAsyncBoundaryAfter
+        self.caution = caution
     }
     enum CodingKeys: String, CodingKey {
         case id, index, title, componentId, refs, stateDelta, branches, externalCalls, errorPaths,
-             changeKind, isAsyncBoundaryAfter, caution
+            changeKind, isAsyncBoundaryAfter, caution
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -630,10 +717,16 @@ struct FlowNode: Codable, Hashable, Sendable, Identifiable {
     var storySteps: [Statement] = []
     var behavior: FlowBehavior?
 
-    init(id: String, title: String, steps: [FlowStep] = [], entryPointId: String? = nil, storySteps: [Statement] = [],
-         behavior: FlowBehavior? = nil) {
-        self.id = id; self.title = title; self.steps = steps; self.entryPointId = entryPointId
-        self.storySteps = storySteps; self.behavior = behavior
+    init(
+        id: String, title: String, steps: [FlowStep] = [], entryPointId: String? = nil, storySteps: [Statement] = [],
+        behavior: FlowBehavior? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.steps = steps
+        self.entryPointId = entryPointId
+        self.storySteps = storySteps
+        self.behavior = behavior
     }
     enum CodingKeys: String, CodingKey { case id, title, steps, entryPointId, storySteps, behavior }
     init(from decoder: Decoder) throws {
@@ -657,9 +750,17 @@ struct EntryPointNode: Codable, Hashable, Sendable, Identifiable {
     var flowId: String?
     var triggersLabel: String?
 
-    init(id: String, title: String, kind: String, changeKind: ChangeKind, refs: [CodeRef] = [], flowId: String? = nil, triggersLabel: String? = nil) {
-        self.id = id; self.title = title; self.kind = kind; self.changeKind = changeKind
-        self.refs = refs; self.flowId = flowId; self.triggersLabel = triggersLabel
+    init(
+        id: String, title: String, kind: String, changeKind: ChangeKind, refs: [CodeRef] = [], flowId: String? = nil,
+        triggersLabel: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.changeKind = changeKind
+        self.refs = refs
+        self.flowId = flowId
+        self.triggersLabel = triggersLabel
     }
     enum CodingKeys: String, CodingKey { case id, title, kind, changeKind, refs, flowId, triggersLabel }
     init(from decoder: Decoder) throws {
@@ -681,7 +782,10 @@ struct QuestionNode: Codable, Hashable, Sendable, Identifiable {
     var refs: [CodeRef] = []
 
     init(id: String, text: String, relatedIds: [String] = [], refs: [CodeRef] = []) {
-        self.id = id; self.text = text; self.relatedIds = relatedIds; self.refs = refs
+        self.id = id
+        self.text = text
+        self.relatedIds = relatedIds
+        self.refs = refs
     }
     enum CodingKeys: String, CodingKey { case id, text, relatedIds, refs }
     init(from decoder: Decoder) throws {
@@ -710,13 +814,22 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     var refs: [CodeRef] = []
     var flowAnchors: [FlowAnchor] = []
 
-    init(id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
-         provenance: Provenance = .interpretation, confidence: Confidence? = nil,
-         explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
-         flowAnchors: [FlowAnchor] = []) {
-        self.id = id; self.question = question; self.detail = detail; self.kind = kind
-        self.provenance = provenance; self.confidence = confidence; self.explanation = explanation
-        self.relatedIds = relatedIds; self.refs = refs; self.flowAnchors = flowAnchors
+    init(
+        id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
+        provenance: Provenance = .interpretation, confidence: Confidence? = nil,
+        explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
+        flowAnchors: [FlowAnchor] = []
+    ) {
+        self.id = id
+        self.question = question
+        self.detail = detail
+        self.kind = kind
+        self.provenance = provenance
+        self.confidence = confidence
+        self.explanation = explanation
+        self.relatedIds = relatedIds
+        self.refs = refs
+        self.flowAnchors = flowAnchors
     }
     enum CodingKeys: String, CodingKey {
         case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs, flowAnchors
@@ -732,7 +845,8 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         explanation = try c.decodeIfPresent(String.self, forKey: .explanation)
         relatedIds = try c.decodeIfPresent([String].self, forKey: .relatedIds) ?? []
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
-        flowAnchors = (try? c.decodeIfPresent([FailableDecode<FlowAnchor>].self, forKey: .flowAnchors))?.compactMap(\.value) ?? []
+        flowAnchors =
+            (try? c.decodeIfPresent([FailableDecode<FlowAnchor>].self, forKey: .flowAnchors))?.compactMap(\.value) ?? []
     }
 }
 
@@ -741,7 +855,10 @@ struct ChangeMapEntry: Codable, Hashable, Sendable, Identifiable {
     var name: String
     var filesChanged: Int
 
-    init(name: String, filesChanged: Int) { self.name = name; self.filesChanged = filesChanged }
+    init(name: String, filesChanged: Int) {
+        self.name = name
+        self.filesChanged = filesChanged
+    }
     enum CodingKeys: String, CodingKey { case name, filesChanged }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -809,7 +926,8 @@ struct PRGraph: Codable, Hashable, Sendable {
     func implementationComponents(for systemComponentId: String) -> [ComponentNode] {
         guard let system = component(systemComponentId) else { return [] }
         let byName = components.filter { impl in
-            impl.level >= .component && system.implementedBy.contains { $0.caseInsensitiveCompare(impl.title) == .orderedSame }
+            impl.level >= .component
+                && system.implementedBy.contains { $0.caseInsensitiveCompare(impl.title) == .orderedSame }
         }
         if !byName.isEmpty { return byName }
         return components.filter { $0.dependsOnIds.contains(systemComponentId) && $0.level >= .component }
@@ -832,12 +950,14 @@ struct PRGraph: Codable, Hashable, Sendable {
         var out: [ArchitectureEdge] = []
         for c in components {
             for dep in c.dependsOnIds where component(dep) != nil {
-                let change: EdgeChange = (c.changeKind == .new || component(dep)?.changeKind == .new)
+                let change: EdgeChange =
+                    (c.changeKind == .new || component(dep)?.changeKind == .new)
                     ? .new : ((c.changeKind == .changed) ? .changed : .existing)
-                out.append(ArchitectureEdge(
-                    id: "\(c.id)->\(dep)", fromId: c.id, toId: dep, label: "depends on",
-                    flow: .sync, change: change, isTrustBoundary: c.isTrustBoundaryEdge
-                ))
+                out.append(
+                    ArchitectureEdge(
+                        id: "\(c.id)->\(dep)", fromId: c.id, toId: dep, label: "depends on",
+                        flow: .sync, change: change, isTrustBoundary: c.isTrustBoundaryEdge
+                    ))
             }
         }
         return out

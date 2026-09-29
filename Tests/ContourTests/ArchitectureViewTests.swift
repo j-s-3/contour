@@ -1,17 +1,21 @@
 import Testing
+
 @testable import Contour
 
 struct ArchitectureViewTests {
-    private func minimalGraph(components: [ComponentNode], boundaries: [SystemBoundary] = [],
-                               edges: [ArchitectureEdge] = [], decisions: [DecisionNode] = [],
-                               considerations: [Consideration]? = nil) -> PRGraph {
+    private func minimalGraph(
+        components: [ComponentNode], boundaries: [SystemBoundary] = [],
+        edges: [ArchitectureEdge] = [], decisions: [DecisionNode] = [],
+        considerations: [Consideration]? = nil
+    ) -> PRGraph {
         let pr = PRSummary(
             repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
             branch: "feature", baseBranch: "main", headSha: "h", baseSha: "b",
             intent: Statement(text: "x", provenance: .fact), filesChanged: 1, additions: 1, deletions: 1,
             considerations: considerations
         )
-        return PRGraph(pr: pr, components: components, decisions: decisions, architectureEdges: edges, boundaries: boundaries)
+        return PRGraph(
+            pr: pr, components: components, decisions: decisions, architectureEdges: edges, boundaries: boundaries)
     }
 
     @Test func boxesExcludeNewPartsInBeforeModeAndRemovedPartsInAfterMode() {
@@ -23,7 +27,9 @@ struct ArchitectureViewTests {
 
         #expect(ArchitectureView.boxes(level, graph: graph, mode: .before).map(\.id) == ["removed-part"])
         #expect(ArchitectureView.boxes(level, graph: graph, mode: .after).map(\.id) == ["new-part"])
-        #expect(Set(ArchitectureView.boxes(level, graph: graph, mode: .delta).map(\.id)) == Set(["new-part", "removed-part"]))
+        #expect(
+            Set(ArchitectureView.boxes(level, graph: graph, mode: .delta).map(\.id))
+                == Set(["new-part", "removed-part"]))
     }
 
     @Test func emphasisReflectsChangeKindOnlyInDeltaMode() {
@@ -35,8 +41,9 @@ struct ArchitectureViewTests {
     }
 
     @Test func changePhraseFollowsTheSelectedMode() {
-        let part = ComponentNode(id: "p", title: "P", changeKind: .changed,
-                                  delta: ResponsibilityDelta(before: "old", after: "new"))
+        let part = ComponentNode(
+            id: "p", title: "P", changeKind: .changed,
+            delta: ResponsibilityDelta(before: "old", after: "new"))
         let graph = minimalGraph(components: [part])
         let level = graph.architectureLevel(path: [])
 
@@ -141,8 +148,9 @@ struct ArchitectureViewTests {
 
     @Test func legendInfoFlagsAPartMarkedWithADecisionToReview() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .changed)
-        let decision = DecisionNode(id: "d1", title: "D", decision: Statement(text: "x", provenance: .fact),
-                                     confidence: .medium, componentIds: ["p"], significance: .high)
+        let decision = DecisionNode(
+            id: "d1", title: "D", decision: Statement(text: "x", provenance: .fact),
+            confidence: .medium, componentIds: ["p"], significance: .high)
         let graph = minimalGraph(components: [part], decisions: [decision])
         let level = graph.architectureLevel(path: [])
         #expect(ArchitectureView.legendInfo(level, graph: graph, mode: .delta)?.hasDecision == true)
@@ -238,14 +246,17 @@ struct ArchitectureViewTests {
         let part = ComponentNode(id: "p", title: "P", changeKind: .unchanged)
         let graph = minimalGraph(components: [part])
         let level = graph.architectureLevel(path: [])
-        #expect(ArchitectureView.selectionAfterHidingCheck(.node("p"), level: level, graph: graph, mode: .delta) == .node("p"))
+        #expect(
+            ArchitectureView.selectionAfterHidingCheck(.node("p"), level: level, graph: graph, mode: .delta)
+                == .node("p"))
     }
 
     @Test func selectionAfterHidingCheckDropsANodeHiddenByTheMode() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .new)
         let graph = minimalGraph(components: [part])
         let level = graph.architectureLevel(path: [])
-        #expect(ArchitectureView.selectionAfterHidingCheck(.node("p"), level: level, graph: graph, mode: .before) == nil)
+        #expect(
+            ArchitectureView.selectionAfterHidingCheck(.node("p"), level: level, graph: graph, mode: .before) == nil)
     }
 
     @Test func selectionAfterHidingCheckDropsAnEdgeHiddenByTheMode() {
@@ -254,7 +265,8 @@ struct ArchitectureViewTests {
         let edge = ArchitectureEdge(id: "e1", fromId: "a", toId: "b", label: "uses", change: .new)
         let graph = minimalGraph(components: [a, b], edges: [edge])
         let level = graph.architectureLevel(path: [])
-        #expect(ArchitectureView.selectionAfterHidingCheck(.edge("e1"), level: level, graph: graph, mode: .before) == nil)
+        #expect(
+            ArchitectureView.selectionAfterHidingCheck(.edge("e1"), level: level, graph: graph, mode: .before) == nil)
     }
 
     @Test func focusSubjectForANodeSelectionIsItsComponent() {

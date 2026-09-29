@@ -17,7 +17,13 @@ private final class DataBox: @unchecked Sendable {
     private var data = Data()
     func append(_ chunk: Data) { lock.withLock { data.append(chunk) } }
     func snapshot() -> Data { lock.withLock { data } }
-    func drain() -> Data { lock.withLock { let d = data; data = Data(); return d } }
+    func drain() -> Data {
+        lock.withLock {
+            let d = data
+            data = Data()
+            return d
+        }
+    }
 }
 
 private final class ActivityClock: @unchecked Sendable {
@@ -61,15 +67,13 @@ enum Shell {
                 outPipe.fileHandleForReading.readabilityHandler = { handle in
                     ioLock.withLock {
                         let d = handle.availableData
-                        if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil }
-                        else { outBox.append(d) }
+                        if d.isEmpty { outPipe.fileHandleForReading.readabilityHandler = nil } else { outBox.append(d) }
                     }
                 }
                 errPipe.fileHandleForReading.readabilityHandler = { handle in
                     ioLock.withLock {
                         let d = handle.availableData
-                        if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
-                        else { errBox.append(d) }
+                        if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil } else { errBox.append(d) }
                     }
                 }
 
@@ -89,11 +93,12 @@ enum Shell {
                     if proc.terminationStatus == 0 {
                         continuation.resume(returning: out)
                     } else {
-                        continuation.resume(throwing: ProcessError(
-                            command: "\(executable) \(arguments.joined(separator: " "))",
-                            exitCode: proc.terminationStatus,
-                            stderr: err.isEmpty ? out : err
-                        ))
+                        continuation.resume(
+                            throwing: ProcessError(
+                                command: "\(executable) \(arguments.joined(separator: " "))",
+                                exitCode: proc.terminationStatus,
+                                stderr: err.isEmpty ? out : err
+                            ))
                     }
                 }
 
@@ -173,8 +178,12 @@ enum Shell {
             errPipe.fileHandleForReading.readabilityHandler = { handle in
                 ioLock.withLock {
                     let d = handle.availableData
-                    if d.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil }
-                    else { activity.touch(); errBox.append(d) }
+                    if d.isEmpty {
+                        errPipe.fileHandleForReading.readabilityHandler = nil
+                    } else {
+                        activity.touch()
+                        errBox.append(d)
+                    }
                 }
             }
 
@@ -182,11 +191,12 @@ enum Shell {
                 while !Task.isCancelled {
                     let idle = activity.idle()
                     if idle >= inactivityTimeout {
-                        continuation.finish(throwing: ProcessError(
-                            command: "\(executable) \(arguments.joined(separator: " "))",
-                            exitCode: -1,
-                            stderr: "killed after \(inactivityTimeout) with no output (inactivity watchdog)"
-                        ))
+                        continuation.finish(
+                            throwing: ProcessError(
+                                command: "\(executable) \(arguments.joined(separator: " "))",
+                                exitCode: -1,
+                                stderr: "killed after \(inactivityTimeout) with no output (inactivity watchdog)"
+                            ))
                         if process.isRunning { process.terminate() }
                         return
                     }
@@ -212,11 +222,12 @@ enum Shell {
                     continuation.finish()
                 } else {
                     let err = String(data: errBox.snapshot(), encoding: .utf8) ?? ""
-                    continuation.finish(throwing: ProcessError(
-                        command: "\(executable) \(arguments.joined(separator: " "))",
-                        exitCode: proc.terminationStatus,
-                        stderr: err
-                    ))
+                    continuation.finish(
+                        throwing: ProcessError(
+                            command: "\(executable) \(arguments.joined(separator: " "))",
+                            exitCode: proc.terminationStatus,
+                            stderr: err
+                        ))
                 }
             }
 

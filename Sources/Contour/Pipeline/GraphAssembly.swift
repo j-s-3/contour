@@ -11,13 +11,14 @@ enum StageResult: Sendable {
 
 extension PRGraph {
     static func shell(from ctx: RawPRContext) -> PRGraph {
-        PRGraph(pr: PRSummary(
-            repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
-            state: ctx.state, branch: ctx.headRefName, baseBranch: ctx.baseRefName, headSha: ctx.headSha,
-            baseSha: ctx.baseSha, intent: shellIntent(title: ctx.title),
-            filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions,
-            glance: ctx.glance
-        ))
+        PRGraph(
+            pr: PRSummary(
+                repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
+                state: ctx.state, branch: ctx.headRefName, baseBranch: ctx.baseRefName, headSha: ctx.headSha,
+                baseSha: ctx.baseSha, intent: shellIntent(title: ctx.title),
+                filesChanged: ctx.changedFiles, additions: ctx.additions, deletions: ctx.deletions,
+                glance: ctx.glance
+            ))
     }
 
     mutating func refreshMetadata(from ctx: RawPRContext) {

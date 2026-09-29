@@ -13,10 +13,11 @@ struct ContextualChatView: View {
             if let conversation = conversations.active, let resolved = graph.resolve(conversation.subject) {
                 thread(conversation, resolved)
                     .id(conversation.id)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.97, anchor: .top).combined(with: .opacity),
-                        removal: .opacity
-                    ))
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.97, anchor: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
             } else {
                 ContentUnavailableView {
                     Label("No conversation", systemImage: "bubble.left.and.text.bubble.right")
@@ -81,7 +82,9 @@ struct ContextualChatView: View {
             }
             Spacer(minLength: 4)
             conversationsMenu
-            Button { conversations.close() } label: {
+            Button {
+                conversations.close()
+            } label: {
                 Image(systemName: "xmark").font(.caption.weight(.semibold))
             }
             .buttonStyle(.borderless)
@@ -95,7 +98,9 @@ struct ContextualChatView: View {
     var conversationMenuContent: some View {
         Section("Conversations") {
             ForEach(conversations.conversations) { c in
-                Button { conversations.activeId = c.id } label: {
+                Button {
+                    conversations.activeId = c.id
+                } label: {
                     let title = ChatViewLogic.menuTitle(for: c, in: graph)
                     if c.id == conversations.activeId {
                         Label(title, systemImage: "checkmark")
@@ -150,12 +155,16 @@ struct ContextualChatView: View {
             if ChatViewLogic.showsContextChips(expansions: expansions, pinnedRefs: conversation.pinnedRefs) {
                 FlowLayout(spacing: 6) {
                     ForEach(conversation.pinnedRefs) { ref in
-                        chip("\(ref.display)", symbol: "pin.fill", on: true) { ChatViewLogic.unpin(ref, in: conversation) }
+                        chip("\(ref.display)", symbol: "pin.fill", on: true) {
+                            ChatViewLogic.unpin(ref, in: conversation)
+                        }
                         .help("Included in this conversation — click to remove")
                     }
                     ForEach(expansions) { expansion in
                         let on = conversation.expansions.contains(expansion)
-                        chip(expansion.label, symbol: ChatViewLogic.expansionSymbol(on: on), on: on) { ChatViewLogic.toggle(expansion, in: conversation) }
+                        chip(expansion.label, symbol: ChatViewLogic.expansionSymbol(on: on), on: on) {
+                            ChatViewLogic.toggle(expansion, in: conversation)
+                        }
                         .help(ChatViewLogic.expansionHelp(expansion, on: on))
                     }
                 }
@@ -188,7 +197,9 @@ struct ContextualChatView: View {
                 .lineLimit(1)
                 .padding(.bottom, 4)
             ForEach(ChatContextBuilder.suggestions(for: resolved), id: \.self) { suggestion in
-                Button { store.send(suggestion, in: conversation) } label: {
+                Button {
+                    store.send(suggestion, in: conversation)
+                } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.turn.down.right").font(.caption2).foregroundStyle(.tertiary)
                         Text(suggestion).font(.callout)
@@ -240,12 +251,17 @@ struct ContextualChatView: View {
 
     private func composer(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let ref = ChatViewLogic.evidenceToOffer(current: store.current, pinnedRefs: conversation.pinnedRefs, subject: conversation.subject) {
-                Button { conversations.pin(ref, in: conversation) } label: {
+            if let ref = ChatViewLogic.evidenceToOffer(
+                current: store.current, pinnedRefs: conversation.pinnedRefs, subject: conversation.subject)
+            {
+                Button {
+                    conversations.pin(ref, in: conversation)
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
                         Text("Include the code you're viewing:")
-                        Text(ref.display).font(.system(.caption, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                        Text(ref.display).font(.system(.caption, design: .monospaced)).lineLimit(1).truncationMode(
+                            .middle)
                     }
                     .font(.caption)
                 }
@@ -253,19 +269,27 @@ struct ContextualChatView: View {
                 .foregroundStyle(Color.accentColor)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask about \(ChatViewLogic.subjectPhrase(for: resolved))…",
-                          text: Binding(get: { conversation.draft }, set: { conversation.draft = $0 }),
-                          axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.callout)
-                    .lineLimit(1...6)
-                    .focused($composerFocused)
-                    .onSubmit { store.send(conversation.draft, in: conversation) }
+                TextField(
+                    "Ask about \(ChatViewLogic.subjectPhrase(for: resolved))…",
+                    text: Binding(get: { conversation.draft }, set: { conversation.draft = $0 }),
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .lineLimit(1...6)
+                .focused($composerFocused)
+                .onSubmit { store.send(conversation.draft, in: conversation) }
                 if conversation.isResponding {
-                    Button { conversations.cancel(conversation) } label: { Image(systemName: "stop.circle.fill").font(.title3) }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop")
+                    Button {
+                        conversations.cancel(conversation)
+                    } label: {
+                        Image(systemName: "stop.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop")
                 } else {
-                    Button { store.send(conversation.draft, in: conversation) } label: {
+                    Button {
+                        store.send(conversation.draft, in: conversation)
+                    } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title3)
                     }
                     .buttonStyle(.plain)

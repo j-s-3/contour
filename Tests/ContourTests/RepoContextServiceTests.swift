@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Contour
 
 struct RepoContextServiceTests {
@@ -34,7 +35,8 @@ struct RepoContextServiceTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let lines = (1...20).map { "line \($0)" }
-        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try lines.joined(separator: "\n").write(
+            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
         let result = try await RepoContextService().readLines(
@@ -49,7 +51,8 @@ struct RepoContextServiceTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let lines = (1...5).map { "line \($0)" }
-        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try lines.joined(separator: "\n").write(
+            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
         let result = try await RepoContextService().readLines(
@@ -63,7 +66,8 @@ struct RepoContextServiceTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let baseSha = try await makeGitRepo(at: dir, path: "a.txt", contents: "committed line 1\ncommitted line 2\n")
 
-        try "working tree line 1\nworking tree line 2\n".write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "working tree line 1\nworking tree line 2\n".write(
+            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: baseSha, symbolIndexPath: nil)
         let result = try await RepoContextService().readLines(
@@ -81,7 +85,8 @@ struct RepoContextServiceTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let lines = (1...20).map { "line \($0)" }
-        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try lines.joined(separator: "\n").write(
+            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
         let result = try await RepoContextService().readLines(in: checkout, path: "a.txt", startLine: 10, endLine: 10)
@@ -92,13 +97,16 @@ struct RepoContextServiceTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let lines = (1...3).map { "line \($0)" }
-        try lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try lines.joined(separator: "\n").write(
+            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
         let result = try await RepoContextService().readLines(
             in: checkout, path: "a.txt", startLine: 10, endLine: 12, contextLines: 0
         )
         #expect(result.lines.isEmpty)
-        #expect(result.refStart == 10 && result.refEnd == 12, "the requested range is echoed back even when nothing matched")
+        #expect(
+            result.refStart == 10 && result.refEnd == 12, "the requested range is echoed back even when nothing matched"
+        )
     }
 }

@@ -1,10 +1,15 @@
 import Foundation
-import os
 import Testing
+import os
+
 @testable import Contour
 
 final class MockURLProtocol: URLProtocol {
-    struct Canned { var status: Int; var headers: [String: String] = [:]; var body: Data }
+    struct Canned {
+        var status: Int
+        var headers: [String: String] = [:]
+        var body: Data
+    }
     private static let handlerLock = OSAllocatedUnfairLock<(@Sendable (URLRequest) -> Canned)?>(initialState: nil)
     static var handler: (@Sendable (URLRequest) -> Canned)? {
         get { handlerLock.withLock { $0 } }
@@ -43,8 +48,10 @@ struct AnonymousAPISourceTests {
     @Test func fetchContextAssemblesEveryFieldFromTheAPI() async throws {
         let pr: [String: Any] = [
             "title": "Add feature", "state": "closed", "merged": true,
-            "head": ["sha": "headsha1", "ref": "feature-branch",
-                     "repo": ["owner": ["login": "forker"], "name": "shop"]],
+            "head": [
+                "sha": "headsha1", "ref": "feature-branch",
+                "repo": ["owner": ["login": "forker"], "name": "shop"],
+            ],
             "base": ["sha": "basesha1", "ref": "main"],
             "user": ["login": "alice"], "body": "PR body text",
             "additions": 10, "deletions": 2, "changed_files": 3,
@@ -53,8 +60,10 @@ struct AnonymousAPISourceTests {
         ]
         let files: [[String: Any]] = [["filename": "src/a.swift"], ["filename": "src/b.swift"]]
         let commits: [[String: Any]] = [
-            ["sha": "c1", "commit": ["message": "msg1", "author": ["name": "Embedded Name"]],
-             "author": ["login": "alice"]],
+            [
+                "sha": "c1", "commit": ["message": "msg1", "author": ["name": "Embedded Name"]],
+                "author": ["login": "alice"],
+            ],
             ["sha": "c2", "commit": ["message": "msg2", "author": ["name": "Embedded Only"]]],
         ]
         let comments: [[String: Any]] = [
@@ -68,9 +77,13 @@ struct AnonymousAPISourceTests {
         let checkRuns: [String: Any] = ["check_runs": [["status": "completed", "conclusion": "success"]]]
         let statuses: [String: Any] = ["statuses": []]
 
-        let prData = json(pr), filesData = json(files), commitsData = json(commits)
-        let commentsData = json(comments), reviewsData = json(reviews)
-        let checkRunsData = json(checkRuns), statusesData = json(statuses)
+        let prData = json(pr)
+        let filesData = json(files)
+        let commitsData = json(commits)
+        let commentsData = json(comments)
+        let reviewsData = json(reviews)
+        let checkRunsData = json(checkRuns)
+        let statusesData = json(statuses)
 
         MockURLProtocol.handler = { request in
             let path = request.url!.path
@@ -135,7 +148,8 @@ struct AnonymousAPISourceTests {
         let source = AnonymousAPISource(session: mockSession())
 
         MockURLProtocol.handler = { _ in
-            .init(status: 403, headers: ["X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1704067200"], body: Data())
+            .init(
+                status: 403, headers: ["X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1704067200"], body: Data())
         }
         do {
             _ = try await source.fetchContext(prURL: "https://github.com/acme/shop/pull/5")
@@ -165,7 +179,8 @@ struct AnonymousAPISourceTests {
         MockURLProtocol.handler = { _ in .init(status: 200, body: Data("[1,2,3]".utf8)) }
         defer { MockURLProtocol.handler = nil }
         do {
-            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
             Issue.record("expected malformedResponse")
         } catch GitHubServiceError.malformedResponse(_) {
         } catch { Issue.record("wrong error: \(error)") }
@@ -173,13 +188,15 @@ struct AnonymousAPISourceTests {
 
     @Test func aWellFormedButIncompletePRObjectIsAMalformedResponse() async {
         MockURLProtocol.handler = { request in
-            request.url!.path.hasSuffix("/diff") || request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.v3.diff"
+            request.url!.path.hasSuffix("/diff")
+                || request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.v3.diff"
                 ? .init(status: 200, body: Data())
                 : .init(status: 200, body: json(["title": "No head or base"]))
         }
         defer { MockURLProtocol.handler = nil }
         do {
-            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
             Issue.record("expected malformedResponse")
         } catch GitHubServiceError.malformedResponse(_) {
         } catch { Issue.record("wrong error: \(error)") }
@@ -189,7 +206,8 @@ struct AnonymousAPISourceTests {
         MockURLProtocol.handler = { _ in .init(status: 500, body: Data("server exploded".utf8)) }
         defer { MockURLProtocol.handler = nil }
         do {
-            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
             Issue.record("expected malformedResponse")
         } catch GitHubServiceError.malformedResponse(let detail) {
             #expect(detail.contains("500") && detail.contains("server exploded"))
@@ -214,8 +232,11 @@ struct AnonymousAPISourceTests {
             return .init(status: 200, body: json([[String: Any]]()))
         }
         defer { MockURLProtocol.handler = nil }
-        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
-        #expect(context.glance.checks == .passing, "the failing check-runs call is swallowed; the status call alone still rolls up")
+        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(
+            prURL: "https://github.com/acme/shop/pull/5")
+        #expect(
+            context.glance.checks == .passing,
+            "the failing check-runs call is swallowed; the status call alone still rolls up")
     }
 
     @Test func paginationWalksToASecondPageWhenTheFirstIsFull() async throws {
@@ -238,7 +259,8 @@ struct AnonymousAPISourceTests {
             return .init(status: 200, body: json([[String: Any]]()))
         }
         defer { MockURLProtocol.handler = nil }
-        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(prURL: "https://github.com/acme/shop/pull/5")
+        let context = try await AnonymousAPISource(session: mockSession()).fetchContext(
+            prURL: "https://github.com/acme/shop/pull/5")
         #expect(context.files.count == 101, "a full first page (100) must fetch page 2 for the 101st file")
     }
 
@@ -249,9 +271,11 @@ struct AnonymousAPISourceTests {
         #expect(await source.fetchIssue(owner: "acme", repo: "shop", number: "42") == nil)
 
         MockURLProtocol.handler = { _ in
-            .init(status: 200, body: try! JSONSerialization.data(withJSONObject: [
-                "title": "Bug title", "body": "desc", "html_url": "https://github.com/acme/shop/issues/42",
-            ]))
+            .init(
+                status: 200,
+                body: try! JSONSerialization.data(withJSONObject: [
+                    "title": "Bug title", "body": "desc", "html_url": "https://github.com/acme/shop/issues/42",
+                ]))
         }
         let issue = await source.fetchIssue(owner: "acme", repo: "shop", number: "42")
         #expect(issue?.title == "Bug title")

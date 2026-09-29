@@ -1,7 +1,8 @@
-import Testing
+import AppKit
 import Foundation
 import SwiftUI
-import AppKit
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -21,21 +22,25 @@ struct OnboardingViewRenderTests {
 
     @Test func startScreenLaysOut() {
         _ = render(NamespaceHost { OnboardingView(markNamespace: $0, onSubmit: { _ in }) })
-        _ = render(NamespaceHost {
-            OnboardingView(initialURL: "https://github.com/acme/shop/pull/1", markNamespace: $0,
-                           focusRequest: 2, onSubmit: { _ in })
-        })
+        _ = render(
+            NamespaceHost {
+                OnboardingView(
+                    initialURL: "https://github.com/acme/shop/pull/1", markNamespace: $0,
+                    focusRequest: 2, onSubmit: { _ in })
+            })
     }
 
     @Test func pullRequestListAndRowsLayOut() {
         let size = render(
             PullRequestList(title: "Awaiting your review", systemImage: "person") {
-                PullRequestRow(title: "Fix it", repo: "acme/shop", number: 3, detail: "jdoe · draft",
-                               date: Date(), dateVerb: "updated",
-                               url: "https://github.com/acme/shop/pull/3", onOpen: { _ in })
-                PullRequestRow(title: "Another", repo: "acme/shop", number: 4, detail: nil,
-                               date: nil, dateVerb: "opened",
-                               url: "https://github.com/acme/shop/pull/4", onOpen: { _ in })
+                PullRequestRow(
+                    title: "Fix it", repo: "acme/shop", number: 3, detail: "jdoe · draft",
+                    date: Date(), dateVerb: "updated",
+                    url: "https://github.com/acme/shop/pull/3", onOpen: { _ in })
+                PullRequestRow(
+                    title: "Another", repo: "acme/shop", number: 4, detail: nil,
+                    date: nil, dateVerb: "opened",
+                    url: "https://github.com/acme/shop/pull/4", onOpen: { _ in })
             }
         )
         #expect(size.width > 0 && size.height > 0)
@@ -51,8 +56,10 @@ struct OnboardingViewRenderTests {
 
     @Test func pullRequestListsLayOutWithBothSources() {
         let requests = [
-            ReviewRequest(url: "u1", repo: "acme/shop", number: 1, title: "t1", author: "a", isDraft: true, updatedAt: Date()),
-            ReviewRequest(url: "u2", repo: "acme/shop", number: 2, title: "t2", author: "b", isDraft: false, updatedAt: nil),
+            ReviewRequest(
+                url: "u1", repo: "acme/shop", number: 1, title: "t1", author: "a", isDraft: true, updatedAt: Date()),
+            ReviewRequest(
+                url: "u2", repo: "acme/shop", number: 2, title: "t2", author: "b", isDraft: false, updatedAt: nil),
         ]
         let recents = [AnalysisCache.RecentPR(url: "u3", repo: "acme/shop", number: 3, title: "t3", lastOpened: Date())]
         _ = render(PullRequestLists(requests: requests, recents: recents, onOpen: { _ in }))
@@ -78,8 +85,11 @@ struct OnboardingViewRenderTests {
         let previous = UserDefaults.standard.object(forKey: key)
         UserDefaults.standard.set(true, forKey: key)
         defer {
-            if let previous { UserDefaults.standard.set(previous, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
         _ = render(NamespaceHost { AnalyzingView(stage: .architecture, log: log, markNamespace: $0) })
     }

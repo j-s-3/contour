@@ -44,12 +44,14 @@ actor AnalysisPipeline {
     private let previousRevisionOverride: AnalysisCache.Entry?
     private let mockOverride: AnalysisService.MockOptions?
 
-    init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
-         cache: AnalysisCache = AnalysisCache(),
-         prSourceOverride: (any PRSource)? = nil,
-         checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)? = nil,
-         previousRevisionOverride: AnalysisCache.Entry? = nil,
-         mockOverride: AnalysisService.MockOptions? = nil) {
+    init(
+        harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
+        cache: AnalysisCache = AnalysisCache(),
+        prSourceOverride: (any PRSource)? = nil,
+        checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)? = nil,
+        previousRevisionOverride: AnalysisCache.Entry? = nil,
+        mockOverride: AnalysisService.MockOptions? = nil
+    ) {
         self.harnessID = harnessID
         self.trackerID = trackerID
         self.github = GitHubService(mode: githubAccess)
@@ -83,8 +85,11 @@ actor AnalysisPipeline {
         if changes[.ticket] != nil { ticketLookedUp = false }
         for stage in PipelineStage.allCases { if let status = changes[stage] { setStatus(stage, status) } }
         let stopped = PipelineStage.allCases.filter { changes[$0] == .stopped }
-        continuation.yield(.log(PipelineProgressEntry(
-            stage: "Stopped", detail: "stopped by the reviewer: \(stopped.map(\.shortLabel).joined(separator: ", "))")))
+        continuation.yield(
+            .log(
+                PipelineProgressEntry(
+                    stage: "Stopped",
+                    detail: "stopped by the reviewer: \(stopped.map(\.shortLabel).joined(separator: ", "))")))
         finishIfSettled()
     }
 
@@ -133,8 +138,9 @@ actor AnalysisPipeline {
             setStatus(.checkingOut, .done)
             try Task.checkCancellation()
 
-            analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
-                                       mock: mockOverride)
+            analysis = AnalysisService(
+                harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
+                mock: mockOverride)
 
             let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
             try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
@@ -171,8 +177,9 @@ actor AnalysisPipeline {
             setStatus(.checkingOut, .done)
             try Task.checkCancellation()
 
-            analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
-                                       mock: mockOverride)
+            analysis = AnalysisService(
+                harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
+                mock: mockOverride)
 
             let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
             try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
@@ -201,8 +208,10 @@ actor AnalysisPipeline {
         defer { setStatus(.cacheCheck, .done) }
         guard !forceRefresh else { return toRun }
 
-        if let cached = cache.load(owner: ctx.owner, repo: ctx.repo, number: ctx.number, headSha: ctx.headSha,
-                                   baseSha: ctx.baseSha, pipelineVersion: Self.pipelineVersion) {
+        if let cached = cache.load(
+            owner: ctx.owner, repo: ctx.repo, number: ctx.number, headSha: ctx.headSha,
+            baseSha: ctx.baseSha, pipelineVersion: Self.pipelineVersion)
+        {
             var restored = cached.graph
             restored.refreshMetadata(from: ctx)
             graph = restored
@@ -211,15 +220,20 @@ actor AnalysisPipeline {
             toRun.subtract(completed)
             for stage in completed { setStatus(stage, .done) }
             continuation.yield(.fromCache)
-            log(.cacheCheck, toRun.isEmpty
-                ? "using cached analysis — \(restored.decisions.count) decisions, \(restored.components.count) components"
-                : "resuming a partial analysis — \(toRun.count) stage(s) still to run")
+            log(
+                .cacheCheck,
+                toRun.isEmpty
+                    ? "using cached analysis — \(restored.decisions.count) decisions, \(restored.components.count) components"
+                    : "resuming a partial analysis — \(toRun.count) stage(s) still to run")
             publish()
             return toRun
         }
 
-        if let previous = previousRevisionOverride ?? cache.latestRevision(owner: ctx.owner, repo: ctx.repo, number: ctx.number,
-                                                                            excludingHead: ctx.headSha, pipelineVersion: Self.pipelineVersion) {
+        if let previous = previousRevisionOverride
+            ?? cache.latestRevision(
+                owner: ctx.owner, repo: ctx.repo, number: ctx.number,
+                excludingHead: ctx.headSha, pipelineVersion: Self.pipelineVersion)
+        {
             var restored = previous.graph
             restored.refreshMetadata(from: ctx)
             for stage in PipelineStage.analysis where !previous.completedStages.contains(stage) {
@@ -230,7 +244,9 @@ actor AnalysisPipeline {
             staleHead = previous.graph.pr.headSha
             for stage in stale { setStatus(stage, .stale) }
             continuation.yield(.revalidating(fromHead: staleHead))
-            log(.cacheCheck, "showing the analysis of \(previous.graph.pr.headSha.prefix(8)) while this revision is analyzed")
+            log(
+                .cacheCheck,
+                "showing the analysis of \(previous.graph.pr.headSha.prefix(8)) while this revision is analyzed")
             publish()
         }
         return toRun
@@ -272,8 +288,11 @@ actor AnalysisPipeline {
         guard let source = try? github.source() else { return }
         let tracker = Self.tracker(trackerID, source: source, context: ctx)
         guard let ref = tracker.reference(in: ctx) else {
-            log(.ticket, trackerID == .none ? "issue lookup is turned off"
-                                            : "no reference found in title/body/branch/commits")
+            log(
+                .ticket,
+                trackerID == .none
+                    ? "issue lookup is turned off"
+                    : "no reference found in title/body/branch/commits")
             return
         }
         log(.ticket, "found \(ref.displayKey), fetching it")
@@ -296,8 +315,10 @@ actor AnalysisPipeline {
             let (verified, check) = await verifier.verify(result)
             guard !Task.isCancelled else { return }
             if check.unresolvedCount > 0 {
-                log(stage, "\(check.unresolvedCount) of \(check.checked) references couldn't be verified: "
-                    + check.unresolved.prefix(5).joined(separator: ", "))
+                log(
+                    stage,
+                    "\(check.unresolvedCount) of \(check.checked) references couldn't be verified: "
+                        + check.unresolved.prefix(5).joined(separator: ", "))
             }
             graph?.apply(verified)
             graph?.record(check, for: stage)
@@ -329,29 +350,35 @@ actor AnalysisPipeline {
         case .behaviorChange:
             log(stage, "finding the before/after pipeline")
             let raw = try await run(PromptBuilder.behaviorChangePrompt(), .fast)
-            return .behaviorChange(try StageDecoding.decode(StageDecoding.BehaviorChangeResult.self, stageLabel: label, from: raw))
+            return .behaviorChange(
+                try StageDecoding.decode(StageDecoding.BehaviorChangeResult.self, stageLabel: label, from: raw))
 
         case .understanding:
             log(stage, ticket.map { "reading the PR, grounded in \($0.key)" } ?? "reading the PR description and code")
             let raw = try await run(PromptBuilder.understandingPrompt(ticket: ticket), .fast)
-            return .understanding(try StageDecoding.decode(StageDecoding.UnderstandingResult.self, stageLabel: label, from: raw))
+            return .understanding(
+                try StageDecoding.decode(StageDecoding.UnderstandingResult.self, stageLabel: label, from: raw))
 
         case .architecture:
             log(stage, "mapping changed files to components")
             let raw = try await run(PromptBuilder.architecturePrompt(), .fast)
-            return .architecture(try StageDecoding.decode(StageDecoding.ArchitectureResult.self, stageLabel: label, from: raw))
+            return .architecture(
+                try StageDecoding.decode(StageDecoding.ArchitectureResult.self, stageLabel: label, from: raw))
 
         case .decisions:
             log(stage, "reading changed code")
-            let raw = try await streamed(stage, key: "decisions", as: DecisionNode.self, analysis: analysis, cwd: cwd,
-                                         prompt: PromptBuilder.decisionsPrompt(), tier: .strong, progress: progress)
-            return .decisions(try StageDecoding.decode(StageDecoding.DecisionsResult.self, stageLabel: label, from: raw).decisions)
+            let raw = try await streamed(
+                stage, key: "decisions", as: DecisionNode.self, analysis: analysis, cwd: cwd,
+                prompt: PromptBuilder.decisionsPrompt(), tier: .strong, progress: progress)
+            return .decisions(
+                try StageDecoding.decode(StageDecoding.DecisionsResult.self, stageLabel: label, from: raw).decisions)
 
         case .flows:
             log(stage, "finding entry points")
             let prompt = PromptBuilder.flowsPrompt(components: graph?.components ?? [], entryHints: [])
-            let raw = try await streamed(stage, key: "flows", as: FlowNode.self, analysis: analysis, cwd: cwd,
-                                         prompt: prompt, tier: .strong, progress: progress)
+            let raw = try await streamed(
+                stage, key: "flows", as: FlowNode.self, analysis: analysis, cwd: cwd,
+                prompt: prompt, tier: .strong, progress: progress)
             return .flows(try StageDecoding.decode(StageDecoding.FlowsResult.self, stageLabel: label, from: raw))
 
         case .judgment:
@@ -389,7 +416,8 @@ actor AnalysisPipeline {
         }
     }
 
-    private func appendStreamed<Element: Identifiable>(_ element: Element, to stage: PipelineStage) where Element.ID == String {
+    private func appendStreamed<Element: Identifiable>(_ element: Element, to stage: PipelineStage)
+    where Element.ID == String {
         guard statuses[stage]?.isRunning == true, var g = graph else { return }
         let count: Int
         switch (stage, element) {
@@ -435,7 +463,8 @@ actor AnalysisPipeline {
         }
         let failed = PipelineStage.analysis.filter { statuses[$0]?.failure != nil }
         let stopped = PipelineStage.analysis.filter { statuses[$0] == .stopped }
-        let summary = "\(graph?.decisions.count ?? 0) decisions, \(graph?.components.count ?? 0) components"
+        let summary =
+            "\(graph?.decisions.count ?? 0) decisions, \(graph?.components.count ?? 0) components"
             + (failed.isEmpty ? "" : "; failed: \(failed.map(\.shortLabel).joined(separator: ", "))")
             + (stopped.isEmpty ? "" : "; stopped: \(stopped.map(\.shortLabel).joined(separator: ", "))")
         continuation.yield(.log(PipelineProgressEntry(stage: "Done", detail: summary)))
@@ -445,9 +474,10 @@ actor AnalysisPipeline {
     private func save() {
         guard let ctx, var snapshot = graph else { return }
         for stage in stale { snapshot.clear(stage) }
-        cache.save(owner: ctx.owner, repo: ctx.repo, number: ctx.number, headSha: ctx.headSha, baseSha: ctx.baseSha,
-                   pipelineVersion: Self.pipelineVersion, graph: snapshot.linked(), diff: ctx.diff,
-                   completedStages: completed)
+        cache.save(
+            owner: ctx.owner, repo: ctx.repo, number: ctx.number, headSha: ctx.headSha, baseSha: ctx.baseSha,
+            pipelineVersion: Self.pipelineVersion, graph: snapshot.linked(), diff: ctx.diff,
+            completedStages: completed)
     }
 
     private static func tracker(_ id: TrackerID, source: any PRSource, context: RawPRContext) -> any IssueTracker {

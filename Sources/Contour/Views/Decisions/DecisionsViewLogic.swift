@@ -1,7 +1,8 @@
 import SwiftUI
 
 enum DecisionsViewLogic {
-    static func questions(from all: [Consideration], leadingWith arrivedFromConsiderationId: String?) -> [Consideration] {
+    static func questions(from all: [Consideration], leadingWith arrivedFromConsiderationId: String?) -> [Consideration]
+    {
         guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
         return [item] + all.filter { $0.id != lead }
     }
@@ -27,9 +28,11 @@ enum DecisionsViewLogic {
         case ignored
     }
 
-    nonisolated static func keyAction(isArrowDown: Bool, isArrowUp: Bool, character: String,
-                                       modifiersBlockShortcuts: Bool, noteFieldFocused: Bool,
-                                       hasSelection: Bool, selectionIsToReview: Bool) -> KeyAction {
+    nonisolated static func keyAction(
+        isArrowDown: Bool, isArrowUp: Bool, character: String,
+        modifiersBlockShortcuts: Bool, noteFieldFocused: Bool,
+        hasSelection: Bool, selectionIsToReview: Bool
+    ) -> KeyAction {
         guard !noteFieldFocused, !modifiersBlockShortcuts else { return .ignored }
         if isArrowDown { return .step(1) }
         if isArrowUp { return .step(-1) }
@@ -60,16 +63,21 @@ enum DecisionsViewLogic {
         return (after.first { $0.reviewerState == .unreviewed } ?? after.first)?.id
     }
 
-    nonisolated static func selectionAfterTogglingReview(toReview: [DecisionNode], decisionId: String,
-                                                          addingToReview: Bool) -> String? {
+    nonisolated static func selectionAfterTogglingReview(
+        toReview: [DecisionNode], decisionId: String,
+        addingToReview: Bool
+    ) -> String? {
         guard !addingToReview else { return decisionId }
         let next = toReview.drop { $0.id != decisionId }.dropFirst().first
         return (next ?? toReview.first { $0.id != decisionId })?.id
     }
 
-    nonisolated static func arrivalSelection(decisionId: String?, decisionExists: Bool, isOtherDecision: Bool,
-                                              existingSelectedId: String?, fallbackId: String?)
-        -> (selectedId: String?, revealOther: Bool) {
+    nonisolated static func arrivalSelection(
+        decisionId: String?, decisionExists: Bool, isOtherDecision: Bool,
+        existingSelectedId: String?, fallbackId: String?
+    )
+        -> (selectedId: String?, revealOther: Bool)
+    {
         guard let id = decisionId, decisionExists else {
             return (existingSelectedId ?? fallbackId, false)
         }
@@ -80,7 +88,9 @@ enum DecisionsViewLogic {
         showOther || toReviewIsEmpty
     }
 
-    nonisolated static func sequence(toReview: [DecisionNode], other: [DecisionNode], otherShown: Bool) -> [DecisionNode] {
+    nonisolated static func sequence(toReview: [DecisionNode], other: [DecisionNode], otherShown: Bool)
+        -> [DecisionNode]
+    {
         toReview + (otherShown ? other : [])
     }
 
@@ -96,12 +106,14 @@ enum DecisionsViewLogic {
         var offersOtherDecisions: Bool
     }
 
-    nonisolated static func oneAtATimeStep(index: Int, count: Int, otherCount: Int, otherShown: Bool) -> OneAtATimeStep {
+    nonisolated static func oneAtATimeStep(index: Int, count: Int, otherCount: Int, otherShown: Bool) -> OneAtATimeStep
+    {
         let last = index == count - 1
-        return OneAtATimeStep(label: "\(index + 1) of \(count)",
-                              canGoPrevious: index > 0,
-                              canGoNext: !last,
-                              offersOtherDecisions: otherCount > 0 && !otherShown && last)
+        return OneAtATimeStep(
+            label: "\(index + 1) of \(count)",
+            canGoPrevious: index > 0,
+            canGoNext: !last,
+            offersOtherDecisions: otherCount > 0 && !otherShown && last)
     }
 
     nonisolated static func whyLabel(hasShape: Bool, hasTradeoff: Bool) -> String {
@@ -117,7 +129,9 @@ enum DecisionsViewLogic {
         return chosen.label + (chosen.detail.map { " — \($0)" } ?? "")
     }
 
-    nonisolated static func reviewButtonHelp(isOn: Bool, target: ReviewerState, title: String, shortcut: String) -> String {
+    nonisolated static func reviewButtonHelp(isOn: Bool, target: ReviewerState, title: String, shortcut: String)
+        -> String
+    {
         isOn ? "\(target.label) — click to clear (\(shortcut))" : "\(title) (\(shortcut))"
     }
 

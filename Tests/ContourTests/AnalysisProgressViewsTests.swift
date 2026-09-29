@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct AnalysisProgressViewsTests {
@@ -7,11 +8,14 @@ struct AnalysisProgressViewsTests {
     }
 
     @Test func subtitleForARunningStagePrefersItsOwnDetailOverTheWorkingLabel() {
-        #expect(AnalysisDetailsView.subtitle(.flows, .running(detail: "2 flows found so far")) == "2 flows found so far")
+        #expect(
+            AnalysisDetailsView.subtitle(.flows, .running(detail: "2 flows found so far")) == "2 flows found so far")
     }
 
     @Test func subtitleForAFailedStageIsTheFailureMessage() {
-        #expect(AnalysisDetailsView.subtitle(.decisions, .failed("model returned malformed JSON")) == "model returned malformed JSON")
+        #expect(
+            AnalysisDetailsView.subtitle(.decisions, .failed("model returned malformed JSON"))
+                == "model returned malformed JSON")
     }
 
     @Test func subtitleForEveryRemainingStatus() {
@@ -25,14 +29,16 @@ struct AnalysisProgressViewsTests {
         var state = AnalysisState()
         state.stages[.behaviorChange] = .done
         state.stages[.understanding] = .done
-        #expect(AnalysisIndicatorLabel.compute(state: state, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: state, settled: false)
                 == .analyzing(text: "Analyzing PR…", remaining: 4))
     }
 
     @Test func indicatorLabelWhileRevalidatingSaysUpdatingInstead() {
         var state = AnalysisState()
         state.revalidatingFrom = "abc1234"
-        #expect(AnalysisIndicatorLabel.compute(state: state, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: state, settled: false)
                 == .analyzing(text: "Updating analysis…", remaining: 6))
     }
 
@@ -46,22 +52,26 @@ struct AnalysisProgressViewsTests {
     @Test func indicatorLabelFailedCountIsPluralizedCorrectly() {
         var single = AnalysisState(isComplete: true)
         single.stages[.judgment] = .failed("boom")
-        #expect(AnalysisIndicatorLabel.compute(state: single, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: single, settled: false)
                 == .failed(text: "1 section couldn't be analyzed"))
 
         var plural = AnalysisState(isComplete: true)
         plural.stages[.judgment] = .failed("boom")
         plural.stages[.decisions] = .failed("also boom")
-        #expect(AnalysisIndicatorLabel.compute(state: plural, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: plural, settled: false)
                 == .failed(text: "2 sections couldn't be analyzed"))
     }
 
     @Test func indicatorLabelCompleteDistinguishesCacheFromFreshAnalysis() {
         var state = AnalysisState(isComplete: true)
-        #expect(AnalysisIndicatorLabel.compute(state: state, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: state, settled: false)
                 == .complete(text: "Analysis complete"))
         state.fromCache = true
-        #expect(AnalysisIndicatorLabel.compute(state: state, settled: false)
+        #expect(
+            AnalysisIndicatorLabel.compute(state: state, settled: false)
                 == .complete(text: "Opened saved analysis"))
     }
 
@@ -99,8 +109,9 @@ struct AnalysisProgressViewsTests {
     }
 
     @Test func overflowTextCountsRefsBeyondTheListedSample() {
-        let check = RefCheck(checked: 30, unresolvedCount: RefCheck.sampleLimit + 5,
-                              unresolved: Array(repeating: "x.swift:1", count: RefCheck.sampleLimit))
+        let check = RefCheck(
+            checked: 30, unresolvedCount: RefCheck.sampleLimit + 5,
+            unresolved: Array(repeating: "x.swift:1", count: RefCheck.sampleLimit))
         #expect(RefCheckView.overflowText(check) == "and 5 more")
     }
 
@@ -116,12 +127,14 @@ struct AnalysisProgressViewsTests {
     }
 
     @Test func workingTextFoldsARunningStagesDetailOntoTheWorkingLabel() {
-        #expect(SectionPendingView.workingText(section: .whatChanged, status: .running(detail: "2 files inspected"))
+        #expect(
+            SectionPendingView.workingText(section: .whatChanged, status: .running(detail: "2 files inspected"))
                 == "Understanding the change — 2 files inspected")
     }
 
     @Test func workingTextFallsBackToTheWorkingLabelWhenRunningWithNoDetail() {
-        #expect(SectionPendingView.workingText(section: .architecture, status: .running(detail: nil))
+        #expect(
+            SectionPendingView.workingText(section: .architecture, status: .running(detail: nil))
                 == "Mapping system change…")
     }
 

@@ -42,7 +42,8 @@ extension View {
 enum DiagramModeKeyHandling {
     static func handle(characters: String, modifiers: EventModifiers, mode: Binding<DiagramMode>) -> KeyPress.Result {
         guard modifiers.isDisjoint(with: [.command, .control, .option]),
-              let new = DiagramMode(key: characters) else { return .ignored }
+            let new = DiagramMode(key: characters)
+        else { return .ignored }
         mode.wrappedValue = new
         return .handled
     }

@@ -1,6 +1,7 @@
-import Testing
 import Foundation
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -106,10 +107,13 @@ struct ContextualChatTests {
         #expect(consideration.componentIds == ["index-queue"])
 
         let component = try #require(withQuestion.resolve(.component("index-queue")))
-        #expect(component.detail.contains("Overview question about this part: Can the queue absorb a burst of publishes?"))
+        #expect(
+            component.detail.contains("Overview question about this part: Can the queue absorb a burst of publishes?"))
 
         let relationship = try #require(withQuestion.resolve(.relationship("publish-queues")))
-        #expect(relationship.detail.contains("Overview question about this relationship: Can the queue absorb a burst of publishes?"))
+        #expect(
+            relationship.detail.contains(
+                "Overview question about this relationship: Can the queue absorb a burst of publishes?"))
 
         let step = try #require(graph.resolve(.flowStep(flowId: "publish-index-flow", stepId: "step-enqueue")))
         #expect(step.kind == .flowStep)
@@ -143,14 +147,16 @@ struct ContextualChatTests {
 
         let change = BehaviorChange(
             id: "c", title: "Reindex sooner",
-            humanQuestion: Statement(text: "Is the queue durable across a restart?", provenance: .interpretation, confidence: .medium)
+            humanQuestion: Statement(
+                text: "Is the queue durable across a restart?", provenance: .interpretation, confidence: .medium)
         )
         #expect(PRGraph.describe(change).contains("Open question: Is the queue durable across a restart?"))
     }
 
     @Test func documentIsFocusedByDefaultAndWidensOnRequest() throws {
         let resolved = try #require(graph.resolve(.component("index-queue")))
-        let narrow = ChatContextBuilder.document(graph: graph, resolved: resolved, expansions: [], pinnedRefs: [], excerpts: [])
+        let narrow = ChatContextBuilder.document(
+            graph: graph, resolved: resolved, expansions: [], pinnedRefs: [], excerpts: [])
         #expect(narrow.contains("**Index Queue** ← selected"))
         #expect(narrow.contains("[[component:index-queue]]"))
         #expect(narrow.contains("- Trigger reindexing synchronously on publish [[decision:index-on-publish]]"))
@@ -198,7 +204,8 @@ struct ContextualChatTests {
     }
 
     @Test func conversationErrorMessagesAreReviewerFacing() {
-        #expect(ConversationError.noCheckout.errorDescription
+        #expect(
+            ConversationError.noCheckout.errorDescription
                 == "There's no local checkout for this PR, so there's nothing to ask about yet.")
         #expect(ConversationError.emptyResponse(harness: "pi").errorDescription == "pi finished without an answer.")
     }
@@ -210,21 +217,28 @@ struct ContextualChatTests {
 
     @Test func mockResponseStreamsActivityThenDeltasThenFinal() async throws {
         let doc = """
-        ## Where the reviewer is
-        - **Index Queue** ← selected (Architecture)
+            ## Where the reviewer is
+            - **Index Queue** ← selected (Architecture)
 
-        ## Code references for this context
-        - `src/main/java/queue/IndexQueue.java:1-30`
-        """
+            ## Code references for this context
+            - `src/main/java/queue/IndexQueue.java:1-30`
+            """
         var events: [ConversationEvent] = []
         for try await event in ConversationService.mockResponse(contextDocument: doc, question: "Why queued?") {
             events.append(event)
         }
-        guard case .activity = events.first else { Issue.record("expected activity first"); return }
-        guard case .final(let final) = events.last else { Issue.record("expected final last"); return }
-        #expect(events.dropFirst().dropLast().allSatisfy {
-            if case .delta = $0 { return true } else { return false }
-        })
+        guard case .activity = events.first else {
+            Issue.record("expected activity first")
+            return
+        }
+        guard case .final(let final) = events.last else {
+            Issue.record("expected final last")
+            return
+        }
+        #expect(
+            events.dropFirst().dropLast().allSatisfy {
+                if case .delta = $0 { return true } else { return false }
+            })
         #expect(final.contains("Index Queue"))
         #expect(final.contains("src/main/java/queue/IndexQueue.java:1-30"))
         #expect(final.contains("Why queued?"))
@@ -308,21 +322,26 @@ struct ContextualChatTests {
 
     @Test func documentBuildsForFlowsEntryPointsAndBehaviorChanges() throws {
         let flow = try #require(graph.resolve(.flow("publish-index-flow")))
-        let flowDoc = ChatContextBuilder.document(graph: graph, resolved: flow, expansions: [], pinnedRefs: [], excerpts: [])
+        let flowDoc = ChatContextBuilder.document(
+            graph: graph, resolved: flow, expansions: [], pinnedRefs: [], excerpts: [])
         #expect(flowDoc.contains("**Publish a page** ← selected"))
 
         let entry = try #require(graph.resolve(.entryPoint("publish-endpoint")))
-        let entryDoc = ChatContextBuilder.document(graph: graph, resolved: entry, expansions: [], pinnedRefs: [], excerpts: [])
+        let entryDoc = ChatContextBuilder.document(
+            graph: graph, resolved: entry, expansions: [], pinnedRefs: [], excerpts: [])
         #expect(entryDoc.contains("PUT /pages/{slug}"))
 
         let change = try #require(graph.resolve(.behaviorChange("immediate-reindex")))
-        let changeDoc = ChatContextBuilder.document(graph: graph, resolved: change, expansions: [], pinnedRefs: [], excerpts: [])
+        let changeDoc = ChatContextBuilder.document(
+            graph: graph, resolved: change, expansions: [], pinnedRefs: [], excerpts: [])
         #expect(changeDoc.contains("Publishing now triggers reindexing immediately"))
 
-        let firstStageId = try #require(graph.behaviorChanges.first(where: { $0.id == "immediate-reindex" })?.before.first?.id)
+        let firstStageId = try #require(
+            graph.behaviorChanges.first(where: { $0.id == "immediate-reindex" })?.before.first?.id)
         let stage = try #require(graph.resolve(.behaviorStage(changeId: "immediate-reindex", stageId: firstStageId)))
         #expect(stage.kind == .stage)
-        let stageDoc = ChatContextBuilder.document(graph: graph, resolved: stage, expansions: [], pinnedRefs: [], excerpts: [])
+        let stageDoc = ChatContextBuilder.document(
+            graph: graph, resolved: stage, expansions: [], pinnedRefs: [], excerpts: [])
         #expect(stageDoc.contains("Publish page"))
 
         let why = try #require(graph.resolve(.behaviorWhy(changeId: "immediate-reindex")))
@@ -343,7 +362,8 @@ struct ContextualChatTests {
     @Test func codeCitationsBecomeLinksThatRoundTrip() throws {
         let out = linkify("It enqueues here `IndexQueue.java:12-20` before returning.")
         #expect(out.contains("[`IndexQueue.java:12–20`](contour://code?"))
-        let urlString = try #require(out.range(of: #"contour://code\?[^)]+"#, options: .regularExpression).map { String(out[$0]) })
+        let urlString = try #require(
+            out.range(of: #"contour://code\?[^)]+"#, options: .regularExpression).map { String(out[$0]) })
         let target = ChatLinks.target(for: try #require(URL(string: urlString)))
         #expect(target == .code(CodeRef(path: "src/main/java/queue/IndexQueue.java", startLine: 12, endLine: 20)))
     }
@@ -356,7 +376,8 @@ struct ContextualChatTests {
     @Test func reviewModelReferencesBecomeTitledLinks() throws {
         let out = linkify("This follows from [[decision:index-on-publish]].")
         #expect(out.contains("[Trigger reindexing synchronously on publish](contour://node?"))
-        let urlString = try #require(out.range(of: #"contour://node\?[^)]+"#, options: .regularExpression).map { String(out[$0]) })
+        let urlString = try #require(
+            out.range(of: #"contour://node\?[^)]+"#, options: .regularExpression).map { String(out[$0]) })
         #expect(ChatLinks.target(for: try #require(URL(string: urlString))) == .node(.decision("index-on-publish")))
         #expect(linkify("[[decision:ghost]]") == "[[decision:ghost]]")
     }
@@ -414,12 +435,15 @@ struct ContextualChatTests {
     }
 
     @Test func resolvePathAcceptsAPathTheModelCitedDirectly() {
-        #expect(ChatViewLogic.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
+        #expect(
+            ChatViewLogic.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
     }
 
     @Test func resolvePathAcceptsABareNameThatUniquelySuffixMatchesACitedPath() {
         let cited = ["src/main/Listener.java"]
-        #expect(ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
+        #expect(
+            ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java"
+        )
     }
 
     @Test func resolvePathDeclinesAnAmbiguousSuffixMatch() {
@@ -476,23 +500,27 @@ struct ContextualChatTests {
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
         #expect(ChatViewLogic.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
-        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
+        #expect(
+            ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
         #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
     }
 
     @Test func showsContextChipsIsFalseOnlyWhenBothExpansionsAndPinsAreEmpty() {
         #expect(!ChatViewLogic.showsContextChips(expansions: [], pinnedRefs: []))
         #expect(ChatViewLogic.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
-        #expect(ChatViewLogic.showsContextChips(
-            expansions: [], pinnedRefs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
-        ))
+        #expect(
+            ChatViewLogic.showsContextChips(
+                expansions: [], pinnedRefs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
+            ))
     }
 
     @Test @MainActor func handleReportsHandledOnlyForContourLinks() throws {
         let store = GraphStore()
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         #expect(ChatViewLogic.handle(try #require(ChatLinks.url(for: ref)), store: store, graph: graph) == .handled)
-        #expect(ChatViewLogic.handle(try #require(URL(string: "https://example.com")), store: store, graph: graph) == .system)
+        #expect(
+            ChatViewLogic.handle(try #require(URL(string: "https://example.com")), store: store, graph: graph)
+                == .system)
     }
 
     @Test func summaryLinesCapAtFourAndFlagOnlyTheFirstAsLead() {
@@ -527,8 +555,9 @@ struct ContextualChatTests {
         #expect(ChatViewLogic.expansionSymbol(on: true) == "checkmark")
         #expect(ChatViewLogic.expansionSymbol(on: false) == "plus")
         #expect(ChatViewLogic.expansionHelp(.entirePR, on: true) == "Included in the next answer")
-        #expect(ChatViewLogic.expansionHelp(.entirePR, on: false)
-            == "Include \(ContextExpansion.entirePR.label.lowercased()) in the next answer")
+        #expect(
+            ChatViewLogic.expansionHelp(.entirePR, on: false)
+                == "Include \(ContextExpansion.entirePR.label.lowercased()) in the next answer")
     }
 
     @Test @MainActor func unpinRemovesOnlyTheChosenRef() {
@@ -553,24 +582,26 @@ struct ContextualChatTests {
     }
 
     @Test func markdownBlocksSplitAsExpected() {
-        let blocks = ChatMarkdownView.blocks("""
-        ## Short answer
-        It runs inline
-        on upload.
+        let blocks = ChatMarkdownView.blocks(
+            """
+            ## Short answer
+            It runs inline
+            on upload.
 
-        - first
-        2. second
-        ```
-        let x = 1
-        ```
-        """)
-        #expect(blocks == [
-            .heading("Short answer"),
-            .paragraph("It runs inline on upload."),
-            .bullet("first"),
-            .numbered("2.", "second"),
-            .code("let x = 1"),
-        ])
+            - first
+            2. second
+            ```
+            let x = 1
+            ```
+            """)
+        #expect(
+            blocks == [
+                .heading("Short answer"),
+                .paragraph("It runs inline on upload."),
+                .bullet("first"),
+                .numbered("2.", "second"),
+                .code("let x = 1"),
+            ])
     }
 
     @Test func everyBulletMarkerIsRecognized() {
@@ -715,7 +746,8 @@ struct ContextualChatTests {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let lines = (1...20).map { "line \($0)" }
-        try! lines.joined(separator: "\n").write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
+        try! lines.joined(separator: "\n").write(
+            to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
         return (checkout, CodeRef(path: "a.swift", startLine: 5, endLine: 6))
     }
@@ -732,7 +764,8 @@ struct ContextualChatTests {
         let (checkout, ref) = excerptCheckout()
         defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
         let resolved = stub(.decision)
-        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [], pinned: [ref], checkout: checkout)
+        let excerpts = await ConversationStore.excerpts(
+            for: resolved, expansions: [], pinned: [ref], checkout: checkout)
         #expect(excerpts.count == 1)
         #expect(excerpts[0].ref == ref)
         #expect(excerpts[0].text.contains("line 5"))
@@ -751,7 +784,8 @@ struct ContextualChatTests {
         let (checkout, ref) = excerptCheckout()
         defer { try? FileManager.default.removeItem(at: checkout.rootDir) }
         let resolved = stub(.decision, refs: [ref])
-        let excerpts = await ConversationStore.excerpts(for: resolved, expansions: [.implementation], pinned: [], checkout: checkout)
+        let excerpts = await ConversationStore.excerpts(
+            for: resolved, expansions: [.implementation], pinned: [], checkout: checkout)
         #expect(excerpts.count == 1)
         #expect(excerpts[0].ref == ref)
     }

@@ -1,6 +1,7 @@
-import Testing
-import SwiftUI
 import AppKit
+import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -11,23 +12,30 @@ struct DecisionsViewRenderTests {
 
     private var ref: CodeRef { CodeRef(path: "src/A.swift", startLine: 1, endLine: 5) }
 
-    private func decision(_ id: String, shape: DecisionShape?, options: [DecisionOption],
-                          significance: ReviewSignificance = .high, state: ReviewerState = .unreviewed,
-                          note: String = "", rich: Bool = true) -> DecisionNode {
+    private func decision(
+        _ id: String, shape: DecisionShape?, options: [DecisionOption],
+        significance: ReviewSignificance = .high, state: ReviewerState = .unreviewed,
+        note: String = "", rich: Bool = true
+    ) -> DecisionNode {
         DecisionNode(
             id: id, title: "Decision \(id)",
             decision: Statement(text: "Did \(id). Then more.", provenance: .fact),
             rationale: rich ? [Statement(text: "Because \(id).", provenance: .claim, source: "PR description")] : [],
-            alternatives: rich ? [Statement(text: "Instead of \(id).", provenance: .interpretation, confidence: .medium)] : [],
-            consequences: rich ? [Statement(text: "Costs for \(id).", provenance: .interpretation, confidence: .low)] : [],
+            alternatives: rich
+                ? [Statement(text: "Instead of \(id).", provenance: .interpretation, confidence: .medium)] : [],
+            consequences: rich
+                ? [Statement(text: "Costs for \(id).", provenance: .interpretation, confidence: .low)] : [],
             confidence: .medium,
             refs: rich ? [ref] : [],
-            tradeoffs: rich ? [
-                DecisionTradeoff(dimensionA: "speed", dimensionB: "freshness", chosenPosition: 0.8,
-                                 explanation: Statement(text: "Trades speed.", provenance: .fact), refs: [ref]),
-                DecisionTradeoff(dimensionA: "cost", dimensionB: "safety", chosenPosition: 0.2,
-                                 prominence: .secondary),
-            ] : [],
+            tradeoffs: rich
+                ? [
+                    DecisionTradeoff(
+                        dimensionA: "speed", dimensionB: "freshness", chosenPosition: 0.8,
+                        explanation: Statement(text: "Trades speed.", provenance: .fact), refs: [ref]),
+                    DecisionTradeoff(
+                        dimensionA: "cost", dimensionB: "safety", chosenPosition: 0.2,
+                        prominence: .secondary),
+                ] : [],
             componentIds: ["page-publishing"],
             reviewerState: state, reviewerNote: note,
             question: "Should we \(id)?", options: options, shape: shape,
@@ -41,18 +49,29 @@ struct DecisionsViewRenderTests {
         var g = ContourSampleData.publishTriggeredReindex
         let level: ReviewSignificance = toReviewEmpty ? .low : .high
         g.decisions = [
-            decision("binary", shape: .binary, options: [option("Sync", chosen: true, detail: "inline"), option("Async")], significance: level),
-            decision("threshold", shape: .threshold,
-                     options: [option("1 KB"), option("4 KB", chosen: true), option("16 KB", detail: "big")], significance: level,
-                     state: .questioned, note: "Why 4?"),
-            decision("options", shape: .options, options: [option("A", chosen: true, detail: "d"), option("B"), option("C")],
-                     significance: level, state: .accepted),
-            decision("beforeafter", shape: .beforeAfter,
-                     options: [option("Reader → Printer"), option("Reader → Inspector → Printer", chosen: true, detail: "checked")],
-                     significance: .low),
+            decision(
+                "binary", shape: .binary, options: [option("Sync", chosen: true, detail: "inline"), option("Async")],
+                significance: level),
+            decision(
+                "threshold", shape: .threshold,
+                options: [option("1 KB"), option("4 KB", chosen: true), option("16 KB", detail: "big")],
+                significance: level,
+                state: .questioned, note: "Why 4?"),
+            decision(
+                "options", shape: .options,
+                options: [option("A", chosen: true, detail: "d"), option("B"), option("C")],
+                significance: level, state: .accepted),
+            decision(
+                "beforeafter", shape: .beforeAfter,
+                options: [
+                    option("Reader → Printer"), option("Reader → Inspector → Printer", chosen: true, detail: "checked"),
+                ],
+                significance: .low),
             decision("plain", shape: nil, options: [], significance: .low, state: .discuss, rich: false),
         ]
-        g.pr.considerations = [Consideration(id: "q1", question: "Is it safe?", detail: "detail", relatedIds: ["binary", "plain"])]
+        g.pr.considerations = [
+            Consideration(id: "q1", question: "Is it safe?", detail: "detail", relatedIds: ["binary", "plain"])
+        ]
         return g
     }
 
@@ -68,15 +87,19 @@ struct DecisionsViewRenderTests {
         let previous = UserDefaults.standard.object(forKey: key)
         UserDefaults.standard.set(mode.rawValue, forKey: key)
         defer {
-            if let previous { UserDefaults.standard.set(previous, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
         body()
     }
 
     private func lens(_ graph: PRGraph, focus: DecisionsView.Focus? = nil) -> DecisionsView {
-        DecisionsView(graph: graph, focus: focus, discussed: ["q1"],
-                      onSetState: { _, _ in }, onSetNote: { _, _ in }, onSetToReview: { _, _ in })
+        DecisionsView(
+            graph: graph, focus: focus, discussed: ["q1"],
+            onSetState: { _, _ in }, onSetNote: { _, _ in }, onSetToReview: { _, _ in })
     }
 
     @Test func listModeRendersDecisionsToReviewAndOtherDecisions() {
@@ -134,7 +157,9 @@ struct DecisionsViewRenderTests {
         let g = graph()
         for d in g.decisions {
             for expanded in [false, true] {
-                layout(CardHost(graph: g, decision: d, number: 1, expanded: expanded, arrived: expanded, considerationId: "q1"))
+                layout(
+                    CardHost(
+                        graph: g, decision: d, number: 1, expanded: expanded, arrived: expanded, considerationId: "q1"))
             }
             layout(CardHost(graph: g, decision: d, number: nil, expanded: false, arrived: false, considerationId: nil))
         }
@@ -144,10 +169,11 @@ struct DecisionsViewRenderTests {
         let g = graph()
         for d in g.decisions {
             for expanded in [false, true] {
-                layout(OtherDecisionRow(
-                    decision: d, brief: g.brief(for: d), graph: g, reason: g.attentionReason(for: d),
-                    isSelected: expanded, isArrived: expanded, isExpanded: expanded,
-                    onAddToReview: {}, onToggleExpanded: {}, onSelect: {}))
+                layout(
+                    OtherDecisionRow(
+                        decision: d, brief: g.brief(for: d), graph: g, reason: g.attentionReason(for: d),
+                        isSelected: expanded, isArrived: expanded, isExpanded: expanded,
+                        onAddToReview: {}, onToggleExpanded: {}, onSelect: {}))
             }
         }
     }
@@ -178,7 +204,9 @@ struct DecisionsViewRenderTests {
 
     @Test func spectrumRendersBothSidesAndTheMidpoint() {
         for position in [0.0, 0.3, 0.5, 1.0] {
-            layout(TradeoffSpectrum(tradeoff: DecisionTradeoff(dimensionA: "a", dimensionB: "b", chosenPosition: position)))
+            layout(
+                TradeoffSpectrum(tradeoff: DecisionTradeoff(dimensionA: "a", dimensionB: "b", chosenPosition: position))
+            )
         }
     }
 

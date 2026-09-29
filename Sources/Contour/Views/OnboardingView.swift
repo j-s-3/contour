@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct OnboardingView: View {
@@ -15,8 +15,10 @@ struct OnboardingView: View {
 
     static let rowsShown = 5
 
-    init(initialURL: String? = nil, markNamespace: Namespace.ID, focusRequest: Int = 0,
-         onSubmit: @escaping (String) -> Void) {
+    init(
+        initialURL: String? = nil, markNamespace: Namespace.ID, focusRequest: Int = 0,
+        onSubmit: @escaping (String) -> Void
+    ) {
         _urlText = State(initialValue: initialURL ?? "")
         self.markNamespace = markNamespace
         self.focusRequest = focusRequest
@@ -111,11 +113,13 @@ struct OnboardingView: View {
     static func loadPastedText(from providers: [NSItemProvider], apply: @escaping @MainActor (String) -> Void) {
         guard let provider = providers.first else { return }
         Task { @MainActor in
-            guard let text = await withCheckedContinuation({ continuation in
-                _ = provider.loadObject(ofClass: String.self) { text, _ in
-                    continuation.resume(returning: text)
-                }
-            }) else { return }
+            guard
+                let text = await withCheckedContinuation({ continuation in
+                    _ = provider.loadObject(ofClass: String.self) { text, _ in
+                        continuation.resume(returning: text)
+                    }
+                })
+            else { return }
             apply(OnboardingViewLogic.resolvedPasteText(text))
         }
     }
@@ -143,7 +147,9 @@ struct OnboardingView: View {
             return
         }
         if #available(macOS 15.4, *), pasteboard.accessBehavior != .alwaysAllow {
-            let patterns = pasteboard.accessBehavior == .alwaysDeny ? []
+            let patterns =
+                pasteboard.accessBehavior == .alwaysDeny
+                ? []
                 : (try? await pasteboard.detectedPatterns(for: [\.probableWebURL])) ?? []
             clipboardOffer = OnboardingViewLogic.offer(
                 detectedProbableWebURL: patterns.contains(\.probableWebURL), changeCount: changeCount
@@ -206,7 +212,8 @@ struct PullRequestLists: View {
         if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
             HStack(alignment: .top, spacing: 28) {
                 if !requests.isEmpty {
-                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark") {
+                    PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark")
+                    {
                         ForEach(requests) { request in
                             PullRequestRow(
                                 title: request.title, repo: request.repo, number: request.number,
@@ -221,7 +228,8 @@ struct PullRequestLists: View {
                         ForEach(recents) { recent in
                             PullRequestRow(
                                 title: recent.title, repo: recent.repo, number: recent.number,
-                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url, onOpen: onOpen
+                                detail: nil, date: recent.lastOpened, dateVerb: "opened", url: recent.url,
+                                onOpen: onOpen
                             )
                         }
                     }
@@ -323,7 +331,9 @@ struct PullRequestRow: View {
     @State private var hovering = false
 
     var body: some View {
-        Button { onOpen(url) } label: {
+        Button {
+            onOpen(url)
+        } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout)
@@ -418,9 +428,11 @@ struct AnalyzingView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) { showsActivity.toggle() }
         } label: {
-            Label(showsActivity ? "Hide activity" : "Show activity",
-                  systemImage: showsActivity ? "chevron.down" : "chevron.up")
-                .font(.callout)
+            Label(
+                showsActivity ? "Hide activity" : "Show activity",
+                systemImage: showsActivity ? "chevron.down" : "chevron.up"
+            )
+            .font(.callout)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)

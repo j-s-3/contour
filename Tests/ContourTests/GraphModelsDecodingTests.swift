@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Contour
 
 struct GraphModelsDecodingTests {
@@ -15,7 +16,8 @@ struct GraphModelsDecodingTests {
 
         let full = try JSONDecoder().decode(
             EntryPointNode.self,
-            from: Data(#"{"id": "e1", "title": "PUT /pages", "kind": "REST", "changeKind": "new", "flowId": "f1"}"#.utf8)
+            from: Data(
+                #"{"id": "e1", "title": "PUT /pages", "kind": "REST", "changeKind": "new", "flowId": "f1"}"#.utf8)
         )
         #expect(full.kind == "REST")
         #expect(full.changeKind == .new)
@@ -38,7 +40,8 @@ struct GraphModelsDecodingTests {
     }
 
     @Test func decisionNodeDefaultsEveryOptionalFieldWhenOnlyTheEssentialsArePresent() throws {
-        let json = #"{"id": "d1", "title": "Pick an approach", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high"}"#
+        let json =
+            #"{"id": "d1", "title": "Pick an approach", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high"}"#
         let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
         #expect(d.rationale.isEmpty && d.alternatives.isEmpty && d.consequences.isEmpty)
         #expect(d.refs.isEmpty && d.tradeoffs.isEmpty && d.componentIds.isEmpty)
@@ -57,9 +60,9 @@ struct GraphModelsDecodingTests {
 
     @Test func decisionNodeDropsOnlyTheMalformedTradeoff() throws {
         let json = """
-        {"id": "d1", "title": "T", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high",
-         "tradeoffs": [{"dimensionA": "speed", "dimensionB": "safety"}, {"dimensionA": "onlyOneSide"}]}
-        """
+            {"id": "d1", "title": "T", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high",
+             "tradeoffs": [{"dimensionA": "speed", "dimensionB": "safety"}, {"dimensionA": "onlyOneSide"}]}
+            """
         let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
         #expect(d.tradeoffs.count == 1)
         #expect(d.tradeoffs.first?.dimensionA == "speed")
@@ -67,9 +70,9 @@ struct GraphModelsDecodingTests {
 
     @Test func decisionNodeDropsUnrecognizedImpactsButKeepsKnownOnes() throws {
         let json = """
-        {"id": "d1", "title": "T", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high",
-         "impacts": ["correctness", "not-a-real-impact"]}
-        """
+            {"id": "d1", "title": "T", "decision": {"text": "Did X.", "provenance": "fact"}, "confidence": "high",
+             "impacts": ["correctness", "not-a-real-impact"]}
+            """
         let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
         #expect(d.impacts == [.correctness])
     }

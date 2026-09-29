@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class PlaceholderTests: XCTestCase {
@@ -8,7 +9,8 @@ final class PlaceholderTests: XCTestCase {
     }
 
     func testDecodeRealArchitectureResponse() throws {
-        let url = Bundle.module.url(forResource: "architecture_response", withExtension: "json", subdirectory: "Fixtures")!
+        let url = Bundle.module.url(
+            forResource: "architecture_response", withExtension: "json", subdirectory: "Fixtures")!
         let data = try Data(contentsOf: url)
         let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         let result = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: obj)
@@ -30,18 +32,18 @@ final class PlaceholderTests: XCTestCase {
 
     func testDecodeLenientBehaviorChange() throws {
         let json = """
-        {
-          "behaviorChanges": [
             {
-              "title": "Immediate reindex on publish",
-              "after": [{"label": "Rebuild search entry"}],
-              "why": {"text": "avoid stale search results", "provenance": "interpretation", "confidence": "medium"},
-              "consequence": {"text": "indexing queues immediately", "provenance": "interpretation", "confidence": "high"},
-              "humanQuestion": {"text": "does this overload the index queue under burst publishes?", "provenance": "interpretation", "confidence": "medium"}
+              "behaviorChanges": [
+                {
+                  "title": "Immediate reindex on publish",
+                  "after": [{"label": "Rebuild search entry"}],
+                  "why": {"text": "avoid stale search results", "provenance": "interpretation", "confidence": "medium"},
+                  "consequence": {"text": "indexing queues immediately", "provenance": "interpretation", "confidence": "high"},
+                  "humanQuestion": {"text": "does this overload the index queue under burst publishes?", "provenance": "interpretation", "confidence": "medium"}
+                }
+              ]
             }
-          ]
-        }
-        """
+            """
         let obj = try JSONSerialization.jsonObject(with: json.data(using: .utf8)!) as! [String: Any]
         let result = try StageDecoding.decode(StageDecoding.BehaviorChangeResult.self, from: obj)
 

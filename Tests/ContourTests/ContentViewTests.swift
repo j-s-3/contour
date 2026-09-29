@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct ContentViewTests {
@@ -59,7 +60,8 @@ struct ContentViewTests {
 
     @Test func flowsFocusNamesTheSelectedFlowAndStage() {
         #expect(ContentView.flowsFocus(for: .flowDetail("f")) == .init(flowId: "f"))
-        #expect(ContentView.flowsFocus(for: .flowNodeDetail(flowId: "f", nodeId: "n")) == .init(flowId: "f", nodeId: "n"))
+        #expect(
+            ContentView.flowsFocus(for: .flowNodeDetail(flowId: "f", nodeId: "n")) == .init(flowId: "f", nodeId: "n"))
         #expect(ContentView.flowsFocus(for: .summary) == nil)
     }
 
@@ -71,15 +73,19 @@ struct ContentViewTests {
 
     @Test func decisionsFocusResolvesADecisionDetailDirectly() {
         let graph = ContourSampleData.publishTriggeredReindex
-        #expect(ContentView.decisionsFocus(for: .decisionDetail("index-on-publish"), graph: graph)
+        #expect(
+            ContentView.decisionsFocus(for: .decisionDetail("index-on-publish"), graph: graph)
                 == .init(decisionId: "index-on-publish"))
     }
 
     @Test func decisionsFocusResolvesAConsiderationToItsOwningDecision() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
-        graph.decisions = [DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)]
-        #expect(ContentView.decisionsFocus(for: .consideration("q1"), graph: graph)
+        graph.decisions = [
+            DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)
+        ]
+        #expect(
+            ContentView.decisionsFocus(for: .consideration("q1"), graph: graph)
                 == .init(decisionId: "d1", considerationId: "q1"))
     }
 
@@ -94,11 +100,15 @@ struct ContentViewTests {
     }
 
     @Test func reviewFailureTitleNamesRequestChangesSpecifically() {
-        #expect(ContentView.reviewFailureTitle(for: .failed(.requestChanges, "network error")) == "Couldn't request changes")
+        #expect(
+            ContentView.reviewFailureTitle(for: .failed(.requestChanges, "network error")) == "Couldn't request changes"
+        )
     }
 
     @Test func reviewFailureTitleFallsBackToApproveForEverythingElse() {
-        #expect(ContentView.reviewFailureTitle(for: .failed(.approve, "network error")) == "Couldn't approve the pull request")
+        #expect(
+            ContentView.reviewFailureTitle(for: .failed(.approve, "network error"))
+                == "Couldn't approve the pull request")
         #expect(ContentView.reviewFailureTitle(for: .idle) == "Couldn't approve the pull request")
     }
 
@@ -125,7 +135,8 @@ struct ContentViewTests {
     }
 
     @Test func sectionBranchFallsBackToFailedStoppedOrPendingWithNoContent() {
-        #expect(ContentView.sectionBranch(hasContent: false, status: .failed("network error"))
+        #expect(
+            ContentView.sectionBranch(hasContent: false, status: .failed("network error"))
                 == .failed("network error"))
         #expect(ContentView.sectionBranch(hasContent: false, status: .stopped) == .stopped)
         #expect(ContentView.sectionBranch(hasContent: false, status: .pending) == .pending)
@@ -133,7 +144,8 @@ struct ContentViewTests {
     }
 
     @Test func sectionOverlayShowsProgressOnlyWhileRunningWithText() {
-        #expect(ContentView.sectionOverlay(status: .running(detail: nil), progress: "3 found so far")
+        #expect(
+            ContentView.sectionOverlay(status: .running(detail: nil), progress: "3 found so far")
                 == .progress("3 found so far"))
         #expect(ContentView.sectionOverlay(status: .running(detail: nil), progress: nil) == .none)
         #expect(ContentView.sectionOverlay(status: .done, progress: "3 found so far") == .none)
@@ -152,16 +164,21 @@ struct ContentViewTests {
     }
 
     @Test func decisionsRowIsFullyReviewedRequiresEverythingDoneAndReviewed() {
-        #expect(ContentView.decisionsRowIsFullyReviewed(
-            decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 2, total: 2)))
-        #expect(!ContentView.decisionsRowIsFullyReviewed(
-            decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 0, total: 0)))
-        #expect(!ContentView.decisionsRowIsFullyReviewed(
-            decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 1, total: 2)))
-        #expect(!ContentView.decisionsRowIsFullyReviewed(
-            decisionsStatus: .running(detail: nil), judgmentStatus: .done, progress: (reviewed: 2, total: 2)))
-        #expect(!ContentView.decisionsRowIsFullyReviewed(
-            decisionsStatus: .done, judgmentStatus: .pending, progress: (reviewed: 2, total: 2)))
+        #expect(
+            ContentView.decisionsRowIsFullyReviewed(
+                decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 2, total: 2)))
+        #expect(
+            !ContentView.decisionsRowIsFullyReviewed(
+                decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 0, total: 0)))
+        #expect(
+            !ContentView.decisionsRowIsFullyReviewed(
+                decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 1, total: 2)))
+        #expect(
+            !ContentView.decisionsRowIsFullyReviewed(
+                decisionsStatus: .running(detail: nil), judgmentStatus: .done, progress: (reviewed: 2, total: 2)))
+        #expect(
+            !ContentView.decisionsRowIsFullyReviewed(
+                decisionsStatus: .done, judgmentStatus: .pending, progress: (reviewed: 2, total: 2)))
     }
 
     @Test func diffRowStatusReflectsWhetherTheDiffHasArrived() {
@@ -190,7 +207,9 @@ struct ContentViewTests {
         let pr = try #require(URL(string: "https://github.com/o/r/pull/7"))
         ContentView.openLink(pr, needsOnboarding: true) { opened.append($0) }
         #expect(opened.isEmpty)
-        ContentView.openLink(try #require(URL(string: "https://example.com/nope")), needsOnboarding: false) { opened.append($0) }
+        ContentView.openLink(try #require(URL(string: "https://example.com/nope")), needsOnboarding: false) {
+            opened.append($0)
+        }
         #expect(opened.isEmpty)
         ContentView.openLink(pr, needsOnboarding: false) { opened.append($0) }
         #expect(opened == ["https://github.com/o/r/pull/7"])
@@ -211,4 +230,3 @@ struct ContentViewTests {
         #expect(store.conversations.active?.messages.isEmpty == false)
     }
 }
-

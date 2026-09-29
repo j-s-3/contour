@@ -19,7 +19,8 @@ struct FlowsView: View {
 
     var body: some View {
         if graph.flows.isEmpty {
-            ContentUnavailableView("No flows traced", systemImage: "arrow.triangle.branch",
+            ContentUnavailableView(
+                "No flows traced", systemImage: "arrow.triangle.branch",
                 description: Text("No entry point in this PR had an execution path worth tracing end to end."))
         } else {
             VStack(alignment: .leading, spacing: 0) {
@@ -96,8 +97,11 @@ struct FlowsView: View {
     }
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard FlowsViewLogic.recognizesScenarioKey(press.characters, modifiers: press.modifiers, flowCount: graph.flows.count),
-              let offset = FlowsViewLogic.scenarioOffset(for: press.characters) else { return .ignored }
+        guard
+            FlowsViewLogic.recognizesScenarioKey(
+                press.characters, modifiers: press.modifiers, flowCount: graph.flows.count),
+            let offset = FlowsViewLogic.scenarioOffset(for: press.characters)
+        else { return .ignored }
         if let next = graph.scenario(offset, from: currentFlow?.id) { openFlow(next.id) }
         return .handled
     }
@@ -105,7 +109,8 @@ struct FlowsView: View {
     private func drill(_ node: FlowBehaviorNode) {
         guard let flow = currentFlow else { return }
         let available = FlowDrillLevel.available(for: node, in: flow, graph: graph)
-        let result = FlowsViewLogic.drilling(node, currentSelectedNodeId: selectedNodeId, currentLevel: level, available: available)
+        let result = FlowsViewLogic.drilling(
+            node, currentSelectedNodeId: selectedNodeId, currentLevel: level, available: available)
         selectedNodeId = result.nodeId
         level = result.level
     }
@@ -128,7 +133,9 @@ struct FlowsView: View {
                 if graph.flows.count > 1 { scenarioTabs } else { Spacer(minLength: 0) }
                 Spacer(minLength: 12)
                 if let flow = currentFlow {
-                    Button { actions.ask(.flow(flow.id)) } label: {
+                    Button {
+                        actions.ask(.flow(flow.id))
+                    } label: {
                         Label("Ask", systemImage: "sparkles").font(.caption)
                     }
                     .buttonStyle(.borderless)
@@ -168,11 +175,13 @@ struct FlowsView: View {
 
     private func scenarioTab(_ flow: FlowNode, selected: Bool) -> some View {
         let changed = graph.behavior(for: flow).hasChange
-        return Button { openFlow(flow.id) } label: {
+        return Button {
+            openFlow(flow.id)
+        } label: {
             (Text(graph.scenarioTitle(for: flow))
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .font(.system(size: 15, weight: selected ? .semibold : .regular))
-             + Text(FlowsViewLogic.changedSuffix(changed: changed))
+                + Text(FlowsViewLogic.changedSuffix(changed: changed))
                 .font(.callout)
                 .foregroundStyle(Color.blue))
                 .lineLimit(1)
@@ -249,7 +258,8 @@ struct FlowsView: View {
     @ViewBuilder
     private var diagram: some View {
         if let flow = currentFlow, let behavior = currentBehavior {
-            let shown = FlowsViewLogic.diagramContent(behavior: behavior, annotations: graph.annotations(for: flow), mode: mode)
+            let shown = FlowsViewLogic.diagramContent(
+                behavior: behavior, annotations: graph.annotations(for: flow), mode: mode)
             let visible = shown.behavior
             BehaviorDiagramView(
                 flowId: flow.id,
@@ -257,7 +267,9 @@ struct FlowsView: View {
                 annotations: shown.annotations,
                 mode: mode,
                 selectedNodeId: selectedNodeId,
-                onSelect: { node in select(FlowsViewLogic.togglingSelection(of: node, currentSelectedNodeId: selectedNodeId)) },
+                onSelect: { node in
+                    select(FlowsViewLogic.togglingSelection(of: node, currentSelectedNodeId: selectedNodeId))
+                },
                 onDrill: drill,
                 onShowImplementation: showImplementation,
                 onOpenAnnotation: { note in actions.navigate(FlowsViewLogic.navigationTarget(for: note)) },
@@ -300,7 +312,8 @@ enum FlowsViewLogic {
     static func storyLeadsWithTitle(flowCount: Int) -> Bool { flowCount <= 1 }
 
     static func diagramContent(behavior: FlowBehavior, annotations: [FlowAnnotation], mode: DiagramMode)
-        -> (behavior: FlowBehavior, annotations: [FlowAnnotation]) {
+        -> (behavior: FlowBehavior, annotations: [FlowAnnotation])
+    {
         let visible = behavior.visible(in: mode)
         let ids = Set(visible.nodes.map(\.id))
         return (visible, annotations.filter { ids.contains($0.nodeId) })
@@ -352,7 +365,8 @@ enum FlowsViewLogic {
     }
 
     static func applying(_ focus: FlowsView.Focus?, to graph: PRGraph)
-        -> (selectedFlowId: String, selectedNodeId: String?, level: FlowDrillLevel)? {
+        -> (selectedFlowId: String, selectedNodeId: String?, level: FlowDrillLevel)?
+    {
         guard let focus, graph.flow(focus.flowId) != nil else { return nil }
         return (focus.flowId, focus.nodeId, .behavior)
     }
@@ -363,14 +377,17 @@ enum FlowsViewLogic {
     }
 
     static func selecting(_ node: FlowBehaviorNode?, currentSelectedNodeId: String?)
-        -> (nodeId: String?, level: FlowDrillLevel?) {
+        -> (nodeId: String?, level: FlowDrillLevel?)
+    {
         let changesSelection = node?.id != currentSelectedNodeId
         let resetLevel: FlowDrillLevel? = changesSelection ? .behavior : nil
         return (node?.id, resetLevel)
     }
 
-    static func drilling(_ node: FlowBehaviorNode, currentSelectedNodeId: String?, currentLevel: FlowDrillLevel,
-                          available: [FlowDrillLevel]) -> (nodeId: String, level: FlowDrillLevel) {
+    static func drilling(
+        _ node: FlowBehaviorNode, currentSelectedNodeId: String?, currentLevel: FlowDrillLevel,
+        available: [FlowDrillLevel]
+    ) -> (nodeId: String, level: FlowDrillLevel) {
         if currentSelectedNodeId != node.id {
             return (node.id, nextLevel(after: .behavior, available: available))
         }

@@ -1,6 +1,7 @@
-import Testing
-import SwiftUI
 import AppKit
+import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -10,8 +11,9 @@ struct ContentViewHostingTests {
     private func render(_ store: GraphStore, needsOnboarding: Bool = false) -> NSWindow {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: ContentView(store: store, needsOnboarding: needsOnboarding))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.animationBehavior = .none
         window.isReleasedWhenClosed = false
         window.contentView = host
@@ -86,7 +88,11 @@ struct ContentViewHostingTests {
         for status in [StageStatus.failed("x"), .stopped, .running(detail: "working"), .done] {
             for hasContent in [true, false] {
                 var graph = ContourSampleData.publishTriggeredReindex
-                if !hasContent { graph.components = []; graph.decisions = []; graph.flows = [] }
+                if !hasContent {
+                    graph.components = []
+                    graph.decisions = []
+                    graph.flows = []
+                }
                 let store = GraphStore(phase: .opening)
                 store.handle(.graph(graph))
                 store.handle(.revalidating(fromHead: "abc1234"))
@@ -103,9 +109,11 @@ struct ContentViewHostingTests {
     }
 
     @Test func rendersReviewButtonsInEachSubmissionState() {
-        for review in [PRReview.State.submitting(.approve), .submitted(.approve),
-                       .submitting(.requestChanges), .submitted(.requestChanges),
-                       .failed(.approve, "nope"), .failed(.requestChanges, "nope")] {
+        for review in [
+            PRReview.State.submitting(.approve), .submitted(.approve),
+            .submitting(.requestChanges), .submitted(.requestChanges),
+            .failed(.approve, "nope"), .failed(.requestChanges, "nope"),
+        ] {
             let store = GraphStore(phase: .opening, review: review)
             store.handle(.graph(ContourSampleData.publishTriggeredReindex))
             let window = render(store)
@@ -117,7 +125,9 @@ struct ContentViewHostingTests {
     @Test func rendersTheDecisionsRowAsFullyReviewed() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
-        graph.decisions = [DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)]
+        graph.decisions = [
+            DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)
+        ]
         let store = GraphStore(phase: .opening)
         store.handle(.graph(graph))
         for stage in PipelineStage.analysis { store.handle(.status(stage, .done)) }
@@ -185,4 +195,3 @@ struct ContentViewHostingTests {
         window.close()
     }
 }
-

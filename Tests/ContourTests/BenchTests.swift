@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class BenchTests: XCTestCase {
@@ -20,8 +21,10 @@ final class BenchTests: XCTestCase {
             let fixture = try BenchFixtures.make(corpus)
             defer { try? FileManager.default.removeItem(at: fixture.rootDir) }
             let metrics = try await run(fixture)
-            runs.append(BenchRun(corpus: corpus, files: fixture.context.files.count,
-                                  diffBytes: fixture.context.diff.utf8.count, metrics: metrics))
+            runs.append(
+                BenchRun(
+                    corpus: corpus, files: fixture.context.files.count,
+                    diffBytes: fixture.context.diff.utf8.count, metrics: metrics))
         }
 
         print("\n=== Bench: Contour's own latency (CONTOUR_MOCK_ANALYSIS=1, no model, no network) ===")
@@ -34,14 +37,22 @@ final class BenchTests: XCTestCase {
         }
 
         for entry in runs {
-            let elapsed = try XCTUnwrap(entry.metrics.elapsed(.fullAnalysis), "\(entry.corpus.rawValue) never reached full analysis")
-            XCTAssertLessThan(elapsed, 20, "\(entry.corpus.rawValue) took \(elapsed)s end to end offline — Contour's own path should never be this slow with no model in the loop")
+            let elapsed = try XCTUnwrap(
+                entry.metrics.elapsed(.fullAnalysis), "\(entry.corpus.rawValue) never reached full analysis")
+            XCTAssertLessThan(
+                elapsed, 20,
+                "\(entry.corpus.rawValue) took \(elapsed)s end to end offline — Contour's own path should never be this slow with no model in the loop"
+            )
         }
 
         if let small = runs.first(where: { $0.corpus == .small })?.metrics.elapsed(.usefulOverview),
-           let large = runs.first(where: { $0.corpus == .large })?.metrics.elapsed(.usefulOverview) {
+            let large = runs.first(where: { $0.corpus == .large })?.metrics.elapsed(.usefulOverview)
+        {
             let ratio = (large + 0.05) / (small + 0.05)
-            XCTAssertLessThan(ratio, 100, "large took \(ratio)x as long as small to reach a useful overview — expected roughly linear scaling with corpus size")
+            XCTAssertLessThan(
+                ratio, 100,
+                "large took \(ratio)x as long as small to reach a useful overview — expected roughly linear scaling with corpus size"
+            )
         }
     }
 

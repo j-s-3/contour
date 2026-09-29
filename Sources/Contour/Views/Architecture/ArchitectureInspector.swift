@@ -56,7 +56,9 @@ struct ArchitectureInspector: View {
                     }
                 }
                 if level.focus?.id != part.id {
-                    Button { onZoomIn(part.id) } label: {
+                    Button {
+                        onZoomIn(part.id)
+                    } label: {
                         Label("Look inside \(part.title)", systemImage: "plus.magnifyingglass")
                     }
                     .buttonStyle(.link).font(.callout)
@@ -124,7 +126,9 @@ struct ArchitectureInspector: View {
     }
 
     private func connectionRow(_ e: ArchLevelEdge, direction: String, other: String) -> some View {
-        Button { onSelect(.edge(e.id)) } label: {
+        Button {
+            onSelect(.edge(e.id))
+        } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: Self.connectionIcon(direction: direction))
                     .font(.caption2).foregroundStyle(.secondary)
@@ -171,11 +175,14 @@ struct ArchitectureInspector: View {
         if !folded.isEmpty {
             section("Also between these parts") {
                 ForEach(folded) { other in
-                    Text(Self.foldedEdgeLine(fromTitle: graph.component(other.fromId)?.title ?? other.fromId,
-                                              toTitle: graph.component(other.toId)?.title ?? other.toId,
-                                              label: other.label))
-                        .font(.callout).foregroundStyle(.secondary)
-                        .reviewContextMenu(.relationship(other.id))
+                    Text(
+                        Self.foldedEdgeLine(
+                            fromTitle: graph.component(other.fromId)?.title ?? other.fromId,
+                            toTitle: graph.component(other.toId)?.title ?? other.toId,
+                            label: other.label)
+                    )
+                    .font(.callout).foregroundStyle(.secondary)
+                    .reviewContextMenu(.relationship(other.id))
                 }
             }
         }
@@ -310,8 +317,9 @@ struct ArchitectureInspector: View {
                     Text(name).font(.system(.callout, design: .monospaced))
                 }
                 if !refs.isEmpty {
-                    WrapChips(Array(refs.prefix(8))) { ref in CodeRefChip(ref: ref) { actions.navigate(.evidence(ref)) } }
-                        .padding(.top, 2)
+                    WrapChips(Array(refs.prefix(8))) { ref in CodeRefChip(ref: ref) { actions.navigate(.evidence(ref)) }
+                    }
+                    .padding(.top, 2)
                 }
             }
         }
@@ -352,8 +360,8 @@ struct ArchitectureInspector: View {
 
     private func beforeAfter(_ before: String, _ after: String) -> some View {
         (Text(before).foregroundStyle(.secondary).strikethrough(true, color: .secondary)
-         + Text("  →  ").foregroundStyle(.tertiary)
-         + Text(after).fontWeight(.semibold))
+            + Text("  →  ").foregroundStyle(.tertiary)
+            + Text(after).fontWeight(.semibold))
             .font(.callout)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -379,7 +387,9 @@ struct ArchitectureInspector: View {
     }
 
     private func askButton(_ subject: ReviewSubject) -> some View {
-        Button { actions.ask(subject) } label: {
+        Button {
+            actions.ask(subject)
+        } label: {
             Label("Ask about this…", systemImage: "sparkles")
         }
         .controlSize(.regular)

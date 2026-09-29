@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct BehaviorChangeDiagramViewTests {
@@ -33,7 +34,9 @@ struct BehaviorChangeDiagramViewTests {
 
     @Test func tintIsNilForAnOrdinaryStageWithNoOutcome() {
         #expect(StageBoxLogic.tint(outcome: nil, isAfter: true, isDelta: false) == nil)
-        #expect(StageBoxLogic.tint(outcome: nil, isAfter: false, isDelta: true) == nil, "delta only tints green in the After row")
+        #expect(
+            StageBoxLogic.tint(outcome: nil, isAfter: false, isDelta: true) == nil,
+            "delta only tints green in the After row")
     }
 
     @Test func fillUsesTheTintWhenPresent() {
@@ -57,24 +60,36 @@ struct BehaviorChangeDiagramViewTests {
     }
 
     @Test func helpTextIsJustTheHintForAnOrdinaryStage() {
-        #expect(StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: nil) == "Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: nil)
+                == "Click to open · right-click to ask about it")
     }
 
     @Test func helpTextNamesANewStageInTheAfterRow() {
-        #expect(StageBoxLogic.helpText(isDelta: true, isAfter: true, outcome: nil) == "New in this PR · Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: true, isAfter: true, outcome: nil)
+                == "New in this PR · Click to open · right-click to ask about it")
     }
 
     @Test func helpTextNamesARemovedStageInTheBeforeRow() {
-        #expect(StageBoxLogic.helpText(isDelta: true, isAfter: false, outcome: nil) == "No longer happens · Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: true, isAfter: false, outcome: nil)
+                == "No longer happens · Click to open · right-click to ask about it")
     }
 
     @Test func helpTextAppendsTheOutcome() {
-        #expect(StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: .failure) == "Fails · Click to open · right-click to ask about it")
-        #expect(StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: .success) == "Succeeds · Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: .failure)
+                == "Fails · Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: .success)
+                == "Succeeds · Click to open · right-click to ask about it")
     }
 
     @Test func helpTextCombinesDeltaAndOutcome() {
-        #expect(StageBoxLogic.helpText(isDelta: true, isAfter: true, outcome: .success) == "New in this PR · Succeeds · Click to open · right-click to ask about it")
+        #expect(
+            StageBoxLogic.helpText(isDelta: true, isAfter: true, outcome: .success)
+                == "New in this PR · Succeeds · Click to open · right-click to ask about it")
     }
 
     @Test func strokeStyleIsThinAndSolidForAnOrdinaryStage() {
@@ -90,10 +105,12 @@ struct BehaviorChangeDiagramViewTests {
 
     @Test func strokeStyleDashesOnlyARemovedStageInTheBeforeRow() {
         #expect(StageBoxLogic.strokeStyle(isDelta: true, hasOutcome: false, isAfter: false).dash == [4, 3])
-        #expect(StageBoxLogic.strokeStyle(isDelta: true, hasOutcome: false, isAfter: true).dash == [],
-                "a new stage in the After row is a delta but never dashes")
-        #expect(StageBoxLogic.strokeStyle(isDelta: false, hasOutcome: true, isAfter: false).dash == [],
-                "an outcome alone (not a delta) never dashes")
+        #expect(
+            StageBoxLogic.strokeStyle(isDelta: true, hasOutcome: false, isAfter: true).dash == [],
+            "a new stage in the After row is a delta but never dashes")
+        #expect(
+            StageBoxLogic.strokeStyle(isDelta: false, hasOutcome: true, isAfter: false).dash == [],
+            "an outcome alone (not a delta) never dashes")
     }
 
     @Test func gridSpacingStepsDownTogetherOffRegular() {

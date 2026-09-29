@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct SummaryViewTests {
@@ -14,27 +15,32 @@ struct SummaryViewTests {
     }
 
     @Test func judgmentWorkingTextLooksForChoicesWhileDecisionsRunAndJudgmentHasntStarted() {
-        let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 0, decisionsStatus: .running(detail: nil), judgmentStatus: .pending)
+        let text = SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: 0, decisionsStatus: .running(detail: nil), judgmentStatus: .pending)
         #expect(text == "Looking for consequential choices…")
     }
 
     @Test func judgmentWorkingTextNamesHowManyDecisionsAreFoundSoFar() {
-        let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 3, decisionsStatus: .running(detail: nil), judgmentStatus: .pending)
+        let text = SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: 3, decisionsStatus: .running(detail: nil), judgmentStatus: .pending)
         #expect(text == "3 decisions found · looking for consequential choices…")
     }
 
     @Test func judgmentWorkingTextUsesSingularForOneDecision() {
-        let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 1, decisionsStatus: .pending, judgmentStatus: .pending)
+        let text = SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: 1, decisionsStatus: .pending, judgmentStatus: .pending)
         #expect(text == "1 decision found · looking for consequential choices…")
     }
 
     @Test func judgmentWorkingTextSaysWeighingOnceJudgmentItselfIsRunning() {
-        let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 5, decisionsStatus: .done, judgmentStatus: .running(detail: nil))
+        let text = SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: 5, decisionsStatus: .done, judgmentStatus: .running(detail: nil))
         #expect(text == "Weighing what needs your judgment…")
     }
 
     @Test func judgmentWorkingTextSaysWeighingOnceDecisionsHaveMovedPastRunning() {
-        let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 5, decisionsStatus: .done, judgmentStatus: .pending)
+        let text = SummaryViewLogic.judgmentWorkingText(
+            decisionsFound: 5, decisionsStatus: .done, judgmentStatus: .pending)
         #expect(text == "Weighing what needs your judgment…")
     }
 
@@ -59,11 +65,15 @@ struct SummaryViewTests {
     }
 
     @Test func tileDetailNamesAFailure() {
-        #expect(SummaryViewLogic.tileDetail(status: .failed("boom"), ready: "3 parts", count: 3, noun: "part") == "Couldn't be analyzed")
+        #expect(
+            SummaryViewLogic.tileDetail(status: .failed("boom"), ready: "3 parts", count: 3, noun: "part")
+                == "Couldn't be analyzed")
     }
 
     @Test func tileDetailShowsWhatWasFoundBeforeStoppingOrJustStopped() {
-        #expect(SummaryViewLogic.tileDetail(status: .stopped, ready: "3 parts", count: 3, noun: "part") == "3 parts, stopped")
+        #expect(
+            SummaryViewLogic.tileDetail(status: .stopped, ready: "3 parts", count: 3, noun: "part")
+                == "3 parts, stopped")
         #expect(SummaryViewLogic.tileDetail(status: .stopped, ready: "0 parts", count: 0, noun: "part") == "Stopped")
     }
 
@@ -72,20 +82,27 @@ struct SummaryViewTests {
     }
 
     @Test func tileDetailShowsProgressOrAGenericMessageWhileRunning() {
-        #expect(SummaryViewLogic.tileDetail(status: .running(detail: nil), ready: "3 parts", count: 3, noun: "part") == "3 parts so far…")
-        #expect(SummaryViewLogic.tileDetail(status: .running(detail: nil), ready: "0 parts", count: 0, noun: "part") == "Analyzing…")
+        #expect(
+            SummaryViewLogic.tileDetail(status: .running(detail: nil), ready: "3 parts", count: 3, noun: "part")
+                == "3 parts so far…")
+        #expect(
+            SummaryViewLogic.tileDetail(status: .running(detail: nil), ready: "0 parts", count: 0, noun: "part")
+                == "Analyzing…")
     }
 
     @Test func tileDetailWaitsWhilePending() {
         #expect(SummaryViewLogic.tileDetail(status: .pending, ready: "3 parts", count: 3, noun: "part") == "Waiting…")
     }
 
-    private func graph(decisions: [DecisionNode] = [], components: [ComponentNode] = [], flows: [FlowNode] = []) -> PRGraph {
-        var g = PRGraph(pr: PRSummary(
-            repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
-            branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
-            intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
-        ))
+    private func graph(decisions: [DecisionNode] = [], components: [ComponentNode] = [], flows: [FlowNode] = [])
+        -> PRGraph
+    {
+        var g = PRGraph(
+            pr: PRSummary(
+                repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
+                branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
+                intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
+            ))
         g.decisions = decisions
         g.components = components
         g.flows = flows
@@ -93,7 +110,8 @@ struct SummaryViewTests {
     }
 
     @Test func relatedLinksResolvesADecision() {
-        let decision = DecisionNode(id: "d1", title: "Use retries", decision: Statement(text: "x", provenance: .claim), confidence: .high)
+        let decision = DecisionNode(
+            id: "d1", title: "Use retries", decision: Statement(text: "x", provenance: .claim), confidence: .high)
         let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["d1"])
         let links = SummaryViewLogic.relatedLinks(for: item, graph: graph(decisions: [decision]))
         #expect(links.count == 1)
@@ -128,10 +146,12 @@ struct SummaryViewTests {
     }
 
     @Test func relatedLinksKeepsTheOriginalOrderAcrossKinds() {
-        let decision = DecisionNode(id: "d1", title: "D", decision: Statement(text: "x", provenance: .claim), confidence: .high)
+        let decision = DecisionNode(
+            id: "d1", title: "D", decision: Statement(text: "x", provenance: .claim), confidence: .high)
         let component = ComponentNode(id: "c1", title: "C", changeKind: .changed)
         let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["c1", "d1"])
-        let links = SummaryViewLogic.relatedLinks(for: item, graph: graph(decisions: [decision], components: [component]))
+        let links = SummaryViewLogic.relatedLinks(
+            for: item, graph: graph(decisions: [decision], components: [component]))
         #expect(links.map(\.title) == ["C", "D"])
     }
 
@@ -152,18 +172,21 @@ struct SummaryViewTests {
     }
 
     @Test func retryBannerTextNamesAFailure() {
-        let text = SummaryViewLogic.retryBannerText(status: .failed("boom"), failureText: "Couldn't build it.", stoppedText: "Stopped early.")
+        let text = SummaryViewLogic.retryBannerText(
+            status: .failed("boom"), failureText: "Couldn't build it.", stoppedText: "Stopped early.")
         #expect(text == "Couldn't build it.")
     }
 
     @Test func retryBannerTextNamesAStop() {
-        let text = SummaryViewLogic.retryBannerText(status: .stopped, failureText: "Couldn't build it.", stoppedText: "Stopped early.")
+        let text = SummaryViewLogic.retryBannerText(
+            status: .stopped, failureText: "Couldn't build it.", stoppedText: "Stopped early.")
         #expect(text == "Stopped early.")
     }
 
     @Test func retryBannerTextIsNilOnceNeitherFailedNorStopped() {
         #expect(SummaryViewLogic.retryBannerText(status: .done, failureText: "f", stoppedText: "s") == nil)
-        #expect(SummaryViewLogic.retryBannerText(status: .running(detail: nil), failureText: "f", stoppedText: "s") == nil)
+        #expect(
+            SummaryViewLogic.retryBannerText(status: .running(detail: nil), failureText: "f", stoppedText: "s") == nil)
         #expect(SummaryViewLogic.retryBannerText(status: .pending, failureText: "f", stoppedText: "s") == nil)
     }
 
@@ -248,7 +271,9 @@ struct SummaryViewTests {
     }
 
     @Test func architectureReadyTextPrefersTheNamedImpact() {
-        #expect(SummaryViewLogic.architectureReadyText(impactLabel: "Moderate", partsCount: 9) == "Moderate architectural impact")
+        #expect(
+            SummaryViewLogic.architectureReadyText(impactLabel: "Moderate", partsCount: 9)
+                == "Moderate architectural impact")
     }
 
     @Test func architectureReadyTextFallsBackToAPartsCount() {
@@ -269,9 +294,11 @@ struct SummaryViewTests {
     }
 
     @Test func considerationBadgeHelpDistinguishesAnOpenQuestionFromAConcern() {
-        #expect(SummaryViewLogic.considerationBadgeHelp(isResolved: false, isQuestion: true)
+        #expect(
+            SummaryViewLogic.considerationBadgeHelp(isResolved: false, isQuestion: true)
                 == "Open question — the analysis couldn't settle this")
-        #expect(SummaryViewLogic.considerationBadgeHelp(isResolved: false, isQuestion: false)
+        #expect(
+            SummaryViewLogic.considerationBadgeHelp(isResolved: false, isQuestion: false)
                 == "A judgment call worth your attention")
     }
 
@@ -284,24 +311,32 @@ struct SummaryViewTests {
     }
 
     @Test func whySectionModeShowsWhyAndConsequenceOnlyWithBothAChangeAndContent() {
-        #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: true, awaitingBehavior: false)
+        #expect(
+            SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: true, awaitingBehavior: false)
                 == .whyAndConsequence)
     }
 
     @Test func whySectionModeIgnoresAChangeWithNeitherWhyNorConsequence() {
-        #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: true)
+        #expect(
+            SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: true)
                 == .placeholder)
-        #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: false)
+        #expect(
+            SummaryViewLogic.whySectionMode(
+                hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: false)
                 == .none)
     }
 
     @Test func whySectionModeShowsThePlaceholderWhileAwaitingWithNoChangeYet() {
-        #expect(SummaryViewLogic.whySectionMode(hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: true)
+        #expect(
+            SummaryViewLogic.whySectionMode(
+                hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: true)
                 == .placeholder)
     }
 
     @Test func whySectionModeShowsNothingOnceSettledWithNoWhyToShow() {
-        #expect(SummaryViewLogic.whySectionMode(hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: false)
+        #expect(
+            SummaryViewLogic.whySectionMode(
+                hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: false)
                 == .none)
     }
 

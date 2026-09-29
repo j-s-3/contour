@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct BadgesTests {
@@ -64,13 +65,15 @@ struct BadgesTests {
 
     @MainActor
     @Test func helpTextAppendsTheConfidenceLevelLowercasedForAnInterpretation() {
-        #expect(ProvenanceMark.helpText(provenance: .interpretation, confidence: .high, source: nil)
+        #expect(
+            ProvenanceMark.helpText(provenance: .interpretation, confidence: .high, source: nil)
                 == "AI inference · high confidence")
     }
 
     @MainActor
     @Test func helpTextAppendsANonEmptySourceButNotAnEmptyOne() {
-        #expect(ProvenanceMark.helpText(provenance: .fact, confidence: nil, source: "PagePublisher.java:50")
+        #expect(
+            ProvenanceMark.helpText(provenance: .fact, confidence: nil, source: "PagePublisher.java:50")
                 == "Observed fact — PagePublisher.java:50")
         #expect(ProvenanceMark.helpText(provenance: .fact, confidence: nil, source: "") == "Observed fact")
     }

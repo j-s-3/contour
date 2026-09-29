@@ -44,20 +44,33 @@ struct FlowBehaviorNode: Codable, Hashable, Sendable, Identifiable {
     var provenance: Provenance = .fact
     var confidence: Confidence?
 
-    init(id: String, label: String, kind: FlowNodeKind = .step, detail: String? = nil,
-         change: FlowChange = .existing, before: String? = nil, after: String? = nil,
-         substeps: [String] = [], stepIds: [String] = [], componentId: String? = nil,
-         subflowId: String? = nil, boundaryId: String? = nil, decisionIds: [String] = [],
-         refs: [CodeRef] = [], provenance: Provenance = .fact, confidence: Confidence? = nil) {
-        self.id = id; self.label = label; self.kind = kind; self.detail = detail
-        self.change = change; self.before = before; self.after = after
-        self.substeps = substeps; self.stepIds = stepIds; self.componentId = componentId
-        self.subflowId = subflowId; self.boundaryId = boundaryId; self.decisionIds = decisionIds
-        self.refs = refs; self.provenance = provenance; self.confidence = confidence
+    init(
+        id: String, label: String, kind: FlowNodeKind = .step, detail: String? = nil,
+        change: FlowChange = .existing, before: String? = nil, after: String? = nil,
+        substeps: [String] = [], stepIds: [String] = [], componentId: String? = nil,
+        subflowId: String? = nil, boundaryId: String? = nil, decisionIds: [String] = [],
+        refs: [CodeRef] = [], provenance: Provenance = .fact, confidence: Confidence? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.kind = kind
+        self.detail = detail
+        self.change = change
+        self.before = before
+        self.after = after
+        self.substeps = substeps
+        self.stepIds = stepIds
+        self.componentId = componentId
+        self.subflowId = subflowId
+        self.boundaryId = boundaryId
+        self.decisionIds = decisionIds
+        self.refs = refs
+        self.provenance = provenance
+        self.confidence = confidence
     }
     enum CodingKeys: String, CodingKey {
         case id, label, kind, detail, change, before, after, substeps, stepIds, componentId,
-             subflowId, boundaryId, decisionIds, refs, provenance, confidence
+            subflowId, boundaryId, decisionIds, refs, provenance, confidence
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -91,7 +104,11 @@ struct FlowBehaviorEdge: Codable, Hashable, Sendable, Identifiable {
     var change: FlowChange = .existing
 
     init(fromId: String, toId: String, label: String? = nil, flow: EdgeFlow = .sync, change: FlowChange = .existing) {
-        self.fromId = fromId; self.toId = toId; self.label = label; self.flow = flow; self.change = change
+        self.fromId = fromId
+        self.toId = toId
+        self.label = label
+        self.flow = flow
+        self.change = change
     }
     enum CodingKeys: String, CodingKey { case fromId, toId, label, flow, change }
     init(from decoder: Decoder) throws {
@@ -111,7 +128,9 @@ struct FlowBoundary: Codable, Hashable, Sendable, Identifiable {
     var kind: BoundaryKind = .application
 
     init(id: String, label: String, kind: BoundaryKind = .application) {
-        self.id = id; self.label = label; self.kind = kind
+        self.id = id
+        self.label = label
+        self.kind = kind
     }
     enum CodingKeys: String, CodingKey { case id, label, kind }
     init(from decoder: Decoder) throws {
@@ -129,21 +148,31 @@ struct FlowBehavior: Codable, Hashable, Sendable {
     var edges: [FlowBehaviorEdge] = []
     var boundaries: [FlowBoundary] = []
 
-    init(summary: String? = nil, changeSummary: String? = nil, nodes: [FlowBehaviorNode] = [],
-         edges: [FlowBehaviorEdge] = [], boundaries: [FlowBoundary] = []) {
-        self.summary = summary; self.changeSummary = changeSummary
-        self.nodes = nodes; self.edges = edges; self.boundaries = boundaries
+    init(
+        summary: String? = nil, changeSummary: String? = nil, nodes: [FlowBehaviorNode] = [],
+        edges: [FlowBehaviorEdge] = [], boundaries: [FlowBoundary] = []
+    ) {
+        self.summary = summary
+        self.changeSummary = changeSummary
+        self.nodes = nodes
+        self.edges = edges
+        self.boundaries = boundaries
     }
     enum CodingKeys: String, CodingKey { case summary, changeSummary, nodes, edges, boundaries }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         summary = try c.decodeIfPresent(String.self, forKey: .summary)
         changeSummary = try c.decodeIfPresent(String.self, forKey: .changeSummary)
-        nodes = (try? c.decodeIfPresent([FailableDecode<FlowBehaviorNode>].self, forKey: .nodes))?.compactMap(\.value) ?? []
+        nodes =
+            (try? c.decodeIfPresent([FailableDecode<FlowBehaviorNode>].self, forKey: .nodes))?.compactMap(\.value) ?? []
         let ids = Set(nodes.map(\.id))
-        edges = ((try? c.decodeIfPresent([FailableDecode<FlowBehaviorEdge>].self, forKey: .edges))?.compactMap(\.value) ?? [])
+        edges =
+            ((try? c.decodeIfPresent([FailableDecode<FlowBehaviorEdge>].self, forKey: .edges))?.compactMap(\.value)
+            ?? [])
             .filter { ids.contains($0.fromId) && ids.contains($0.toId) && $0.fromId != $0.toId }
-        boundaries = (try? c.decodeIfPresent([FailableDecode<FlowBoundary>].self, forKey: .boundaries))?.compactMap(\.value) ?? []
+        boundaries =
+            (try? c.decodeIfPresent([FailableDecode<FlowBoundary>].self, forKey: .boundaries))?.compactMap(\.value)
+            ?? []
     }
 
     func node(_ id: String?) -> FlowBehaviorNode? { nodes.first { $0.id == id } }
@@ -172,5 +201,8 @@ struct FlowAnchor: Codable, Hashable, Sendable {
     var flowId: String
     var nodeId: String
 
-    init(flowId: String, nodeId: String) { self.flowId = flowId; self.nodeId = nodeId }
+    init(flowId: String, nodeId: String) {
+        self.flowId = flowId
+        self.nodeId = nodeId
+    }
 }

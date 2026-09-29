@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct BehaviorDiagramViewTests {
@@ -71,32 +72,43 @@ struct BehaviorDiagramViewTests {
     }
 
     @Test func stageFillUsesTheChangesTintOnlyInDelta() {
-        #expect(BehaviorDiagramLogic.stageFill(mode: .delta, change: .new, kind: .step, isHovered: false)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .delta, change: .new, kind: .step, isHovered: false)
                 == Color.green.opacity(0.08))
-        #expect(BehaviorDiagramLogic.stageFill(mode: .delta, change: .new, kind: .step, isHovered: true)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .delta, change: .new, kind: .step, isHovered: true)
                 == Color.green.opacity(0.14))
-        #expect(BehaviorDiagramLogic.stageFill(mode: .before, change: .new, kind: .step, isHovered: false)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .before, change: .new, kind: .step, isHovered: false)
                 != Color.green.opacity(0.08))
     }
 
     @Test func stageFillFallsBackToKindWhenUntinted() {
-        #expect(BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .decision, isHovered: false)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .decision, isHovered: false)
                 == Color.secondary.opacity(0.05))
-        #expect(BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .decision, isHovered: true)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .decision, isHovered: true)
                 == Color.secondary.opacity(0.1))
-        #expect(BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .outcome, isHovered: false)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .outcome, isHovered: false)
                 == Color.secondary.opacity(0.07))
-        #expect(BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .step, isHovered: false)
+        #expect(
+            BehaviorDiagramLogic.stageFill(mode: .before, change: .existing, kind: .step, isHovered: false)
                 == Color(nsColor: .controlBackgroundColor).opacity(1))
     }
 
     @Test func stageStrokeSelectionOutranksTintOutranksExternalOutranksPlain() {
-        #expect(BehaviorDiagramLogic.stageStroke(mode: .delta, change: .new, kind: .step, isSelected: true) == .accentColor)
-        #expect(BehaviorDiagramLogic.stageStroke(mode: .delta, change: .new, kind: .external, isSelected: false)
+        #expect(
+            BehaviorDiagramLogic.stageStroke(mode: .delta, change: .new, kind: .step, isSelected: true) == .accentColor)
+        #expect(
+            BehaviorDiagramLogic.stageStroke(mode: .delta, change: .new, kind: .external, isSelected: false)
                 == Color.green.opacity(0.85))
-        #expect(BehaviorDiagramLogic.stageStroke(mode: .before, change: .existing, kind: .external, isSelected: false)
+        #expect(
+            BehaviorDiagramLogic.stageStroke(mode: .before, change: .existing, kind: .external, isSelected: false)
                 == Color.purple.opacity(0.55))
-        #expect(BehaviorDiagramLogic.stageStroke(mode: .before, change: .existing, kind: .step, isSelected: false)
+        #expect(
+            BehaviorDiagramLogic.stageStroke(mode: .before, change: .existing, kind: .step, isSelected: false)
                 == Color.secondary.opacity(0.4))
     }
 
@@ -122,39 +134,55 @@ struct BehaviorDiagramViewTests {
     }
 
     @Test func helpTextAssemblesDetailChangeAndUncertaintyBeforeTheStandingHint() {
-        let text = BehaviorDiagramLogic.stageHelpText(detail: "Reads the uploaded file", change: .changed, isUncertain: true)
-        #expect(text == "Reads the uploaded file\nChanged by this PR\nInferred, not traced in the code\n"
+        let text = BehaviorDiagramLogic.stageHelpText(
+            detail: "Reads the uploaded file", change: .changed, isUncertain: true)
+        #expect(
+            text == "Reads the uploaded file\nChanged by this PR\nInferred, not traced in the code\n"
                 + "Click to inspect · double-click to go deeper · right-click to ask")
     }
 
     @Test func helpTextIsJustTheStandingHintWhenThereIsNothingElseToSay() {
-        #expect(BehaviorDiagramLogic.stageHelpText(detail: nil, change: .existing, isUncertain: false)
+        #expect(
+            BehaviorDiagramLogic.stageHelpText(detail: nil, change: .existing, isUncertain: false)
                 == "Click to inspect · double-click to go deeper · right-click to ask")
     }
 
     @Test func changeDetailIsNoneForAnUnchangedOrNewStage() {
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .existing, before: "a", after: "b") == .none)
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .existing, before: "a", after: "b") == .none)
         #expect(BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .new, before: nil, after: "b") == .none)
     }
 
     @Test func changeDetailShowsBothSidesInDeltaWhenEitherSurvived() {
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .changed, before: "first line", after: "up to 1 KB")
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(
+                mode: .delta, change: .changed, before: "first line", after: "up to 1 KB")
                 == .beforeAndAfter(before: "first line", after: "up to 1 KB"))
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .changed, before: nil, after: "up to 1 KB")
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .changed, before: nil, after: "up to 1 KB")
                 == .beforeAndAfter(before: nil, after: "up to 1 KB"))
     }
 
     @Test func changeDetailShowsOneSideInBeforeOrAfterMode() {
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .before, change: .changed, before: "first line", after: "up to 1 KB")
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(
+                mode: .before, change: .changed, before: "first line", after: "up to 1 KB")
                 == .beforeOnly("first line"))
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .after, change: .changed, before: "first line", after: "up to 1 KB")
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(
+                mode: .after, change: .changed, before: "first line", after: "up to 1 KB")
                 == .afterOnly("up to 1 KB"))
     }
 
     @Test func changeDetailIsNoneWhenTheModesOwnSideIsMissing() {
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .before, change: .changed, before: nil, after: "up to 1 KB") == .none)
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .after, change: .changed, before: "first line", after: nil) == .none)
-        #expect(BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .changed, before: nil, after: nil) == .none)
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(mode: .before, change: .changed, before: nil, after: "up to 1 KB")
+                == .none)
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(mode: .after, change: .changed, before: "first line", after: nil)
+                == .none)
+        #expect(
+            BehaviorDiagramLogic.changeDetailContent(mode: .delta, change: .changed, before: nil, after: nil) == .none)
     }
 
     @Test func hoveringEntersClaimTheHoveredIdRegardlessOfWhatWasHoveredBefore() {
@@ -180,7 +208,8 @@ struct BehaviorDiagramViewTests {
     }
 
     @Test func boundaryLabelMarksOnlyAnOutsideSystemAsExternal() {
-        #expect(BehaviorDiagramLogic.boundaryLabelText(kind: .external, label: "Payments API") == "External · PAYMENTS API")
+        #expect(
+            BehaviorDiagramLogic.boundaryLabelText(kind: .external, label: "Payments API") == "External · PAYMENTS API")
         #expect(BehaviorDiagramLogic.boundaryLabelText(kind: .application, label: "Contour") == "CONTOUR")
     }
 

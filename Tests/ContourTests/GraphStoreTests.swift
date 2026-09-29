@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -63,7 +64,8 @@ struct GraphStoreTests {
 
     @Test @MainActor func checkoutEventSetsTheCheckout() {
         let store = GraphStore()
-        let checkout = RepoCheckout(rootDir: URL(fileURLWithPath: "/tmp/checkout"), headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(
+            rootDir: URL(fileURLWithPath: "/tmp/checkout"), headSha: "h", baseSha: "b", symbolIndexPath: nil)
         store.handle(.checkout(checkout))
         #expect(store.checkout?.headSha == "h")
     }
@@ -169,11 +171,16 @@ struct GraphStoreTests {
     }
 
     @Test func onlyArchitectureAndFlowsRelatedTargetsShowADiagram() {
-        let diagramTargets: [NavigationTarget] = [.architecture, .componentDetail("c"), .edgeDetail("e"), .flows, .flowDetail("f"), .flowNodeDetail(flowId: "f", nodeId: "n")]
+        let diagramTargets: [NavigationTarget] = [
+            .architecture, .componentDetail("c"), .edgeDetail("e"), .flows, .flowDetail("f"),
+            .flowNodeDetail(flowId: "f", nodeId: "n"),
+        ]
         for target in diagramTargets {
             #expect(target.showsDiagram, "\(target) should show a diagram")
         }
-        let nonDiagramTargets: [NavigationTarget] = [.summary, .decisions, .files, .diff, .decisionDetail("d"), .consideration("c")]
+        let nonDiagramTargets: [NavigationTarget] = [
+            .summary, .decisions, .files, .diff, .decisionDetail("d"), .consideration("c"),
+        ]
         for target in nonDiagramTargets {
             #expect(!target.showsDiagram, "\(target) should not show a diagram")
         }
@@ -236,7 +243,9 @@ struct GraphStoreTests {
         #expect(store.graph?.decisions.first(where: { $0.id == id })?.reviewerState == .accepted)
 
         store.setReviewerState(.accepted, forDecision: id)
-        #expect(store.graph?.decisions.first(where: { $0.id == id })?.reviewerState == .unreviewed, "setting the same state again clears it")
+        #expect(
+            store.graph?.decisions.first(where: { $0.id == id })?.reviewerState == .unreviewed,
+            "setting the same state again clears it")
 
         store.setReviewerState(.discuss, forDecision: id)
         #expect(store.graph?.decisions.first(where: { $0.id == id })?.reviewerState == .discuss)
@@ -267,7 +276,9 @@ struct GraphStoreTests {
         store.handle(.graph(sampleGraph))
         let id = "index-on-publish"
         store.setReviewerNote("Looks fine but check the retry path.", forDecision: id)
-        #expect(store.graph?.decisions.first(where: { $0.id == id })?.reviewerNote == "Looks fine but check the retry path.")
+        #expect(
+            store.graph?.decisions.first(where: { $0.id == id })?.reviewerNote == "Looks fine but check the retry path."
+        )
     }
 
     @Test @MainActor func setReviewerNoteWithAnUnknownDecisionIdIsANoOp() {
@@ -343,7 +354,9 @@ struct GraphStoreTests {
         let store = GraphStore()
         store.ask("Why this side?", about: .pullRequest)
         #expect(store.conversations.active?.subject == .pullRequest)
-        #expect(store.conversations.active?.messages.isEmpty == true, "send()'s graph guard exits before appending anything")
+        #expect(
+            store.conversations.active?.messages.isEmpty == true, "send()'s graph guard exits before appending anything"
+        )
     }
 
     @Test @MainActor func sendWithoutAGraphIsANoOp() {
@@ -374,4 +387,3 @@ struct GraphStoreTests {
         #expect(store.phase == .review)
     }
 }
-

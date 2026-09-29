@@ -38,9 +38,11 @@ struct SettingsView: View {
             } header: {
                 Text("Harness")
             } footer: {
-                Text("Contour drives whichever CLI you pick and inherits its provider, model, and credentials. It never stores an API key of its own.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Contour drives whichever CLI you pick and inherits its provider, model, and credentials. It never stores an API key of its own."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section {
@@ -55,9 +57,11 @@ struct SettingsView: View {
             } header: {
                 Text("Model overrides")
             } footer: {
-                Text("Leave blank to use the harness's own configured model. A bare pattern like \"sonnet\" can match an unauthenticated provider when several are configured, so set these only if you know which you want.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Leave blank to use the harness's own configured model. A bare pattern like \"sonnet\" can match an unauthenticated provider when several are configured, so set these only if you know which you want."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -77,10 +81,13 @@ struct SettingsView: View {
     var sourcesTab: some View {
         Form {
             Section {
-                Picker("GitHub access", selection: Binding(
-                    get: { preferences.resolvedGitHubAccess },
-                    set: { preferences.storedGitHubAccess = $0 }
-                )) {
+                Picker(
+                    "GitHub access",
+                    selection: Binding(
+                        get: { preferences.resolvedGitHubAccess },
+                        set: { preferences.storedGitHubAccess = $0 }
+                    )
+                ) {
                     ForEach(GitHubAccessMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
@@ -100,10 +107,13 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Issue tracker", selection: Binding(
-                    get: { preferences.resolvedTracker },
-                    set: { preferences.storedTracker = $0 }
-                )) {
+                Picker(
+                    "Issue tracker",
+                    selection: Binding(
+                        get: { preferences.resolvedTracker },
+                        set: { preferences.storedTracker = $0 }
+                    )
+                ) {
                     Text(TrackerID.github.displayName).tag(TrackerID.github)
                     Text(jiraLabel).tag(TrackerID.jira)
                     Text(TrackerID.none.displayName).tag(TrackerID.none)
@@ -117,9 +127,11 @@ struct SettingsView: View {
             } header: {
                 Text("Issue tracker")
             } footer: {
-                Text("Used to ground the plain-language \"problem to be solved\" summary in what was actually asked for. A missing or unreachable issue never fails a review.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Used to ground the plain-language \"problem to be solved\" summary in what was actually asked for. A missing or unreachable issue never fails a review."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section {
@@ -150,9 +162,11 @@ struct SettingsView: View {
             } header: {
                 Text("Launch")
             } footer: {
-                Text("When off, Contour reopens at its last size and position, beside whatever you opened the link from. When on, it takes over its own Space at launch. Applies the next time Contour opens.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "When off, Contour reopens at its last size and position, beside whatever you opened the link from. When on, it takes over its own Space at launch. Applies the next time Contour opens."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -216,11 +230,13 @@ enum SettingsViewLogic {
     static func githubFooter(for mode: GitHubAccessMode) -> String {
         switch mode {
         case .auto:
-            return "Uses gh when it's installed and signed in (private repos, 5000 requests/hour); otherwise the anonymous API, which reads public PRs with no setup at all."
+            return
+                "Uses gh when it's installed and signed in (private repos, 5000 requests/hour); otherwise the anonymous API, which reads public PRs with no setup at all."
         case .gh:
             return "Always uses gh. Public PRs will fail if gh isn't signed in."
         case .anonymous:
-            return "Always uses the anonymous API: public PRs only, 60 requests/hour. Useful for checking that the no-setup path still works."
+            return
+                "Always uses the anonymous API: public PRs only, 60 requests/hour. Useful for checking that the no-setup path still works."
         }
     }
 

@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct HarnessContractTests {
@@ -37,13 +38,14 @@ struct HarnessContractTests {
 
     @Test func piDescribesEachToolCall() throws {
         let (progress, _) = try replay(PiHarness(), "pi-stream")
-        #expect(progress == [
-            "reading src/OrderService.java",
-            "searching for queueCapture",
-            "finding *.java",
-            "listing src",
-            "using sparkle",
-        ])
+        #expect(
+            progress == [
+                "reading src/OrderService.java",
+                "searching for queueCapture",
+                "finding *.java",
+                "listing src",
+                "using sparkle",
+            ])
     }
 
     @Test func claudeDescribesEachToolCall() throws {
@@ -156,14 +158,17 @@ struct HarnessContractTests {
 
 struct HarnessStreamingTests {
     @Test func claudeReadsTextDeltasFromPartialMessages() {
-        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Because "}}}"#
+        let line =
+            #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Because "}}}"#
         #expect(ClaudeHarness().interpret(line) == .textDelta("Because "))
-        let thinking = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}}"#
+        let thinking =
+            #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}}"#
         #expect(ClaudeHarness().interpret(thinking) == nil)
     }
 
     @Test func piReadsTextDeltasFromMessageUpdates() {
-        let line = #"{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Because "}}"#
+        let line =
+            #"{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Because "}}"#
         #expect(PiHarness().interpret(line) == .textDelta("Because "))
         let thinking = #"{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}"#
         #expect(PiHarness().interpret(thinking) == nil)

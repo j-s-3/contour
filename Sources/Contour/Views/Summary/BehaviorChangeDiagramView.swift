@@ -63,7 +63,8 @@ struct BehaviorChangeDiagramView: View {
 }
 
 enum BehaviorChangeDiagramMetrics {
-    static func gridSpacing(for density: BehaviorChangeDiagramView.Density) -> (horizontal: CGFloat, vertical: CGFloat) {
+    static func gridSpacing(for density: BehaviorChangeDiagramView.Density) -> (horizontal: CGFloat, vertical: CGFloat)
+    {
         density == .regular ? (18, 16) : (12, 10)
     }
 

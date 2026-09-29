@@ -41,11 +41,15 @@ enum HarnessError: LocalizedError {
 protocol Harness: Sendable {
     var id: HarnessID { get }
 
-    func arguments(prompt: String, contextFile: String, tier: AnalysisTier,
-                   systemPrompt: String) throws -> [String]
+    func arguments(
+        prompt: String, contextFile: String, tier: AnalysisTier,
+        systemPrompt: String
+    ) throws -> [String]
 
-    func conversationArguments(prompt: String, contextFile: String, tier: AnalysisTier,
-                               systemPrompt: String) throws -> [String]
+    func conversationArguments(
+        prompt: String, contextFile: String, tier: AnalysisTier,
+        systemPrompt: String
+    ) throws -> [String]
 
     func interpret(_ line: String) -> HarnessEvent?
 }
@@ -53,8 +57,10 @@ protocol Harness: Sendable {
 extension Harness {
     var executable: String { id.executable }
 
-    func conversationArguments(prompt: String, contextFile: String, tier: AnalysisTier,
-                               systemPrompt: String) throws -> [String] {
+    func conversationArguments(
+        prompt: String, contextFile: String, tier: AnalysisTier,
+        systemPrompt: String
+    ) throws -> [String] {
         try arguments(prompt: prompt, contextFile: contextFile, tier: tier, systemPrompt: systemPrompt)
     }
 }
@@ -71,7 +77,7 @@ enum HarnessFactory {
 enum StreamLine {
     static func object(_ line: String) -> [String: Any]? {
         guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return obj
     }

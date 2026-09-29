@@ -29,56 +29,76 @@ struct AnalysisCache {
     private let cacheDir: URL
 
     init(directory: URL? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let base =
+            directory
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Contour", isDirectory: true)
             .appendingPathComponent("analysis-cache", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         cacheDir = base
     }
 
-    private func fileURL(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int) -> URL {
+    private func fileURL(
+        owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int
+    ) -> URL {
         let name = "\(owner)-\(repo)-\(number)-\(headSha)-\(baseSha)-v\(pipelineVersion).json"
         return cacheDir.appendingPathComponent(name)
     }
 
-    func load(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int) -> Entry? {
+    func load(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int)
+        -> Entry?
+    {
         guard !MockAnalysisFixtures.isEnabled else { return nil }
-        let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
+        let url = fileURL(
+            owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha,
+            pipelineVersion: pipelineVersion)
         return decode(url, pipelineVersion: pipelineVersion)
     }
 
-    func latestRevision(owner: String, repo: String, number: Int, excludingHead headSha: String, pipelineVersion: Int) -> Entry? {
+    func latestRevision(owner: String, repo: String, number: Int, excludingHead headSha: String, pipelineVersion: Int)
+        -> Entry?
+    {
         guard !MockAnalysisFixtures.isEnabled else { return nil }
         let prefix = "\(owner)-\(repo)-\(number)-"
         let suffix = "-v\(pipelineVersion).json"
-        let candidates = ((try? FileManager.default.contentsOfDirectory(
-            at: cacheDir, includingPropertiesForKeys: [.contentModificationDateKey]
-        )) ?? [])
-            .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(suffix)
-                && !$0.lastPathComponent.hasPrefix(prefix + headSha + "-") }
+        let candidates =
+            ((try? FileManager.default.contentsOfDirectory(
+                at: cacheDir, includingPropertiesForKeys: [.contentModificationDateKey]
+            )) ?? [])
+            .filter {
+                $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(suffix)
+                    && !$0.lastPathComponent.hasPrefix(prefix + headSha + "-")
+            }
             .sorted { modified($0) > modified($1) }
         for url in candidates {
             guard let entry = decode(url, pipelineVersion: pipelineVersion),
-                  entry.graph.pr.repo == "\(owner)/\(repo)", entry.graph.pr.number == number,
-                  entry.graph.pr.headSha != headSha, !entry.completedStages.isEmpty
+                entry.graph.pr.repo == "\(owner)/\(repo)", entry.graph.pr.number == number,
+                entry.graph.pr.headSha != headSha, !entry.completedStages.isEmpty
             else { continue }
             return entry
         }
         return nil
     }
 
-    func save(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int,
-              graph: PRGraph, diff: String, completedStages: Set<PipelineStage>) {
+    func save(
+        owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int,
+        graph: PRGraph, diff: String, completedStages: Set<PipelineStage>
+    ) {
         guard !MockAnalysisFixtures.isEnabled else { return }
-        let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
+        let url = fileURL(
+            owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha,
+            pipelineVersion: pipelineVersion)
         let ordered = PipelineStage.analysis.filter(completedStages.contains)
-        let cached = CachedAnalysis(graph: graph, diff: diff, pipelineVersion: pipelineVersion, completedStages: ordered)
+        let cached = CachedAnalysis(
+            graph: graph, diff: diff, pipelineVersion: pipelineVersion, completedStages: ordered)
         guard let data = try? JSONEncoder().encode(cached) else { return }
         try? data.write(to: url, options: .atomic)
     }
 
     func invalidate(owner: String, repo: String, number: Int, headSha: String, baseSha: String, pipelineVersion: Int) {
-        let url = fileURL(owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha, pipelineVersion: pipelineVersion)
+        let url = fileURL(
+            owner: owner, repo: repo, number: number, headSha: headSha, baseSha: baseSha,
+            pipelineVersion: pipelineVersion)
         try? FileManager.default.removeItem(at: url)
     }
 
@@ -100,15 +120,15 @@ struct AnalysisCache {
 
     private func readRecents() -> [RecentPR] {
         guard let data = try? Data(contentsOf: recentURL),
-              let recents = try? JSONDecoder().decode([RecentPR].self, from: data)
+            let recents = try? JSONDecoder().decode([RecentPR].self, from: data)
         else { return [] }
         return recents
     }
 
     private func decode(_ url: URL, pipelineVersion: Int) -> Entry? {
         guard let data = try? Data(contentsOf: url),
-              let cached = try? JSONDecoder().decode(CachedAnalysis.self, from: data),
-              cached.pipelineVersion == pipelineVersion
+            let cached = try? JSONDecoder().decode(CachedAnalysis.self, from: data),
+            cached.pipelineVersion == pipelineVersion
         else { return nil }
         let stages = cached.completedStages.map(Set.init) ?? Set(PipelineStage.analysis)
         return Entry(graph: cached.graph, diff: cached.diff, completedStages: stages)

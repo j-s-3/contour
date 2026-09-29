@@ -18,7 +18,9 @@ enum PipelineStage: String, CaseIterable, Codable, Sendable {
     case flows = "Tracing flows"
     case judgment = "Identifying what needs judgment"
 
-    static let analysis: [PipelineStage] = [.behaviorChange, .understanding, .architecture, .decisions, .flows, .judgment]
+    static let analysis: [PipelineStage] = [
+        .behaviorChange, .understanding, .architecture, .decisions, .flows, .judgment,
+    ]
 
     var shortLabel: String {
         switch self {

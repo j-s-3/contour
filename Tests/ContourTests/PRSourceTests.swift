@@ -1,11 +1,14 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct PRSourceTests {
     @Test func normalizeAcceptsAnyStringContainingAPullURL() {
         #expect(GitHubService.normalize("https://github.com/acme/shop/pull/5") != nil)
-        #expect(GitHubService.normalize("  https://github.com/acme/shop/pull/5  ") == "https://github.com/acme/shop/pull/5", "trims whitespace")
+        #expect(
+            GitHubService.normalize("  https://github.com/acme/shop/pull/5  ") == "https://github.com/acme/shop/pull/5",
+            "trims whitespace")
     }
 
     @Test func normalizeRejectsAnythingMissingGithubOrPull() {
@@ -25,7 +28,10 @@ struct PRSourceTests {
     }
 
     @Test func parseRejectsAnythingThatIsntAFourSegmentPullURL() {
-        for bad in ["not a url", "https://github.com/acme/shop", "https://github.com/acme/shop/issues/5", "https://github.com/acme/shop/pull/notanumber"] {
+        for bad in [
+            "not a url", "https://github.com/acme/shop", "https://github.com/acme/shop/issues/5",
+            "https://github.com/acme/shop/pull/notanumber",
+        ] {
             #expect(throws: GitHubServiceError.self, "\(bad) should be rejected") {
                 try GitHubService.parse(prURL: bad)
             }
@@ -73,12 +79,18 @@ struct PRSourceTests {
     }
 
     @Test func anonymousModeAlwaysUsesTheRESTAPIRegardlessOfGH() throws {
-        #expect(try GitHubService(mode: .anonymous, ghAvailable: true).source().describesItself == "GitHub REST API (anonymous)")
-        #expect(try GitHubService(mode: .anonymous, ghAvailable: false).source().describesItself == "GitHub REST API (anonymous)")
+        #expect(
+            try GitHubService(mode: .anonymous, ghAvailable: true).source().describesItself
+                == "GitHub REST API (anonymous)")
+        #expect(
+            try GitHubService(mode: .anonymous, ghAvailable: false).source().describesItself
+                == "GitHub REST API (anonymous)")
     }
 
     @Test func autoModePrefersGHWhenAvailableAndFallsBackOtherwise() throws {
         #expect(try GitHubService(mode: .auto, ghAvailable: true).source().describesItself == "gh CLI")
-        #expect(try GitHubService(mode: .auto, ghAvailable: false).source().describesItself == "GitHub REST API (anonymous)")
+        #expect(
+            try GitHubService(mode: .auto, ghAvailable: false).source().describesItself == "GitHub REST API (anonymous)"
+        )
     }
 }

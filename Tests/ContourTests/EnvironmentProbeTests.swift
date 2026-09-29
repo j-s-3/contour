@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct EnvironmentProbeTests {
@@ -30,7 +31,8 @@ struct EnvironmentProbeTests {
         #expect(!notInstalled.isInstalled)
         #expect(!notInstalled.isUsable, "not installed can never be usable")
 
-        let installed = ToolStatus(tool: .git, path: "/usr/bin/git", version: "2.40", authenticated: nil, detail: "2.40")
+        let installed = ToolStatus(
+            tool: .git, path: "/usr/bin/git", version: "2.40", authenticated: nil, detail: "2.40")
         #expect(installed.isInstalled)
     }
 
@@ -41,7 +43,8 @@ struct EnvironmentProbeTests {
         let authenticated = ToolStatus(tool: .gh, path: "/usr/bin/gh", version: nil, authenticated: true, detail: "")
         #expect(authenticated.isUsable)
 
-        let notAuthenticated = ToolStatus(tool: .gh, path: "/usr/bin/gh", version: nil, authenticated: false, detail: "")
+        let notAuthenticated = ToolStatus(
+            tool: .gh, path: "/usr/bin/gh", version: nil, authenticated: false, detail: "")
         #expect(!notAuthenticated.isUsable)
     }
 
@@ -62,24 +65,25 @@ struct EnvironmentProbeTests {
 
         let both: [ExternalTool: ToolStatus] = [
             .pi: ToolStatus(tool: .pi, path: "/usr/local/bin/pi", version: nil, authenticated: nil, detail: ""),
-            .claude: ToolStatus(tool: .claude, path: "/usr/local/bin/claude", version: nil, authenticated: nil, detail: ""),
+            .claude: ToolStatus(
+                tool: .claude, path: "/usr/local/bin/claude", version: nil, authenticated: nil, detail: ""),
         ]
         #expect(Set(both.installedHarnesses) == Set([.pi, .claude]))
     }
 
     @Test func jiraAvailableRequiresAcliToBeUsableNotJustInstalled() {
         let notInstalled: [ExternalTool: ToolStatus] = [
-            .acli: ToolStatus(tool: .acli, path: nil, version: nil, authenticated: nil, detail: "Not installed"),
+            .acli: ToolStatus(tool: .acli, path: nil, version: nil, authenticated: nil, detail: "Not installed")
         ]
         #expect(!notInstalled.jiraAvailable)
 
         let installedNotAuthed: [ExternalTool: ToolStatus] = [
-            .acli: ToolStatus(tool: .acli, path: "/usr/local/bin/acli", version: nil, authenticated: false, detail: ""),
+            .acli: ToolStatus(tool: .acli, path: "/usr/local/bin/acli", version: nil, authenticated: false, detail: "")
         ]
         #expect(!installedNotAuthed.jiraAvailable)
 
         let authed: [ExternalTool: ToolStatus] = [
-            .acli: ToolStatus(tool: .acli, path: "/usr/local/bin/acli", version: nil, authenticated: true, detail: ""),
+            .acli: ToolStatus(tool: .acli, path: "/usr/local/bin/acli", version: nil, authenticated: true, detail: "")
         ]
         #expect(authed.jiraAvailable)
 

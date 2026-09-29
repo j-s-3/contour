@@ -85,12 +85,18 @@ final class Preferences {
 
     var fastModelOverride: String {
         get { defaults.string(forKey: Key.fastModel) ?? "" }
-        set { defaults.set(newValue, forKey: Key.fastModel); applyModelOverrides() }
+        set {
+            defaults.set(newValue, forKey: Key.fastModel)
+            applyModelOverrides()
+        }
     }
 
     var strongModelOverride: String {
         get { defaults.string(forKey: Key.strongModel) ?? "" }
-        set { defaults.set(newValue, forKey: Key.strongModel); applyModelOverrides() }
+        set {
+            defaults.set(newValue, forKey: Key.strongModel)
+            applyModelOverrides()
+        }
     }
 
     var hasCompletedOnboarding: Bool {

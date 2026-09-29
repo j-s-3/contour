@@ -1,13 +1,16 @@
-import Testing
+import AppKit
 import Foundation
 import SwiftUI
-import AppKit
+import Testing
+
 @testable import Contour
 
 @Suite(.serialized)
 struct ReviewContextMenuTests {
-    private func minimalGraph(components: [ComponentNode] = [], decisions: [DecisionNode] = [],
-                               flows: [FlowNode] = [], headSha: String = "h", baseSha: String = "b") -> PRGraph {
+    private func minimalGraph(
+        components: [ComponentNode] = [], decisions: [DecisionNode] = [],
+        flows: [FlowNode] = [], headSha: String = "h", baseSha: String = "b"
+    ) -> PRGraph {
         let pr = PRSummary(
             repo: "acme/shop", number: 7, title: "t", author: "a", state: "OPEN",
             branch: "feature", baseBranch: "main", headSha: headSha, baseSha: baseSha,
@@ -16,16 +19,21 @@ struct ReviewContextMenuTests {
         return PRGraph(pr: pr, components: components, decisions: decisions, flows: flows)
     }
 
-    private func resolved(kind: SubjectKind, componentIds: [String] = [], decisionIds: [String] = [],
-                           flowIds: [String] = [], refs: [CodeRef] = []) -> ResolvedSubject {
-        ResolvedSubject(subject: .pullRequest, kind: kind, title: "T", lineage: [], summary: [], detail: "",
-                        componentIds: componentIds, decisionIds: decisionIds, flowIds: flowIds, refs: refs)
+    private func resolved(
+        kind: SubjectKind, componentIds: [String] = [], decisionIds: [String] = [],
+        flowIds: [String] = [], refs: [CodeRef] = []
+    ) -> ResolvedSubject {
+        ResolvedSubject(
+            subject: .pullRequest, kind: kind, title: "T", lineage: [], summary: [], detail: "",
+            componentIds: componentIds, decisionIds: decisionIds, flowIds: flowIds, refs: refs)
     }
 
     @Test func architectureExcludesComponentRelationshipAndPullRequestKinds() {
         let graph = minimalGraph(components: [ComponentNode(id: "c", title: "C", changeKind: .unchanged)])
         for kind: SubjectKind in [.component, .relationship, .pullRequest] {
-            #expect(ReviewContextMenuLogic.architectureParts(for: resolved(kind: kind, componentIds: ["c"]), in: graph).isEmpty)
+            #expect(
+                ReviewContextMenuLogic.architectureParts(for: resolved(kind: kind, componentIds: ["c"]), in: graph)
+                    .isEmpty)
         }
     }
 
@@ -40,16 +48,18 @@ struct ReviewContextMenuTests {
 
     @Test func relatedDecisionsExcludesDecisionAndTradeoffKinds() {
         let graph = minimalGraph(decisions: [
-            DecisionNode(id: "d", title: "D", decision: Statement(text: "x", provenance: .fact), confidence: .high),
+            DecisionNode(id: "d", title: "D", decision: Statement(text: "x", provenance: .fact), confidence: .high)
         ])
         for kind: SubjectKind in [.decision, .tradeoff] {
-            #expect(ReviewContextMenuLogic.relatedDecisions(for: resolved(kind: kind, decisionIds: ["d"]), in: graph).isEmpty)
+            #expect(
+                ReviewContextMenuLogic.relatedDecisions(for: resolved(kind: kind, decisionIds: ["d"]), in: graph)
+                    .isEmpty)
         }
     }
 
     @Test func relatedDecisionsResolvesEveryDecisionIdThatExists() {
         let graph = minimalGraph(decisions: [
-            DecisionNode(id: "d", title: "D", decision: Statement(text: "x", provenance: .fact), confidence: .high),
+            DecisionNode(id: "d", title: "D", decision: Statement(text: "x", provenance: .fact), confidence: .high)
         ])
         let subject = resolved(kind: .component, decisionIds: ["d", "missing"])
         #expect(ReviewContextMenuLogic.relatedDecisions(for: subject, in: graph).map(\.id) == ["d"])
@@ -71,12 +81,14 @@ struct ReviewContextMenuTests {
     @Test func menuGithubURLPrefersALinePermalinkOverThePullRequestFallback() {
         let actions = ReviewActions(graph: minimalGraph(), prURL: "https://github.com/acme/shop/pull/7")
         let subject = resolved(kind: .code, refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 1)])
-        #expect(ReviewContextMenuLogic.githubURL(for: subject, actions: actions)?.absoluteString.hasSuffix("#L1") == true)
+        #expect(
+            ReviewContextMenuLogic.githubURL(for: subject, actions: actions)?.absoluteString.hasSuffix("#L1") == true)
     }
 
     @Test func menuGithubURLFallsBackToThePullRequestWhenThereIsNoRef() {
         let actions = ReviewActions(graph: minimalGraph(), prURL: "https://github.com/acme/shop/pull/7")
-        #expect(ReviewContextMenuLogic.githubURL(for: resolved(kind: .decision), actions: actions)?.absoluteString
+        #expect(
+            ReviewContextMenuLogic.githubURL(for: resolved(kind: .decision), actions: actions)?.absoluteString
                 == "https://github.com/acme/shop/pull/7")
     }
 
@@ -129,7 +141,9 @@ struct ReviewContextMenuTests {
         let store = GraphStore()
         store.handle(.graph(minimalGraph()))
         for verdict: PRReview.Verdict in [.approve, .requestChanges] {
-            #expect(store.canSubmitReview(verdict) == PRReview.canReview(prState: "OPEN", ghAvailable: GraphStore.ghAvailable))
+            #expect(
+                store.canSubmitReview(verdict)
+                    == PRReview.canReview(prState: "OPEN", ghAvailable: GraphStore.ghAvailable))
         }
     }
 
@@ -153,22 +167,26 @@ struct ReviewContextMenuTests {
     }
 
     @Test func detailButtonIsNilForATradeoffEvenWithADetailTarget() {
-        let subject = ResolvedSubject(subject: .pullRequest, kind: .tradeoff, title: "T", lineage: [],
-                                       summary: [], detail: "", detailTarget: .summary)
+        let subject = ResolvedSubject(
+            subject: .pullRequest, kind: .tradeoff, title: "T", lineage: [],
+            summary: [], detail: "", detailTarget: .summary)
         #expect(ReviewContextMenuLogic.detailButton(for: subject) == nil)
     }
 
     @Test func detailButtonIsNilWithoutADetailTarget() {
-        let subject = ResolvedSubject(subject: .pullRequest, kind: .decision, title: "T", lineage: [],
-                                       summary: [], detail: "", detailTarget: nil)
+        let subject = ResolvedSubject(
+            subject: .pullRequest, kind: .decision, title: "T", lineage: [],
+            summary: [], detail: "", detailTarget: nil)
         #expect(ReviewContextMenuLogic.detailButton(for: subject) == nil)
     }
 
     @Test func detailButtonLabelsCodeAsShowInCodeAndEverythingElseAsOpenDetails() {
-        let code = ResolvedSubject(subject: .pullRequest, kind: .code, title: "T", lineage: [],
-                                    summary: [], detail: "", detailTarget: .summary)
-        let decision = ResolvedSubject(subject: .pullRequest, kind: .decision, title: "T", lineage: [],
-                                        summary: [], detail: "", detailTarget: .decisionDetail("d"))
+        let code = ResolvedSubject(
+            subject: .pullRequest, kind: .code, title: "T", lineage: [],
+            summary: [], detail: "", detailTarget: .summary)
+        let decision = ResolvedSubject(
+            subject: .pullRequest, kind: .decision, title: "T", lineage: [],
+            summary: [], detail: "", detailTarget: .decisionDetail("d"))
         #expect(ReviewContextMenuLogic.detailButton(for: code)?.label == "Show in code")
         #expect(ReviewContextMenuLogic.detailButton(for: code)?.target == .summary)
         #expect(ReviewContextMenuLogic.detailButton(for: decision)?.label == "Open details")
@@ -206,7 +224,9 @@ struct ReviewContextMenuTests {
     }
 
     @Test func codeRefMenuItemsPassesThroughFewerThanTwelveRefsUnchanged() {
-        let refs = [CodeRef(path: "a.swift", startLine: 1, endLine: 1), CodeRef(path: "a.swift", startLine: 2, endLine: 2)]
+        let refs = [
+            CodeRef(path: "a.swift", startLine: 1, endLine: 1), CodeRef(path: "a.swift", startLine: 2, endLine: 2),
+        ]
         let subject = resolved(kind: .decision, refs: refs)
         #expect(ReviewContextMenuLogic.codeRefMenuItems(for: subject) == refs)
     }

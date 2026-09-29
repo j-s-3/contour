@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import Contour
 
 enum BenchCorpus: String, CaseIterable {
@@ -49,7 +50,7 @@ enum BenchFixtures {
     private static let words = [
         "parse", "cache", "graph", "layout", "render", "decode", "buffer", "stream",
         "handler", "service", "client", "worker", "queue", "index", "token", "session",
-        "config", "schema", "cursor", "socket", "reader", "writer", "matcher", "builder"
+        "config", "schema", "cursor", "socket", "reader", "writer", "matcher", "builder",
     ]
 
     static func make(_ corpus: BenchCorpus) throws -> BenchFixture {
@@ -87,7 +88,11 @@ enum BenchFixtures {
             headSha: sha, baseSha: String(repeating: "0", count: 40), isCrossRepository: false,
             headCloneURL: "https://example.invalid/bench/\(corpus.rawValue).git",
             additions: additions, deletions: 0, changedFiles: files.count, files: files,
-            commits: [CommitInfo(sha: String(repeating: "1", count: 40), message: "Generate \(corpus.rawValue) fixture", author: "bench-bot")],
+            commits: [
+                CommitInfo(
+                    sha: String(repeating: "1", count: 40), message: "Generate \(corpus.rawValue) fixture",
+                    author: "bench-bot")
+            ],
             comments: [], reviews: [], diff: diff
         )
 

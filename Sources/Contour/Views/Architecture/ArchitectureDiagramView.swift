@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 enum ArchEmphasis: Equatable {
     case context, changed, added, removed
@@ -80,7 +80,9 @@ enum ArchDrawingLogic {
         return []
     }
 
-    static func arrowheadTriangle(tip: CGPoint, from prev: CGPoint, size: CGFloat) -> (tip: CGPoint, left: CGPoint, right: CGPoint) {
+    static func arrowheadTriangle(tip: CGPoint, from prev: CGPoint, size: CGFloat) -> (
+        tip: CGPoint, left: CGPoint, right: CGPoint
+    ) {
         let angle = atan2(tip.y - prev.y, tip.x - prev.x)
         let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
         let left = CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle))
@@ -110,9 +112,13 @@ struct ArchitectureDiagramView: View {
         GeometryReader { geo in
             let available = CGSize(width: max(geo.size.width - 48, 1), height: max(geo.size.height - 48, 1))
             let nodes = boxes.map { GraphLayoutEngine.NodeSpec(id: $0.id, size: ArchMetrics.size(of: $0)) }
-            let edges = arrows.map { GraphLayoutEngine.EdgeSpec(id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: ArchMetrics.size(of: $0)) }
+            let edges = arrows.map {
+                GraphLayoutEngine.EdgeSpec(
+                    id: $0.id, fromId: $0.fromId, toId: $0.toId, labelSize: ArchMetrics.size(of: $0))
+            }
             let groups = containers.map { GraphLayoutEngine.GroupSpec(id: $0.id, memberIds: $0.memberIds) }
-            let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: edges, groups: groups, available: available)
+            let (layout, fit) = GraphLayoutEngine.bestFit(
+                nodes: nodes, edges: edges, groups: groups, available: available)
             let scale = max(fit, minimumScale)
             let scaled = CGSize(width: layout.size.width * scale, height: layout.size.height * scale)
             let drawing = canvas(layout)
@@ -181,13 +187,21 @@ struct ArchitectureDiagramView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(box.title)
-                    .font(.system(size: box.isNeighbor ? ArchMetrics.neighborTitleSize : ArchMetrics.titleSize, weight: .semibold))
-                    .foregroundStyle(quiet ? AnyShapeStyle(.primary.opacity(box.isNeighbor ? 0.6 : 0.85)) : AnyShapeStyle(.primary))
+                    .font(
+                        .system(
+                            size: box.isNeighbor ? ArchMetrics.neighborTitleSize : ArchMetrics.titleSize,
+                            weight: .semibold)
+                    )
+                    .foregroundStyle(
+                        quiet ? AnyShapeStyle(.primary.opacity(box.isNeighbor ? 0.6 : 0.85)) : AnyShapeStyle(.primary)
+                    )
                     .strikethrough(box.emphasis == .removed)
                     .lineLimit(2)
                 Spacer(minLength: 0)
                 if box.hasInside {
-                    Button { onZoomIn(box.id) } label: {
+                    Button {
+                        onZoomIn(box.id)
+                    } label: {
                         Image(systemName: "plus.magnifyingglass").font(.system(size: 11))
                     }
                     .buttonStyle(.borderless)
@@ -215,7 +229,9 @@ struct ArchitectureDiagramView: View {
                 .padding(.top, ArchMetrics.sectionGap)
             }
             if let decision = box.decision, !box.isNeighbor {
-                Button { box.decisionId.map(onOpenDecision) } label: {
+                Button {
+                    box.decisionId.map(onOpenDecision)
+                } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text("◇").font(.system(size: ArchMetrics.markerSize, weight: .semibold))
                         Text(decision + (box.moreDecisions > 0 ? "  +\(box.moreDecisions)" : ""))
@@ -231,11 +247,13 @@ struct ArchitectureDiagramView: View {
                 .padding(.top, ArchMetrics.sectionGap)
             }
             if box.questions > 0, !box.isNeighbor {
-                Label(box.questions == 1 ? "Review question" : "\(box.questions) review questions",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: ArchMetrics.markerSize, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .padding(.top, ArchMetrics.markerGap)
+                Label(
+                    box.questions == 1 ? "Review question" : "\(box.questions) review questions",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.system(size: ArchMetrics.markerSize, weight: .medium))
+                .foregroundStyle(.orange)
+                .padding(.top, ArchMetrics.markerGap)
             }
             Spacer(minLength: 0)
         }
@@ -246,8 +264,11 @@ struct ArchitectureDiagramView: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(quiet ? Color.clear : accent.opacity(0.07)))
         .overlay(
             RoundedRectangle(cornerRadius: 10).strokeBorder(
-                selected ? Color.accentColor : (quiet ? Color.secondary.opacity(box.isNeighbor ? 0.25 : 0.4) : accent.opacity(0.9)),
-                style: StrokeStyle(lineWidth: selected ? 2.5 : (quiet ? 1 : 2), dash: box.emphasis == .removed ? [5, 4] : [])
+                selected
+                    ? Color.accentColor
+                    : (quiet ? Color.secondary.opacity(box.isNeighbor ? 0.25 : 0.4) : accent.opacity(0.9)),
+                style: StrokeStyle(
+                    lineWidth: selected ? 2.5 : (quiet ? 1 : 2), dash: box.emphasis == .removed ? [5, 4] : [])
             )
         )
         .shadow(color: .black.opacity(isHovered ? 0.16 : 0.05), radius: isHovered ? 6 : 2, y: 1)
@@ -262,13 +283,13 @@ struct ArchitectureDiagramView: View {
     private func changePhrase(_ box: ArchBox) -> some View {
         let color = box.emphasis == .context ? Color.secondary : box.emphasis.color
         switch (box.changeBefore, box.changeAfter) {
-        case let (before?, after?):
+        case (let before?, let after?):
             (Text(before).foregroundStyle(.secondary).strikethrough(true, color: .secondary)
-             + Text("  →  ").foregroundStyle(.tertiary)
-             + Text(after).foregroundStyle(color))
+                + Text("  →  ").foregroundStyle(.tertiary)
+                + Text(after).foregroundStyle(color))
                 .font(.system(size: ArchMetrics.bodySize, weight: .medium))
                 .lineLimit(ArchMetrics.changeLines)
-        case let (only?, nil), let (nil, only?):
+        case (let only?, nil), (nil, let only?):
             Text(only).font(.system(size: ArchMetrics.bodySize, weight: .medium)).foregroundStyle(color)
                 .lineLimit(ArchMetrics.changeLines)
         case (nil, nil):
@@ -283,8 +304,10 @@ struct ArchitectureDiagramView: View {
         let stroke = selected ? Color.accentColor : color
         let dash = ArchDrawingLogic.dashPattern(for: arrow)
 
-        context.stroke(Self.roundedPath(placed.points), with: .color(stroke),
-                       style: StrokeStyle(lineWidth: selected ? width + 0.8 : width, lineCap: .round, lineJoin: .round, dash: dash))
+        context.stroke(
+            Self.roundedPath(placed.points), with: .color(stroke),
+            style: StrokeStyle(lineWidth: selected ? width + 0.8 : width, lineCap: .round, lineJoin: .round, dash: dash)
+        )
 
         let tip = placed.points[placed.points.count - 1]
         let prev = placed.points[placed.points.count - 2]
@@ -303,7 +326,9 @@ struct ArchitectureDiagramView: View {
         path.move(to: points[0])
         for i in 1..<points.count {
             if i < points.count - 1 {
-                let a = points[i - 1], b = points[i], c = points[i + 1]
+                let a = points[i - 1]
+                let b = points[i]
+                let c = points[i + 1]
                 let room = min(hypot(b.x - a.x, b.y - a.y), hypot(c.x - b.x, c.y - b.y)) / 2
                 path.addArc(tangent1End: b, tangent2End: c, radius: min(8, room))
             } else {
@@ -402,7 +427,8 @@ enum ArchMetrics {
         let width = box.isNeighbor ? neighborWidth : boxWidth
         let inner = width - padding * 2 - (box.hasInside ? 20 : 0)
         var height = padding * 2 - 2
-        height += measure(box.title, size: box.isNeighbor ? neighborTitleSize : titleSize, weight: .semibold, width: inner, lines: 2)
+        height += measure(
+            box.title, size: box.isNeighbor ? neighborTitleSize : titleSize, weight: .semibold, width: inner, lines: 2)
         guard !box.isNeighbor else { return CGSize(width: width, height: max(height, 44)) }
         let body = width - padding * 2
         if let purpose = box.purpose {
@@ -410,9 +436,13 @@ enum ArchMetrics {
         }
         if box.showsChange {
             height += sectionGap
-            if box.emphasis != .context { height += measure("CHANGED", size: tagSize, weight: .bold, width: body, lines: 1) + 2 }
+            if box.emphasis != .context {
+                height += measure("CHANGED", size: tagSize, weight: .bold, width: body, lines: 1) + 2
+            }
             let phrase = [box.changeBefore, box.changeAfter].compactMap { $0 }.joined(separator: "  →  ")
-            if !phrase.isEmpty { height += measure(phrase, size: bodySize, weight: .medium, width: body, lines: changeLines) }
+            if !phrase.isEmpty {
+                height += measure(phrase, size: bodySize, weight: .medium, width: body, lines: changeLines)
+            }
         }
         if let decision = box.decision {
             height += sectionGap + measure(decision + "  +9", size: markerSize, width: body - 14, lines: decisionLines)
@@ -448,7 +478,9 @@ enum ArchMetrics {
         ceil((text as NSString).size(withAttributes: [.font: font(size, weight)]).width)
     }
 
-    static func measure(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, width: CGFloat, lines: Int) -> CGFloat {
+    static func measure(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, width: CGFloat, lines: Int)
+        -> CGFloat
+    {
         let f = font(size, weight)
         let lineHeight = ceil(f.ascender - f.descender + f.leading)
         let rect = (text as NSString).boundingRect(

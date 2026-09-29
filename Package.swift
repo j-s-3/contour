@@ -18,6 +18,6 @@ let package = Package(
             dependencies: ["Contour"],
             path: "Tests/ContourTests",
             resources: [.copy("Fixtures")]
-        )
+        ),
     ]
 )

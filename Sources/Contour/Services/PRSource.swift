@@ -15,17 +15,18 @@ enum GitHubServiceError: LocalizedError {
             return "Unexpected response from GitHub: \(d.prefix(300))"
         case .privateRepository(let owner, let repo):
             return """
-            \(owner)/\(repo) isn't readable anonymously, so it's private or doesn't exist. \
-            Install the GitHub CLI and run `gh auth login` to review private pull requests.
-            """
+                \(owner)/\(repo) isn't readable anonymously, so it's private or doesn't exist. \
+                Install the GitHub CLI and run `gh auth login` to review private pull requests.
+                """
         case .rateLimited(let resetAt):
-            let when = resetAt.map {
-                " Try again after \(DateFormatter.localizedString(from: $0, dateStyle: .none, timeStyle: .short))."
-            } ?? ""
+            let when =
+                resetAt.map {
+                    " Try again after \(DateFormatter.localizedString(from: $0, dateStyle: .none, timeStyle: .short))."
+                } ?? ""
             return """
-            GitHub's anonymous rate limit (60 requests/hour) is exhausted.\(when) \
-            Authenticating with `gh auth login` raises it to 5000/hour.
-            """
+                GitHub's anonymous rate limit (60 requests/hour) is exhausted.\(when) \
+                Authenticating with `gh auth login` raises it to 5000/hour.
+                """
         case .ghUnavailable:
             return "Settings require the GitHub CLI, but `gh` isn't installed or isn't authenticated."
         }

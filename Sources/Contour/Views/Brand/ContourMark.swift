@@ -22,11 +22,13 @@ enum ContourMarkGeometry {
     static let rings: [Ring] = (0..<ringCount).map { k in
         let level = Double(k) / Double(ringCount - 1)
         let radius = scale * lerp(1.0, 0.17, pow(level, 0.75))
-        let c = CGPoint(x: lerp(centre.x, peak.x, pow(level, 0.45)),
-                        y: lerp(centre.y, peak.y, pow(level, 0.45)))
+        let c = CGPoint(
+            x: lerp(centre.x, peak.x, pow(level, 0.45)),
+            y: lerp(centre.y, peak.y, pow(level, 0.45)))
         let points = ringPoints(centre: c, radius: radius, level: level)
-        return Ring(level: level, points: points, path: smoothPath(points),
-                    widthFactor: lerp(0.8, 1.15, level), opacity: lerp(0.55, 1.0, level))
+        return Ring(
+            level: level, points: points, path: smoothPath(points),
+            widthFactor: lerp(0.8, 1.15, level), opacity: lerp(0.55, 1.0, level))
     }
 
     static let bounds: CGRect = {
@@ -41,11 +43,13 @@ enum ContourMarkGeometry {
         let wobble = lerp(1.0, 0.45, level)
         return (0..<n).map { i in
             let th = 2 * Double.pi * Double(i) / Double(n)
-            let r = radius * (1
-                + wobble * 0.16 * sin(th + 0.6)
-                + wobble * 0.13 * sin(2 * th + 1.9 + level * 0.7)
-                + wobble * 0.07 * sin(3 * th + 0.4 - level * 0.9)
-                + wobble * 0.035 * sin(5 * th + 2.2 + level * 1.2))
+            let r =
+                radius
+                * (1
+                    + wobble * 0.16 * sin(th + 0.6)
+                    + wobble * 0.13 * sin(2 * th + 1.9 + level * 0.7)
+                    + wobble * 0.07 * sin(3 * th + 0.4 - level * 0.9)
+                    + wobble * 0.035 * sin(5 * th + 2.2 + level * 1.2))
             return CGPoint(x: c.x + r * cos(th), y: c.y + r * sin(th) * 0.9)
         }
     }
@@ -53,7 +57,10 @@ enum ContourMarkGeometry {
     static func bezierSegments(_ pts: [CGPoint]) -> [(c1: CGPoint, c2: CGPoint, end: CGPoint)] {
         let n = pts.count
         return (0..<n).map { i in
-            let p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n]
+            let p0 = pts[(i - 1 + n) % n]
+            let p1 = pts[i]
+            let p2 = pts[(i + 1) % n]
+            let p3 = pts[(i + 2) % n]
             let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6)
             let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6)
             return (c1, c2, p2)
@@ -83,8 +90,9 @@ struct ContourMarkPalette {
     func line(level: Double) -> Color {
         let t = pow(level, 1.4)
         let l = ContourMarkGeometry.lerp
-        return Color(.sRGB, red: l(outer.0, inner.0, t) / 255, green: l(outer.1, inner.1, t) / 255,
-                     blue: l(outer.2, inner.2, t) / 255)
+        return Color(
+            .sRGB, red: l(outer.0, inner.0, t) / 255, green: l(outer.1, inner.1, t) / 255,
+            blue: l(outer.2, inner.2, t) / 255)
     }
 
     var peak: Color { line(level: 1) }
@@ -167,12 +175,14 @@ struct ContourMarkView: View {
             let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
 
             if amount < 1 {
-                context.stroke(ring.path, with: .color(colour.opacity(Self.traceAlpha(ringOpacity: ring.opacity))), style: style)
+                context.stroke(
+                    ring.path, with: .color(colour.opacity(Self.traceAlpha(ringOpacity: ring.opacity))), style: style)
             }
             guard amount > 0 else { continue }
             if drawsProgressively {
-                context.stroke(ring.path.trimmedPath(from: 0, to: amount),
-                               with: .color(colour.opacity(ring.opacity)), style: style)
+                context.stroke(
+                    ring.path.trimmedPath(from: 0, to: amount),
+                    with: .color(colour.opacity(ring.opacity)), style: style)
             } else {
                 context.stroke(ring.path, with: .color(colour.opacity(ring.opacity * amount)), style: style)
             }
@@ -182,9 +192,12 @@ struct ContourMarkView: View {
         let dotRadius = Self.dotRadius(compact: compact)
         let dot = Self.circleRect(center: geo.peak, radius: dotRadius)
         if !compact {
-            context.fill(Path(ellipseIn: Self.haloRect), with: .color(palette.peak.opacity(Self.haloOpacity(peakStage: peakStage))))
+            context.fill(
+                Path(ellipseIn: Self.haloRect),
+                with: .color(palette.peak.opacity(Self.haloOpacity(peakStage: peakStage))))
         }
-        context.fill(Path(ellipseIn: dot), with: .color(palette.peak.opacity(Self.peakDotOpacity(peakStage: peakStage))))
+        context.fill(
+            Path(ellipseIn: dot), with: .color(palette.peak.opacity(Self.peakDotOpacity(peakStage: peakStage))))
     }
 }
 

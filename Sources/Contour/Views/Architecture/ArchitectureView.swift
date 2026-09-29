@@ -19,8 +19,9 @@ struct ArchitectureView: View {
             header(level)
             Divider()
             if level.nodes.isEmpty {
-                ContentUnavailableView("Nothing to draw", systemImage: "square.stack.3d.up",
-                                       description: Text("The analysis didn't identify any architecture for this PR."))
+                ContentUnavailableView(
+                    "Nothing to draw", systemImage: "square.stack.3d.up",
+                    description: Text("The analysis didn't identify any architecture for this PR."))
             } else {
                 HStack(spacing: 0) {
                     ArchitectureDiagramView(
@@ -83,7 +84,9 @@ struct ArchitectureView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
-                    ProvenanceMark(provenance: explanation.provenance, confidence: explanation.confidence, source: explanation.source)
+                    ProvenanceMark(
+                        provenance: explanation.provenance, confidence: explanation.confidence,
+                        source: explanation.source)
                 }
                 .frame(maxWidth: 900, alignment: .leading)
                 .reviewContextMenu(.pullRequest)
@@ -124,7 +127,9 @@ struct ArchitectureView: View {
                 }
             }
             Spacer(minLength: 12)
-            Button { zoom(to: Array(path.dropLast())) } label: {
+            Button {
+                zoom(to: Array(path.dropLast()))
+            } label: {
                 Label("Zoom out", systemImage: "minus.magnifyingglass")
             }
             .buttonStyle(.borderless)
@@ -153,7 +158,9 @@ struct ArchitectureView: View {
             )
             if changed {
                 switch mode {
-                case .delta: box.changeBefore = part.delta?.before; box.changeAfter = part.delta?.after
+                case .delta:
+                    box.changeBefore = part.delta?.before
+                    box.changeAfter = part.delta?.after
                 case .before: box.changeBefore = part.delta?.before
                 case .after: box.changeAfter = part.delta?.after
                 }
@@ -195,7 +202,8 @@ struct ArchitectureView: View {
         return level.boundaries.compactMap { b in
             let members = b.componentIds.filter(drawn.contains)
             guard !members.isEmpty else { return nil }
-            return ArchContainer(id: b.id, label: b.label, kind: b.kind, memberIds: members, isFocus: b.id.hasPrefix("focus:"))
+            return ArchContainer(
+                id: b.id, label: b.label, kind: b.kind, memberIds: members, isFocus: b.id.hasPrefix("focus:"))
         }
     }
 
@@ -205,17 +213,21 @@ struct ArchitectureView: View {
             HStack(spacing: 14) {
                 ForEach([ArchEmphasis.changed, .added, .removed].filter(info.kinds.contains), id: \.word) { k in
                     HStack(spacing: 5) {
-                        RoundedRectangle(cornerRadius: 3).strokeBorder(k.color, lineWidth: 1.6).frame(width: 14, height: 10)
+                        RoundedRectangle(cornerRadius: 3).strokeBorder(k.color, lineWidth: 1.6).frame(
+                            width: 14, height: 10)
                         Text(k.word)
                     }
                 }
                 HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 3).strokeBorder(Color.secondary.opacity(0.5)).frame(width: 14, height: 10)
+                    RoundedRectangle(cornerRadius: 3).strokeBorder(Color.secondary.opacity(0.5)).frame(
+                        width: 14, height: 10)
                     Text("Existing context")
                 }
                 if info.hasAsync { Label("Asynchronous", systemImage: "clock.arrow.circlepath") }
                 if info.hasDecision { Text("◇ Decision").foregroundStyle(.purple) }
-                if info.hasQuestion { Label("Review question", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                if info.hasQuestion {
+                    Label("Review question", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -263,7 +275,9 @@ struct ArchitectureView: View {
         }
     }
 
-    nonisolated static func selectionAfterZoom(from oldPath: [String], to newPath: [String], graph: PRGraph) -> ArchAnchor? {
+    nonisolated static func selectionAfterZoom(from oldPath: [String], to newPath: [String], graph: PRGraph)
+        -> ArchAnchor?
+    {
         guard let previousFocus = oldPath.last else { return nil }
         let newLevel = graph.architectureLevel(path: newPath)
         return newLevel.contains(previousFocus) ? .node(previousFocus) : nil
@@ -275,16 +289,20 @@ struct ArchitectureView: View {
         selection = target.selection
     }
 
-    nonisolated static func revealTarget(_ anchor: ArchAnchor, graph: PRGraph) -> (path: [String], selection: ArchAnchor)? {
+    nonisolated static func revealTarget(_ anchor: ArchAnchor, graph: PRGraph) -> (
+        path: [String], selection: ArchAnchor
+    )? {
         switch anchor {
         case .node(let id):
             guard let part = graph.drawablePart(for: id) else { return nil }
             return (graph.architecturePath(showing: part.id), .node(part.id))
         case .edge(let id):
             guard let edge = graph.resolvedEdges.first(where: { $0.id == id }) else { return nil }
-            let candidates = [[]] + graph.ancestry(of: edge.fromId).dropLast().indices.map { i in
-                Array(graph.ancestry(of: edge.fromId).prefix(i + 1).map(\.id))
-            }
+            let candidates =
+                [[]]
+                + graph.ancestry(of: edge.fromId).dropLast().indices.map { i in
+                    Array(graph.ancestry(of: edge.fromId).prefix(i + 1).map(\.id))
+                }
             for candidate in candidates {
                 let level = graph.architectureLevel(path: candidate)
                 if let drawn = level.edges.first(where: { $0.id == id || $0.mergedIds.contains(id) }) {
@@ -299,7 +317,9 @@ struct ArchitectureView: View {
         selection = Self.selectionAfterHidingCheck(selection, level: level, graph: graph, mode: mode)
     }
 
-    nonisolated static func selectionAfterHidingCheck(_ selection: ArchAnchor?, level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> ArchAnchor? {
+    nonisolated static func selectionAfterHidingCheck(
+        _ selection: ArchAnchor?, level: ArchLevel, graph: PRGraph, mode: DiagramMode
+    ) -> ArchAnchor? {
         guard let selection else { return nil }
         let boxes = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
         let arrows = Set(Self.arrows(level, graph: graph, mode: mode).map(\.id))

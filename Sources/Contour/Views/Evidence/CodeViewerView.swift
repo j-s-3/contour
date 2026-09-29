@@ -7,7 +7,10 @@ struct CodeViewerView: View {
 
     @State private var state: CodeViewerState
 
-    init(ref: CodeRef, checkout: RepoCheckout?, initialState: CodeViewerState = CodeViewerState(), onBack: @escaping () -> Void) {
+    init(
+        ref: CodeRef, checkout: RepoCheckout?, initialState: CodeViewerState = CodeViewerState(),
+        onBack: @escaping () -> Void
+    ) {
         self.ref = ref
         self.checkout = checkout
         self.onBack = onBack
@@ -22,8 +25,10 @@ struct CodeViewerView: View {
             header
             Divider()
             if let errorMessage = state.errorMessage {
-                ContentUnavailableView("Couldn't load this file", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView(
+                    "Couldn't load this file", systemImage: "exclamationmark.triangle", description: Text(errorMessage)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView { codeText(state.visibleRows) }
             }
@@ -57,13 +62,17 @@ struct CodeViewerView: View {
 
             Spacer()
 
-            Button { actions.ask(.codeRef(ref)) } label: {
+            Button {
+                actions.ask(.codeRef(ref))
+            } label: {
                 Label("Ask about these lines", systemImage: "sparkles")
             }
             .buttonStyle(.plain)
             .help("Ask about this code… (⌘⇧A)")
 
-            Button { actions.navigate(.diffLocation(ref)) } label: {
+            Button {
+                actions.navigate(.diffLocation(ref))
+            } label: {
                 Label("Show in diff", systemImage: "plusminus")
             }
             .buttonStyle(.plain)

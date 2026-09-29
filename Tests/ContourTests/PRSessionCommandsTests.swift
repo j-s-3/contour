@@ -1,5 +1,6 @@
-import Testing
 import AppKit
+import Testing
+
 @testable import Contour
 
 @Suite(.serialized)

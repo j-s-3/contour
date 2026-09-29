@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct WindowAccessorTests {
@@ -18,15 +19,25 @@ struct WindowAccessorTests {
     }
 
     @Test func enteringRequiresOptInNotYetEnteredAndNotAlreadyFullScreen() {
-        #expect(WindowAccessor.shouldEnterFullScreen(entersFullScreen: true, alreadyEntered: false, isCurrentlyFullScreen: false))
+        #expect(
+            WindowAccessor.shouldEnterFullScreen(
+                entersFullScreen: true, alreadyEntered: false, isCurrentlyFullScreen: false))
 
-        #expect(!WindowAccessor.shouldEnterFullScreen(entersFullScreen: false, alreadyEntered: false, isCurrentlyFullScreen: false),
-                "not opted in")
-        #expect(!WindowAccessor.shouldEnterFullScreen(entersFullScreen: true, alreadyEntered: true, isCurrentlyFullScreen: false),
-                "this view already toggled it once")
-        #expect(!WindowAccessor.shouldEnterFullScreen(entersFullScreen: true, alreadyEntered: false, isCurrentlyFullScreen: true),
-                "already full screen by some other means")
-        #expect(!WindowAccessor.shouldEnterFullScreen(entersFullScreen: false, alreadyEntered: true, isCurrentlyFullScreen: true))
+        #expect(
+            !WindowAccessor.shouldEnterFullScreen(
+                entersFullScreen: false, alreadyEntered: false, isCurrentlyFullScreen: false),
+            "not opted in")
+        #expect(
+            !WindowAccessor.shouldEnterFullScreen(
+                entersFullScreen: true, alreadyEntered: true, isCurrentlyFullScreen: false),
+            "this view already toggled it once")
+        #expect(
+            !WindowAccessor.shouldEnterFullScreen(
+                entersFullScreen: true, alreadyEntered: false, isCurrentlyFullScreen: true),
+            "already full screen by some other means")
+        #expect(
+            !WindowAccessor.shouldEnterFullScreen(
+                entersFullScreen: false, alreadyEntered: true, isCurrentlyFullScreen: true))
     }
 
     @Test func collectionBehaviorGainsFullScreenPrimaryWhenAbsent() {

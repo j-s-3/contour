@@ -59,7 +59,8 @@ extension PRGraph {
         for (i, ch) in chars.enumerated() {
             current.append(ch)
             let lastWord = current.split(whereSeparator: \.isWhitespace).last.map { String($0).lowercased() } ?? ""
-            let atBoundary = ".?!".contains(ch) && (i + 1 == chars.count || chars[i + 1].isWhitespace)
+            let atBoundary =
+                ".?!".contains(ch) && (i + 1 == chars.count || chars[i + 1].isWhitespace)
                 && !abbreviations.contains(lastWord.trimmingCharacters(in: CharacterSet(charactersIn: "(")))
                 && !lastWord.hasSuffix("..")
                 && current.filter({ $0 == "`" }).count % 2 == 0

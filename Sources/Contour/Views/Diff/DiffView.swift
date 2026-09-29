@@ -60,7 +60,9 @@ struct DiffView: View {
             .padding(.horizontal, 10).padding(.vertical, 8)
             Divider()
             List(files) { file in
-                Button { jump(to: file, proxy) } label: {
+                Button {
+                    jump(to: file, proxy)
+                } label: {
                     HStack(spacing: 6) {
                         StatusGlyph(status: file.status)
                         VStack(alignment: .leading, spacing: 0) {
@@ -98,8 +100,11 @@ struct DiffView: View {
         currentFile = target.file.id
         collapsed = DiffViewLogic.removingFile(target.file.id, from: collapsed)
         DispatchQueue.main.async {
-            if let hunk = target.hunk { proxy.scrollTo(hunk.id, anchor: UnitPoint(x: 0, y: 0.08)) }
-            else { proxy.scrollTo(fileAnchor(target.file), anchor: .top) }
+            if let hunk = target.hunk {
+                proxy.scrollTo(hunk.id, anchor: UnitPoint(x: 0, y: 0.08))
+            } else {
+                proxy.scrollTo(fileAnchor(target.file), anchor: .top)
+            }
         }
     }
 
@@ -118,7 +123,8 @@ struct DiffView: View {
                     .frame(width: 12)
                 Group {
                     if let old = title.old {
-                        Text(old).foregroundStyle(.secondary) + Text(" → ").foregroundStyle(.secondary) + Text(title.new)
+                        Text(old).foregroundStyle(.secondary) + Text(" → ").foregroundStyle(.secondary)
+                            + Text(title.new)
                     } else {
                         Text(title.new)
                     }
@@ -223,11 +229,13 @@ enum DiffViewLogic {
 
     static func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef {
         if file.status == .deleted || hunk.newCount == 0 {
-            return CodeRef(path: file.oldPath ?? file.path, startLine: hunk.oldStart,
-                           endLine: max(hunk.oldStart, hunk.oldStart + hunk.oldCount - 1), side: .base)
+            return CodeRef(
+                path: file.oldPath ?? file.path, startLine: hunk.oldStart,
+                endLine: max(hunk.oldStart, hunk.oldStart + hunk.oldCount - 1), side: .base)
         }
-        return CodeRef(path: file.newPath ?? file.path, startLine: hunk.newStart,
-                       endLine: max(hunk.newStart, hunk.newStart + hunk.newCount - 1))
+        return CodeRef(
+            path: file.newPath ?? file.path, startLine: hunk.newStart,
+            endLine: max(hunk.newStart, hunk.newStart + hunk.newCount - 1))
     }
 
     static func marker(_ kind: DiffLine.Kind) -> String {
@@ -253,7 +261,8 @@ enum DiffViewLogic {
 
     static func isFocused(_ line: DiffLine, in file: DiffFile, focus: CodeRef?) -> Bool {
         guard let focus, file.contains(focus),
-              let number = focus.side == .base ? line.oldLine : line.newLine else { return false }
+            let number = focus.side == .base ? line.oldLine : line.newLine
+        else { return false }
         return number >= focus.startLine && number <= focus.endLine
     }
 
@@ -304,7 +313,7 @@ enum DiffViewLogic {
     }
 
     static func headerTitle(for file: DiffFile) -> (old: String?, new: String) {
-        if (file.status == .renamed || file.status == .copied), let old = file.oldPath, let new = file.newPath {
+        if file.status == .renamed || file.status == .copied, let old = file.oldPath, let new = file.newPath {
             return (old, new)
         }
         return (nil, file.path)
@@ -352,7 +361,9 @@ enum DiffViewLogic {
         (citation.kind == .decision ? "Decision: " : "Flow stage: ") + citation.title
     }
 
-    static func visibleCitations(_ citations: [DiffCitation], max: Int = 3) -> (shown: [DiffCitation], overflow: [DiffCitation]) {
+    static func visibleCitations(_ citations: [DiffCitation], max: Int = 3) -> (
+        shown: [DiffCitation], overflow: [DiffCitation]
+    ) {
         guard citations.count > max else { return (citations, []) }
         return (Array(citations.prefix(max)), Array(citations.dropFirst(max)))
     }

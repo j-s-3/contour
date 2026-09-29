@@ -64,18 +64,21 @@ struct AnonymousAPISource: PRSource {
         }
 
         let rawReviews = try await getJSONArray("\(base)/reviews", owner: owner, repo: repo, paginated: true)
-        let reviews: [String] = rawReviews
+        let reviews: [String] =
+            rawReviews
             .compactMap { r in
                 guard let b = r["body"] as? String, !b.isEmpty else { return nil }
                 let who = (r["user"] as? [String: Any])?["login"] as? String ?? "someone"
                 return "\(who): \(b)"
             }
 
-        let tally = PRGlance.tallyReviews(rawReviews.compactMap { r in
-            guard let who = (r["user"] as? [String: Any])?["login"] as? String,
-                  let state = r["state"] as? String else { return nil }
-            return (who, state)
-        })
+        let tally = PRGlance.tallyReviews(
+            rawReviews.compactMap { r in
+                guard let who = (r["user"] as? [String: Any])?["login"] as? String,
+                    let state = r["state"] as? String
+                else { return nil }
+                return (who, state)
+            })
         let glance = PRGlance(
             checks: await checks(owner: owner, repo: repo, sha: headSha),
             approvals: tally.approvals,
@@ -101,22 +104,29 @@ struct AnonymousAPISource: PRSource {
 
     private func checks(owner: String, repo: String, sha: String) async -> PRGlance.Checks? {
         let commit = "/repos/\(owner)/\(repo)/commits/\(sha)"
-        let runs = (try? await getJSONObject("\(commit)/check-runs?per_page=100", owner: owner, repo: repo))?["check_runs"]
+        let runs =
+            (try? await getJSONObject("\(commit)/check-runs?per_page=100", owner: owner, repo: repo))?["check_runs"]
             as? [[String: Any]] ?? []
-        let statuses = (try? await getJSONObject("\(commit)/status", owner: owner, repo: repo))?["statuses"]
+        let statuses =
+            (try? await getJSONObject("\(commit)/status", owner: owner, repo: repo))?["statuses"]
             as? [[String: Any]] ?? []
-        let outcomes = runs.map {
-            PRGlance.checkOutcome(status: $0["status"] as? String, conclusion: $0["conclusion"] as? String, state: nil)
-        } + statuses.map {
-            PRGlance.checkOutcome(status: nil, conclusion: nil, state: $0["state"] as? String)
-        }
+        let outcomes =
+            runs.map {
+                PRGlance.checkOutcome(
+                    status: $0["status"] as? String, conclusion: $0["conclusion"] as? String, state: nil)
+            }
+            + statuses.map {
+                PRGlance.checkOutcome(status: nil, conclusion: nil, state: $0["state"] as? String)
+            }
         return PRGlance.rollUp(outcomes)
     }
 
     func fetchIssue(owner: String, repo: String, number: String) async -> RawIssue? {
-        guard let obj = try? await getJSONObject("/repos/\(owner)/\(repo)/issues/\(number)",
-                                                 owner: owner, repo: repo),
-              let title = obj["title"] as? String
+        guard
+            let obj = try? await getJSONObject(
+                "/repos/\(owner)/\(repo)/issues/\(number)",
+                owner: owner, repo: repo),
+            let title = obj["title"] as? String
         else { return nil }
         return RawIssue(
             title: title,
@@ -171,16 +181,19 @@ struct AnonymousAPISource: PRSource {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private func getJSONArray(_ path: String, owner: String, repo: String,
-                              paginated: Bool = false) async throws -> [[String: Any]] {
+    private func getJSONArray(
+        _ path: String, owner: String, repo: String,
+        paginated: Bool = false
+    ) async throws -> [[String: Any]] {
         let perPage = 100
         let maxPages = paginated ? 5 : 1
         var all: [[String: Any]] = []
         for page in 1...maxPages {
             let sep = path.contains("?") ? "&" : "?"
             let paged = "\(path)\(sep)per_page=\(perPage)&page=\(page)"
-            let (data, _) = try await send(request(paged, accept: "application/vnd.github+json"),
-                                           owner: owner, repo: repo)
+            let (data, _) = try await send(
+                request(paged, accept: "application/vnd.github+json"),
+                owner: owner, repo: repo)
             guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
                 throw GitHubServiceError.malformedResponse(String(data: data, encoding: .utf8) ?? "")
             }

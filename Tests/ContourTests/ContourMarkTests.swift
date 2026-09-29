@@ -1,6 +1,7 @@
-import Testing
 import Foundation
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct ContourMarkTests {
@@ -58,7 +59,8 @@ struct ContourMarkTests {
 
     @Test func lineColorRunsFromOuterAtTheBaseToThePeakAtTheSummit() {
         let palette = ContourMarkPalette.dark
-        let expectedOuter = Color(.sRGB, red: palette.outer.0 / 255, green: palette.outer.1 / 255, blue: palette.outer.2 / 255)
+        let expectedOuter = Color(
+            .sRGB, red: palette.outer.0 / 255, green: palette.outer.1 / 255, blue: palette.outer.2 / 255)
         #expect(palette.line(level: 0) == expectedOuter)
         #expect(palette.line(level: 1) == palette.peak)
     }
@@ -119,10 +121,11 @@ struct ContourMarkTests {
     }
 
     @Test func haloRectIsCenteredOnThePeakWithTheHaloRadius() {
-        let expected = CGRect(x: ContourMarkGeometry.peak.x - ContourMarkGeometry.haloRadius,
-                              y: ContourMarkGeometry.peak.y - ContourMarkGeometry.haloRadius,
-                              width: ContourMarkGeometry.haloRadius * 2,
-                              height: ContourMarkGeometry.haloRadius * 2)
+        let expected = CGRect(
+            x: ContourMarkGeometry.peak.x - ContourMarkGeometry.haloRadius,
+            y: ContourMarkGeometry.peak.y - ContourMarkGeometry.haloRadius,
+            width: ContourMarkGeometry.haloRadius * 2,
+            height: ContourMarkGeometry.haloRadius * 2)
         #expect(ContourMarkView.haloRect == expected)
         #expect(ContourMarkGeometry.haloRadius == ContourMarkGeometry.peakRadius * 2.2)
     }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Contour
 
 @Suite(.serialized)
@@ -18,7 +19,9 @@ struct PipelineConcurrencyTests {
         let describesItself = "fake (tests)"
         let contexts: [String: RawPRContext]
         init(_ context: RawPRContext) { contexts = [context.url: context] }
-        init(_ contexts: [RawPRContext]) { self.contexts = Dictionary(uniqueKeysWithValues: contexts.map { ($0.url, $0) }) }
+        init(_ contexts: [RawPRContext]) {
+            self.contexts = Dictionary(uniqueKeysWithValues: contexts.map { ($0.url, $0) })
+        }
         func fetchContext(prURL: String) async throws -> RawPRContext {
             guard let ctx = contexts[prURL] else { throw GitHubServiceError.badURL(prURL) }
             return ctx
@@ -27,21 +30,27 @@ struct PipelineConcurrencyTests {
     }
 
     private func tempCache() throws -> AnalysisCache {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("contour-pipeline-cache-\(UUID().uuidString)", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "contour-pipeline-cache-\(UUID().uuidString)", isDirectory: true)
         return AnalysisCache(directory: dir)
     }
 
-    private func makePipeline(source: FakePRSource, cache: AnalysisCache,
-                              previousRevision: AnalysisCache.Entry? = nil,
-                              mock: AnalysisService.MockOptions = AnalysisService.MockOptions()) -> AnalysisPipeline {
+    private func makePipeline(
+        source: FakePRSource, cache: AnalysisCache,
+        previousRevision: AnalysisCache.Entry? = nil,
+        mock: AnalysisService.MockOptions = AnalysisService.MockOptions()
+    ) -> AnalysisPipeline {
         AnalysisPipeline(
             harnessID: .claude, trackerID: .none, cache: cache,
             prSourceOverride: source,
             checkoutOverride: { fetchedCtx in
                 let dir = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("contour-checkout-\(fetchedCtx.number)-\(fetchedCtx.headSha)-\(UUID().uuidString)", isDirectory: true)
+                    .appendingPathComponent(
+                        "contour-checkout-\(fetchedCtx.number)-\(fetchedCtx.headSha)-\(UUID().uuidString)",
+                        isDirectory: true)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                return RepoCheckout(rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
+                return RepoCheckout(
+                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
             },
             previousRevisionOverride: previousRevision,
             mockOverride: mock
@@ -55,7 +64,9 @@ struct PipelineConcurrencyTests {
     }
 
     private func decisionsFixture() throws -> [DecisionNode] {
-        try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions)).decisions
+        try StageDecoding.decode(
+            StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions)
+        ).decisions
     }
 
     @Test func stoppingMidStreamLeavesNoTornOrDuplicateDecisions() async throws {
@@ -91,8 +102,9 @@ struct PipelineConcurrencyTests {
             let decisions = lastGraph?.decisions ?? []
             #expect(Set(decisions.map(\.id)).count == decisions.count, "no duplicate decisions")
             #expect(decisions.count <= fixtureCount, "never more than the stage could produce")
-            #expect(decisionsStatus == .stopped || decisionsStatus == .done,
-                    "settled one way or the other, never left running: \(decisionsStatus)")
+            #expect(
+                decisionsStatus == .stopped || decisionsStatus == .done,
+                "settled one way or the other, never left running: \(decisionsStatus)")
         }
     }
 
@@ -152,7 +164,8 @@ struct PipelineConcurrencyTests {
             await pipeline.start(prURL: ctxA.url)
 
             startingB: for await event in pipeline.events {
-                if case .status(let stage, let status) = event, status.isRunning, PipelineStage.analysis.contains(stage) {
+                if case .status(let stage, let status) = event, status.isRunning, PipelineStage.analysis.contains(stage)
+                {
                     break startingB
                 }
             }
@@ -184,9 +197,11 @@ struct PipelineConcurrencyTests {
             checkoutOverride: { fetchedCtx in
                 try await Task.sleep(for: .milliseconds(300))
                 let dir = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("contour-checkout-\(fetchedCtx.number)-\(UUID().uuidString)", isDirectory: true)
+                    .appendingPathComponent(
+                        "contour-checkout-\(fetchedCtx.number)-\(UUID().uuidString)", isDirectory: true)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                return RepoCheckout(rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
+                return RepoCheckout(
+                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
             },
             mockOverride: AnalysisService.MockOptions()
         )
@@ -207,14 +222,25 @@ struct PipelineConcurrencyTests {
             for await event in pipeline.events { afterCancel.append(event) }
 
             let all = events + afterCancel
-            #expect(!all.contains { if case .checkout = $0 { return true }; return false },
-                    "checkout never completed, so no .checkout event should have been published")
-            #expect(!afterCancel.contains { if case .graph = $0 { return true }; return false },
-                    "no graph snapshot is published after cancel()")
-            #expect(!all.contains {
-                        if case .status(let stage, let status) = $0 { return status.isRunning && PipelineStage.analysis.contains(stage) }
-                        return false
-                    }, "cancelling during checkout must mean no analysis stage ever started")
+            #expect(
+                !all.contains {
+                    if case .checkout = $0 { return true }
+                    return false
+                },
+                "checkout never completed, so no .checkout event should have been published")
+            #expect(
+                !afterCancel.contains {
+                    if case .graph = $0 { return true }
+                    return false
+                },
+                "no graph snapshot is published after cancel()")
+            #expect(
+                !all.contains {
+                    if case .status(let stage, let status) = $0 {
+                        return status.isRunning && PipelineStage.analysis.contains(stage)
+                    }
+                    return false
+                }, "cancelling during checkout must mean no analysis stage ever started")
         }
     }
 
@@ -227,8 +253,9 @@ struct PipelineConcurrencyTests {
         previousGraph.decisions = try decisionsFixture()
         let previousEntry = AnalysisCache.Entry(graph: previousGraph, diff: oldCtx.diff, completedStages: [.decisions])
 
-        let pipeline = makePipeline(source: FakePRSource(newCtx), cache: cache, previousRevision: previousEntry,
-                                    mock: AnalysisService.MockOptions(failStage: .decisions))
+        let pipeline = makePipeline(
+            source: FakePRSource(newCtx), cache: cache, previousRevision: previousEntry,
+            mock: AnalysisService.MockOptions(failStage: .decisions))
 
         try await withMockAnalysis {
             await pipeline.start(prURL: newCtx.url)
@@ -256,8 +283,9 @@ struct PipelineConcurrencyTests {
             #expect(revalidatingHeads.first == oldCtx.headSha, "shown against the previous revision first")
             #expect(sawStaleDecisions, "precondition: the stale slice was shown at all")
             #expect(decisionsStatus.failure != nil, "expected .decisions to fail; got \(decisionsStatus)")
-            #expect(lastGraph?.decisions.isEmpty == true,
-                    "the stale slice is cleared, not left standing in for a failed fresh stage")
+            #expect(
+                lastGraph?.decisions.isEmpty == true,
+                "the stale slice is cleared, not left standing in for a failed fresh stage")
         }
     }
 }

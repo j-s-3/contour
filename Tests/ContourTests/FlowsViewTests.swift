@@ -1,14 +1,16 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct FlowsViewTests {
     private func graph(flows: [FlowNode] = []) -> PRGraph {
-        var g = PRGraph(pr: PRSummary(
-            repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
-            branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
-            intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
-        ))
+        var g = PRGraph(
+            pr: PRSummary(
+                repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
+                branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
+                intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
+            ))
         g.flows = flows
         return g
     }
@@ -27,12 +29,16 @@ struct FlowsViewTests {
     }
 
     @Test func nextLevelFromBehaviorSkipsToTheFirstAvailableRungBelow() {
-        #expect(FlowsViewLogic.nextLevel(after: .behavior, available: [.behavior, .implementation, .code]) == .implementation)
+        #expect(
+            FlowsViewLogic.nextLevel(after: .behavior, available: [.behavior, .implementation, .code])
+                == .implementation)
     }
 
     @Test func nextLevelStaysPutWhenNothingIsFurtherDown() {
         #expect(FlowsViewLogic.nextLevel(after: .code, available: [.behavior, .code]) == .code)
-        #expect(FlowsViewLogic.nextLevel(after: .implementation, available: [.behavior, .implementation]) == .implementation)
+        #expect(
+            FlowsViewLogic.nextLevel(after: .implementation, available: [.behavior, .implementation]) == .implementation
+        )
     }
 
     @Test func nextLevelAdvancesOneRungAtATimeThroughAllAvailable() {
@@ -42,7 +48,9 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.nextLevel(after: .implementation, available: all) == .code)
     }
 
-    private func node(_ id: String, kind: FlowNodeKind = .step, change: FlowChange = .existing, label: String) -> FlowBehaviorNode {
+    private func node(_ id: String, kind: FlowNodeKind = .step, change: FlowChange = .existing, label: String)
+        -> FlowBehaviorNode
+    {
         FlowBehaviorNode(id: id, label: label, kind: kind, change: change)
     }
 
@@ -56,7 +64,7 @@ struct FlowsViewTests {
 
     @Test func condensedSummaryIgnoresAChangedTrigger() {
         let behavior = FlowBehavior(nodes: [
-            node("n1", kind: .trigger, change: .new, label: "Upload asset"),
+            node("n1", kind: .trigger, change: .new, label: "Upload asset")
         ])
         #expect(FlowsViewLogic.condensedChangeSummary(behavior) == nil)
     }
@@ -210,7 +218,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.focusToPublish(flow: flow("f1"), node: n) == .flowNode(flowId: "f1", nodeId: "n1"))
     }
 
-
     @Test func changeLinePrefersTheModelsSentence() {
         let b = FlowBehavior(changeSummary: "Reads less.", nodes: [node("a", change: .changed, label: "A")])
         #expect(FlowsViewLogic.changeLine(for: b) == .changed("Reads less."))
@@ -231,7 +238,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.changeLine(for: b) == .none)
     }
 
-
     @Test func tabAndHeadingText() {
         #expect(FlowsViewLogic.scenarioHeading(flowCount: 3) == "What happens when… · 3 scenarios")
         #expect(FlowsViewLogic.changedSuffix(changed: true) == " · changed")
@@ -246,9 +252,10 @@ struct FlowsViewTests {
         #expect(!FlowsViewLogic.storyLeadsWithTitle(flowCount: 2))
     }
 
-
     @Test func diagramContentDropsAnnotationsOnHiddenStages() {
-        let b = FlowBehavior(nodes: [node("old", change: .removed, label: "Old"), node("new", change: .new, label: "New")])
+        let b = FlowBehavior(nodes: [
+            node("old", change: .removed, label: "Old"), node("new", change: .new, label: "New"),
+        ])
         let notes = [
             FlowAnnotation(kind: .decision, targetId: "d1", nodeId: "old", text: "x"),
             FlowAnnotation(kind: .question, targetId: "q1", nodeId: "new", text: "y"),
@@ -258,7 +265,6 @@ struct FlowsViewTests {
         #expect(after.annotations.map(\.targetId) == ["q1"])
         #expect(FlowsViewLogic.diagramContent(behavior: b, annotations: notes, mode: .delta).annotations.count == 2)
     }
-
 
     @Test func togglingTheSelectedStageDeselectsIt() {
         let n = node("n1", label: "A")

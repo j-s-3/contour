@@ -94,9 +94,10 @@ final class GraphStore {
         diagramMode = .delta
 
         guard let harnessID = preferences.resolvedHarness else {
-            phase = .failed("""
-            No AI harness selected. Install pi or Claude Code, then pick one in             Settings (⌘,).
-            """)
+            phase = .failed(
+                """
+                No AI harness selected. Install pi or Claude Code, then pick one in             Settings (⌘,).
+                """)
             return
         }
         self.harnessID = harnessID
@@ -139,7 +140,8 @@ final class GraphStore {
     @MainActor
     func submitReview(_ verdict: PRReview.Verdict, comment: String = "") {
         guard canSubmitReview(verdict), PRReview.isReady(verdict, comment: comment),
-              let url = pullRequestWebURL else { return }
+            let url = pullRequestWebURL
+        else { return }
         review = .submitting(verdict)
         Task { @MainActor in
             do {
@@ -207,8 +209,10 @@ final class GraphStore {
             if graph == nil {
                 phase = .failed(message)
             } else {
-                progressLog.append(PipelineProgressEntry(stage: PipelineStage.checkingOut.rawValue,
-                                                         detail: "failed: \(message)"))
+                progressLog.append(
+                    PipelineProgressEntry(
+                        stage: PipelineStage.checkingOut.rawValue,
+                        detail: "failed: \(message)"))
                 for stage in PipelineStage.analysis where analysis.status(stage) != .done {
                     analysis.stages[stage] = .failed(stage.checkoutFailureMessage)
                 }

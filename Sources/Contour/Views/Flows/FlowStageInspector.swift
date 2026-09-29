@@ -68,7 +68,9 @@ struct FlowStageInspector: View {
     private var steps: [FlowStep] { graph.implementationSteps(for: node, in: flow) }
     private var refs: [CodeRef] { FlowStageInspectorLogic.refs(node: node, steps: steps) }
     private var available: [FlowDrillLevel] { FlowDrillLevel.available(for: node, in: flow, graph: graph) }
-    private var notes: [FlowAnnotation] { FlowStageInspectorLogic.notes(graph.annotations(for: flow), forNodeId: node.id) }
+    private var notes: [FlowAnnotation] {
+        FlowStageInspectorLogic.notes(graph.annotations(for: flow), forNodeId: node.id)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -93,7 +95,9 @@ struct FlowStageInspector: View {
             actionsBar
         }
         .background(.background.secondary)
-        .onChange(of: node.id) { _, _ in level = FlowStageInspectorLogic.levelAfterNodeChange(current: level, available: available) }
+        .onChange(of: node.id) { _, _ in
+            level = FlowStageInspectorLogic.levelAfterNodeChange(current: level, available: available)
+        }
     }
 
     private var titleBar: some View {
@@ -124,7 +128,9 @@ struct FlowStageInspector: View {
         HStack(spacing: 2) {
             ForEach(FlowDrillLevel.allCases) { rung in
                 let enabled = available.contains(rung)
-                Button { level = rung } label: {
+                Button {
+                    level = rung
+                } label: {
                     Text(rung.label)
                         .font(.caption.weight(level == rung ? .semibold : .regular))
                         .padding(.horizontal, 7).padding(.vertical, 3)
@@ -132,10 +138,15 @@ struct FlowStageInspector: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(enabled ? (level == rung ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary)) : AnyShapeStyle(.tertiary))
+                .foregroundStyle(
+                    enabled
+                        ? (level == rung ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+                        : AnyShapeStyle(.tertiary)
+                )
                 .disabled(!enabled)
                 if rung != .code {
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(
+                        .tertiary)
                 }
             }
         }
@@ -150,7 +161,9 @@ struct FlowStageInspector: View {
                 Button("Show code") { level = .code }
             }
             Spacer(minLength: 0)
-            Button { actions.ask(.flowNode(flowId: flow.id, nodeId: node.id)) } label: {
+            Button {
+                actions.ask(.flowNode(flowId: flow.id, nodeId: node.id))
+            } label: {
                 Label("Ask about this…", systemImage: "sparkles")
             }
         }
@@ -186,10 +199,16 @@ struct FlowStageInspector: View {
         if node.change == .changed, node.before != nil || node.after != nil {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 if let before = node.before {
-                    GridRow { fieldLabel("Before"); Text(before).foregroundStyle(.secondary) }
+                    GridRow {
+                        fieldLabel("Before")
+                        Text(before).foregroundStyle(.secondary)
+                    }
                 }
                 if let after = node.after {
-                    GridRow { fieldLabel("After"); Text(after).fontWeight(.semibold) }
+                    GridRow {
+                        fieldLabel("After")
+                        Text(after).fontWeight(.semibold)
+                    }
                 }
             }
             .font(.callout)
@@ -203,13 +222,17 @@ struct FlowStageInspector: View {
             field("In the flow") {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(previous) { p in neighbor(p, prefix: "After", condition: nil, async: false) }
-                    ForEach(next, id: \.edge.id) { e, n in neighbor(n, prefix: "Then", condition: e.label, async: e.flow == .async) }
+                    ForEach(next, id: \.edge.id) { e, n in
+                        neighbor(n, prefix: "Then", condition: e.label, async: e.flow == .async)
+                    }
                 }
             }
         }
 
         if let sub = node.subflowId, let target = graph.flow(sub) {
-            Button { onOpenFlow(sub) } label: {
+            Button {
+                onOpenFlow(sub)
+            } label: {
                 Label("Open the shared flow “\(graph.scenarioTitle(for: target))”", systemImage: "arrow.triangle.merge")
             }
             .buttonStyle(.link).font(.callout)
@@ -226,12 +249,19 @@ struct FlowStageInspector: View {
     }
 
     private func neighbor(_ n: FlowBehaviorNode, prefix: String, condition: String?, async: Bool) -> some View {
-        Button { onSelectNode(n) } label: {
+        Button {
+            onSelectNode(n)
+        } label: {
             HStack(spacing: 5) {
                 Text(prefix).foregroundStyle(.secondary)
-                if let condition { Text(condition.uppercased()).font(.caption2.weight(.bold)).foregroundStyle(.secondary) }
+                if let condition {
+                    Text(condition.uppercased()).font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                }
                 Text(n.label).fontWeight(n.change == .existing ? .regular : .semibold)
-                if async { Image(systemName: "clock.arrow.circlepath").font(.caption2).foregroundStyle(.secondary).help("Asynchronous") }
+                if async {
+                    Image(systemName: "clock.arrow.circlepath").font(.caption2).foregroundStyle(.secondary).help(
+                        "Asynchronous")
+                }
             }
             .font(.callout)
         }
@@ -291,7 +321,9 @@ struct FlowStageInspector: View {
     private var implementationRung: some View {
         if let c = node.componentId.flatMap(graph.drawablePart(for:)) {
             field("Part of") {
-                Button { actions.navigate(.componentDetail(c.id)) } label: {
+                Button {
+                    actions.navigate(.componentDetail(c.id))
+                } label: {
                     Label(c.title, systemImage: "square.stack.3d.up").font(.callout)
                 }
                 .buttonStyle(.link)
@@ -316,11 +348,14 @@ struct FlowStageInspector: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(step.title).font(.callout.weight(.medium))
                 if step.changeKind == .new || step.changeKind == .changed {
-                    Text(step.changeKind.label.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(step.changeKind.color)
+                    Text(step.changeKind.label.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(
+                        step.changeKind.color)
                 }
                 Spacer(minLength: 8)
                 if let part = graph.drawablePart(for: step.componentId ?? "") {
-                    Button { actions.navigate(.componentDetail(part.id)) } label: {
+                    Button {
+                        actions.navigate(.componentDetail(part.id))
+                    } label: {
                         Label(part.title, systemImage: "square.stack.3d.up").font(.caption)
                     }
                     .buttonStyle(.borderless)

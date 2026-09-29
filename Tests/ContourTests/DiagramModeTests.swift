@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct DiagramModeTests {
@@ -27,8 +28,10 @@ struct DiagramModeTests {
     }
 
     @Test func onlyDiagramScreensOfferTheSwitch() {
-        let diagrams: [NavigationTarget] = [.architecture, .componentDetail("c"), .edgeDetail("e"),
-                                            .flows, .flowDetail("f"), .flowNodeDetail(flowId: "f", nodeId: "n")]
+        let diagrams: [NavigationTarget] = [
+            .architecture, .componentDetail("c"), .edgeDetail("e"),
+            .flows, .flowDetail("f"), .flowNodeDetail(flowId: "f", nodeId: "n"),
+        ]
         let others: [NavigationTarget] = [.summary, .decisions, .diff, .decisionDetail("d"), .consideration("q")]
         #expect(diagrams.filter { !$0.showsDiagram }.isEmpty)
         #expect(others.filter(\.showsDiagram).isEmpty)

@@ -1,12 +1,15 @@
-import Testing
-import SwiftUI
 import AppKit
+import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
 struct FlowStageInspectorRenderTests {
 
-    private func host(_ graph: PRGraph, flow: FlowNode, node: FlowBehaviorNode, level: FlowDrillLevel) -> NSHostingView<FlowStageInspector> {
+    private func host(_ graph: PRGraph, flow: FlowNode, node: FlowBehaviorNode, level: FlowDrillLevel) -> NSHostingView<
+        FlowStageInspector
+    > {
         let view = FlowStageInspector(
             graph: graph, flow: flow, node: node, level: .constant(level),
             onSelectNode: { _ in }, onOpenEvidence: { _ in }, onOpenFlow: { _ in }, onClose: {}

@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct CodeRefVerifierTests {
@@ -15,7 +16,8 @@ struct CodeRefVerifierTests {
             }
             func git(_ args: String...) async throws -> String { try await Shell.run("git", args, cwd: root) }
 
-            try FileManager.default.createDirectory(at: root.appendingPathComponent("src"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("src"), withIntermediateDirectories: true)
             try write("src/lib.rs", "fn a() {}\nfn b() {}\n")
             try write("src/old.rs", "one\ntwo\nthree")
             _ = try await git("init", "-q")
@@ -79,14 +81,20 @@ struct CodeRefVerifierTests {
         let repo = try await TempRepo()
         let grounded = DecisionNode(
             id: "ok", title: "Grounded", decision: Statement(text: "Does X", provenance: .fact), confidence: .high,
-            refs: [CodeRef(path: "src/lib.rs", startLine: 1, endLine: 2), CodeRef(path: "src/ghost.rs", startLine: 1, endLine: 1)]
+            refs: [
+                CodeRef(path: "src/lib.rs", startLine: 1, endLine: 2),
+                CodeRef(path: "src/ghost.rs", startLine: 1, endLine: 1),
+            ]
         )
         let invented = DecisionNode(
             id: "bad", title: "Invented", decision: Statement(text: "Does Y", provenance: .fact), confidence: .high,
             refs: [CodeRef(path: "src/ghost.rs", startLine: 3, endLine: 9)]
         )
         let (result, check) = await repo.verifier.verify(.decisions([grounded, invented]))
-        guard case .decisions(let decisions) = result else { Issue.record("wrong stage"); return }
+        guard case .decisions(let decisions) = result else {
+            Issue.record("wrong stage")
+            return
+        }
 
         #expect(decisions[0].refs.map(\.path) == ["src/lib.rs"])
         #expect(decisions[0].confidence == .high)
@@ -104,9 +112,13 @@ struct CodeRefVerifierTests {
 
     @Test func aDecisionWithNoRefsIsLeftAlone() async throws {
         let repo = try await TempRepo()
-        let bare = DecisionNode(id: "d", title: "T", decision: Statement(text: "Z", provenance: .fact), confidence: .high)
+        let bare = DecisionNode(
+            id: "d", title: "T", decision: Statement(text: "Z", provenance: .fact), confidence: .high)
         let (result, check) = await repo.verifier.verify(.decisions([bare]))
-        guard case .decisions(let decisions) = result else { Issue.record("wrong stage"); return }
+        guard case .decisions(let decisions) = result else {
+            Issue.record("wrong stage")
+            return
+        }
         #expect(decisions[0].confidence == .high)
         #expect(check.checked == 0)
     }
@@ -114,27 +126,43 @@ struct CodeRefVerifierTests {
     @Test func claimsStayClaimsAndOtherStatementsAreLowered() {
         let claim = Statement(text: "Fixes #1", provenance: .claim, source: "PR description").demotedForUnverifiedRefs()
         #expect(claim.provenance == .claim)
-        let guess = Statement(text: "Probably", provenance: .interpretation, confidence: .high).demotedForUnverifiedRefs()
+        let guess = Statement(text: "Probably", provenance: .interpretation, confidence: .high)
+            .demotedForUnverifiedRefs()
         #expect(guess.provenance == .interpretation && guess.confidence == .low)
     }
 
     @Test func componentsAndConsiderationsAreDemotedToo() async throws {
         let repo = try await TempRepo()
         let v = repo.verifier
-        let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: [
-            "components": [["id": "c", "title": "Input", "changeKind": "changed",
-                            "summary": ["text": "Reads input", "provenance": "fact"],
-                            "refs": [["path": "src/missing.rs", "startLine": 1, "endLine": 2]]]]
-        ])
+        let arch = try StageDecoding.decode(
+            StageDecoding.ArchitectureResult.self,
+            from: [
+                "components": [
+                    [
+                        "id": "c", "title": "Input", "changeKind": "changed",
+                        "summary": ["text": "Reads input", "provenance": "fact"],
+                        "refs": [["path": "src/missing.rs", "startLine": 1, "endLine": 2]],
+                    ]
+                ]
+            ])
         let (archResult, _) = await v.verify(.architecture(arch))
-        guard case .architecture(let a) = archResult else { Issue.record("wrong stage"); return }
+        guard case .architecture(let a) = archResult else {
+            Issue.record("wrong stage")
+            return
+        }
         #expect(a.components[0].summary?.provenance == .interpretation)
 
         var judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: [:])
-        judgment.considerations = [Consideration(id: "q", question: "Safe?", detail: "", provenance: .fact, confidence: .high,
-                                                 refs: [CodeRef(path: "src/lib.rs", startLine: 99, endLine: 99)])]
+        judgment.considerations = [
+            Consideration(
+                id: "q", question: "Safe?", detail: "", provenance: .fact, confidence: .high,
+                refs: [CodeRef(path: "src/lib.rs", startLine: 99, endLine: 99)])
+        ]
         let (judgmentResult, check) = await v.verify(.judgment(judgment))
-        guard case .judgment(let j) = judgmentResult else { Issue.record("wrong stage"); return }
+        guard case .judgment(let j) = judgmentResult else {
+            Issue.record("wrong stage")
+            return
+        }
         #expect(j.considerations[0].provenance == .interpretation)
         #expect(j.considerations[0].confidence == .low)
         #expect(check.unresolvedCount == 1)

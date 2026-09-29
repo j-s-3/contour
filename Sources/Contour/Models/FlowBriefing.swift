@@ -26,7 +26,8 @@ extension PRGraph {
 
     func flowOutline(_ flow: FlowNode) -> String {
         let behavior = behavior(for: flow)
-        let story = behavior.summary
+        let story =
+            behavior.summary
             ?? behavior.nodes.filter { $0.kind != .trigger }.map(\.label).joined(separator: " → ")
         return story.isEmpty ? scenarioTitle(for: flow) : "\(scenarioTitle(for: flow)): \(story)"
     }
@@ -44,10 +45,12 @@ extension PRGraph {
     }
 
     func condensedBehavior(for flow: FlowNode) -> FlowBehavior {
-        let labels: [String] = flow.storySteps.isEmpty
+        let labels: [String] =
+            flow.storySteps.isEmpty
             ? flow.steps.prefix(8).map(\.title)
             : flow.storySteps.map(\.text)
-        let buckets: [[FlowStep]] = flow.storySteps.isEmpty
+        let buckets: [[FlowStep]] =
+            flow.storySteps.isEmpty
             ? flow.steps.prefix(8).map { [$0] }
             : Self.align(flow.steps, to: labels)
 
@@ -55,11 +58,12 @@ extension PRGraph {
         var edges: [FlowBehaviorEdge] = []
         let entry = entryPoint(flow.entryPointId)
         let triggerId = "trigger"
-        nodes.append(FlowBehaviorNode(
-            id: triggerId, label: scenarioTitle(for: flow), kind: .trigger,
-            detail: entry.map { "\($0.title) (\($0.kind))" },
-            componentId: nil, refs: entry?.refs ?? []
-        ))
+        nodes.append(
+            FlowBehaviorNode(
+                id: triggerId, label: scenarioTitle(for: flow), kind: .trigger,
+                detail: entry.map { "\($0.title) (\($0.kind))" },
+                componentId: nil, refs: entry?.refs ?? []
+            ))
 
         var previous = triggerId
         var asyncAfterPrevious = false
@@ -69,17 +73,18 @@ extension PRGraph {
             let change = Self.condensedChange(steps.map(\.changeKind))
             let lead = steps.first { $0.changeKind == .new || $0.changeKind == .changed } ?? steps.first
             let id = "stage-\(index)"
-            nodes.append(FlowBehaviorNode(
-                id: id, label: label,
-                kind: index == labels.count - 1 ? .outcome : .step,
-                detail: lead?.stateDelta,
-                change: change,
-                stepIds: steps.map(\.id),
-                componentId: lead?.componentId,
-                refs: unique(steps.flatMap(\.refs)),
-                provenance: story?.provenance == .interpretation ? .interpretation : .fact,
-                confidence: story?.confidence
-            ))
+            nodes.append(
+                FlowBehaviorNode(
+                    id: id, label: label,
+                    kind: index == labels.count - 1 ? .outcome : .step,
+                    detail: lead?.stateDelta,
+                    change: change,
+                    stepIds: steps.map(\.id),
+                    componentId: lead?.componentId,
+                    refs: unique(steps.flatMap(\.refs)),
+                    provenance: story?.provenance == .interpretation ? .interpretation : .fact,
+                    confidence: story?.confidence
+                ))
             edges.append(FlowBehaviorEdge(fromId: previous, toId: id, flow: asyncAfterPrevious ? .async : .sync))
             previous = id
             asyncAfterPrevious = steps.last?.isAsyncBoundaryAfter ?? false
@@ -95,7 +100,8 @@ extension PRGraph {
     }
 
     static func align(_ steps: [FlowStep], to labels: [String]) -> [[FlowStep]] {
-        let m = labels.count, n = steps.count
+        let m = labels.count
+        let n = steps.count
         guard m > 0 else { return [] }
         var buckets = Array(repeating: [FlowStep](), count: m)
         guard n > 0 else { return buckets }
@@ -103,15 +109,20 @@ extension PRGraph {
         let score: [[Double]] = steps.enumerated().map { i, step in
             let words = keywords(step.title + " " + (step.stateDelta ?? ""))
             let expected = Double(i) * Double(m) / Double(n)
-            return (0..<m).map { j in Double(labelWords[j].intersection(words).count) - 0.01 * abs(Double(j) - expected) }
+            return (0..<m).map { j in Double(labelWords[j].intersection(words).count) - 0.01 * abs(Double(j) - expected)
+            }
         }
         var best = [score[0]]
         var from = [[Int]](repeating: Array(repeating: 0, count: m), count: n)
         for i in 1..<n {
             var row = Array(repeating: 0.0, count: m)
-            var runningMax = -Double.infinity, runningArg = 0
+            var runningMax = -Double.infinity
+            var runningArg = 0
             for j in 0..<m {
-                if best[i - 1][j] > runningMax { runningMax = best[i - 1][j]; runningArg = j }
+                if best[i - 1][j] > runningMax {
+                    runningMax = best[i - 1][j]
+                    runningArg = j
+                }
                 row[j] = score[i][j] + runningMax
                 from[i][j] = runningArg
             }
@@ -126,8 +137,10 @@ extension PRGraph {
     }
 
     static func keywords(_ text: String) -> Set<String> {
-        let stop: Set<String> = ["the", "and", "for", "with", "via", "into", "from", "that", "this",
-                                 "only", "then", "when", "than", "its", "out", "whether", "any", "all"]
+        let stop: Set<String> = [
+            "the", "and", "for", "with", "via", "into", "from", "that", "this",
+            "only", "then", "when", "than", "its", "out", "whether", "any", "all",
+        ]
         let tokens = text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "-" }
         return Set(tokens.map(String.init).filter { $0.count >= 3 && !stop.contains($0) }.map { String($0.prefix(5)) })
     }
@@ -154,11 +167,12 @@ extension PRGraph {
         }
         for d in decisions where decisionNode[d.id] != nil && isToReview(d) {
             let brief = brief(for: d)
-            out.append(FlowAnnotation(
-                kind: .decision, targetId: d.id, nodeId: decisionNode[d.id]!,
-                text: brief.chosen?.label ?? Self.firstSentence(d.decision.text),
-                detail: brief.question
-            ))
+            out.append(
+                FlowAnnotation(
+                    kind: .decision, targetId: d.id, nodeId: decisionNode[d.id]!,
+                    text: brief.chosen?.label ?? Self.firstSentence(d.decision.text),
+                    detail: brief.question
+                ))
         }
 
         let flowIds = Set(flows.map(\.id))
@@ -173,15 +187,18 @@ extension PRGraph {
                 } else if let viaDecision = item.relatedIds.lazy.compactMap({ decisionNode[$0] }).first {
                     nodeId = viaDecision
                 } else if namedFlows.contains(flow.id) {
-                    nodeId = (behavior.nodes.first { $0.change != .existing && $0.kind != .trigger }
-                              ?? behavior.nodes.first { $0.kind != .trigger })?.id
+                    nodeId =
+                        (behavior.nodes.first { $0.change != .existing && $0.kind != .trigger }
+                        ?? behavior.nodes.first { $0.kind != .trigger })?.id
                 } else {
                     nodeId = nil
                 }
             }
             if let nodeId {
-                out.append(FlowAnnotation(kind: .question, targetId: item.id, nodeId: nodeId,
-                                          text: item.question, detail: item.detail.isEmpty ? nil : item.detail))
+                out.append(
+                    FlowAnnotation(
+                        kind: .question, targetId: item.id, nodeId: nodeId,
+                        text: item.question, detail: item.detail.isEmpty ? nil : item.detail))
             }
         }
         return out

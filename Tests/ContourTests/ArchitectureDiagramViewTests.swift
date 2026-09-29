@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Testing
+
 @testable import Contour
 
 struct ArchitectureDiagramViewTests {
@@ -71,8 +72,12 @@ struct ArchitectureDiagramViewTests {
         #expect(ArchMetrics.size(of: neighbor).height == ArchMetrics.size(of: plainNeighborNeighbor).height)
     }
 
-    private func arrow(label: String = "calls", questions: Int = 0, decisions: Int = 0, isAsync: Bool = false) -> ArchArrow {
-        ArchArrow(id: "a", fromId: "x", toId: "y", label: label, emphasis: .context, isAsync: isAsync, questions: questions, decisions: decisions)
+    private func arrow(label: String = "calls", questions: Int = 0, decisions: Int = 0, isAsync: Bool = false)
+        -> ArchArrow
+    {
+        ArchArrow(
+            id: "a", fromId: "x", toId: "y", label: label, emphasis: .context, isAsync: isAsync, questions: questions,
+            decisions: decisions)
     }
 
     @Test func arrowSizeGrowsWithGlyphsAndALongerLabel() {
@@ -100,18 +105,24 @@ struct ArchitectureDiagramViewTests {
 
     @Test func measureClampsToTheRequestedLineCount() {
         let oneLine = ArchMetrics.measure("word", size: 12, width: 200, lines: 1)
-        let unclamped = ArchMetrics.measure("a rather long sentence that will wrap across several lines of text", size: 12, width: 40, lines: 100)
+        let unclamped = ArchMetrics.measure(
+            "a rather long sentence that will wrap across several lines of text", size: 12, width: 40, lines: 100)
         #expect(unclamped > oneLine, "wrapped text spanning many lines measures taller than one short line")
 
-        let clamped = ArchMetrics.measure("a rather long sentence that will wrap across several lines of text", size: 12, width: 40, lines: 1)
-        #expect(clamped <= oneLine + 1, "clamped to 1 line, it can't measure taller than any other 1-line text at the same size")
+        let clamped = ArchMetrics.measure(
+            "a rather long sentence that will wrap across several lines of text", size: 12, width: 40, lines: 1)
+        #expect(
+            clamped <= oneLine + 1,
+            "clamped to 1 line, it can't measure taller than any other 1-line text at the same size")
     }
 
     @Test func roundedPathEndsExactlyAtTheLastPoint() {
         let straight = ArchitectureDiagramView.roundedPath([CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)])
         #expect(straight.currentPoint == CGPoint(x: 10, y: 0))
 
-        let corner = ArchitectureDiagramView.roundedPath([CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0), CGPoint(x: 10, y: 10)])
+        let corner = ArchitectureDiagramView.roundedPath([
+            CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0), CGPoint(x: 10, y: 10),
+        ])
         #expect(corner.currentPoint == CGPoint(x: 10, y: 10))
     }
 
@@ -167,7 +178,8 @@ struct ArchitectureDiagramViewTests {
     }
 
     @Test func arrowheadTriangleIsSymmetricAroundTheLine() {
-        let triangle = ArchDrawingLogic.arrowheadTriangle(tip: CGPoint(x: 100, y: 0), from: CGPoint(x: 0, y: 0), size: 10)
+        let triangle = ArchDrawingLogic.arrowheadTriangle(
+            tip: CGPoint(x: 100, y: 0), from: CGPoint(x: 0, y: 0), size: 10)
         #expect(triangle.tip == CGPoint(x: 100, y: 0))
         #expect(abs(triangle.left.x - triangle.right.x) < 0.0001)
         #expect(triangle.left.y == -triangle.right.y)
@@ -199,7 +211,8 @@ struct ArchitectureDiagramViewTests {
 
     @Test func bestFitKeepsAcrossWhenItAlreadyFits() {
         let nodes = [GraphLayoutEngine.NodeSpec(id: "a", size: CGSize(width: 100, height: 60))]
-        let (layout, fit) = GraphLayoutEngine.bestFit(nodes: nodes, edges: [], groups: [], available: CGSize(width: 5000, height: 5000))
+        let (layout, fit) = GraphLayoutEngine.bestFit(
+            nodes: nodes, edges: [], groups: [], available: CGSize(width: 5000, height: 5000))
         let across = GraphLayoutEngine.layout(nodes: nodes, edges: [], groups: [], vertical: false)
         #expect(fit == 1)
         #expect(layout.size.width == across.size.width && layout.size.height == across.size.height)
@@ -208,7 +221,8 @@ struct ArchitectureDiagramViewTests {
     private func chain(count: Int) -> (nodes: [GraphLayoutEngine.NodeSpec], edges: [GraphLayoutEngine.EdgeSpec]) {
         let nodes = (0..<count).map { GraphLayoutEngine.NodeSpec(id: "n\($0)", size: CGSize(width: 224, height: 50)) }
         let edges = (0..<count - 1).map {
-            GraphLayoutEngine.EdgeSpec(id: "e\($0)", fromId: "n\($0)", toId: "n\($0 + 1)", labelSize: CGSize(width: 20, height: 10))
+            GraphLayoutEngine.EdgeSpec(
+                id: "e\($0)", fromId: "n\($0)", toId: "n\($0 + 1)", labelSize: CGSize(width: 20, height: 10))
         }
         return (nodes, edges)
     }

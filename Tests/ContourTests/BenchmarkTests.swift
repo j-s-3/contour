@@ -1,6 +1,7 @@
-import XCTest
 import CoreGraphics
 import Foundation
+import XCTest
+
 @testable import Contour
 
 final class BenchmarkTests: XCTestCase {
@@ -40,7 +41,8 @@ final class BenchmarkTests: XCTestCase {
         for f in 0..<files {
             let path = "src/module\(f)/file\(f).swift"
             var body: [String] = []
-            var oldCount = 0, newCount = 0
+            var oldCount = 0
+            var newCount = 0
             for l in 0..<linesPerHunk {
                 switch rng.nextInt(10) {
                 case 0:
@@ -51,7 +53,8 @@ final class BenchmarkTests: XCTestCase {
                     oldCount += 1
                 default:
                     body.append("     let context\(l) = \(l)")
-                    oldCount += 1; newCount += 1
+                    oldCount += 1
+                    newCount += 1
                 }
             }
             out += "diff --git a/\(path) b/\(path)\n"
@@ -71,7 +74,9 @@ final class BenchmarkTests: XCTestCase {
         }
     }
 
-    private static func makeStreamedArrayJSON(preambleWords: Int, elementCount: Int, key: String, seed: UInt64) -> String {
+    private static func makeStreamedArrayJSON(preambleWords: Int, elementCount: Int, key: String, seed: UInt64)
+        -> String
+    {
         var rng = SeededGenerator(seed: seed)
         let words = ["alpha", "beta", "gamma", "delta", "epsilon", "reads", "writes", "checks", "component", "value"]
         var preamble = ""
@@ -85,7 +90,10 @@ final class BenchmarkTests: XCTestCase {
 
     private static func makeNoKeyStream(sizeBytes: Int, seed: UInt64) -> String {
         var rng = SeededGenerator(seed: seed)
-        let words = ["alpha", "beta", "gamma", "delta", "epsilon", "quick", "brown", "fox", "jumps", "lazy", "value", "component"]
+        let words = [
+            "alpha", "beta", "gamma", "delta", "epsilon", "quick", "brown", "fox", "jumps", "lazy", "value",
+            "component",
+        ]
         var out = ""
         out.reserveCapacity(sizeBytes)
         while out.utf8.count < sizeBytes {
@@ -134,7 +142,9 @@ final class BenchmarkTests: XCTestCase {
 
     private static func makeLayoutInput(
         nodeCount: Int, seed: UInt64
-    ) -> (nodes: [GraphLayoutEngine.NodeSpec], edges: [GraphLayoutEngine.EdgeSpec], groups: [GraphLayoutEngine.GroupSpec]) {
+    ) -> (
+        nodes: [GraphLayoutEngine.NodeSpec], edges: [GraphLayoutEngine.EdgeSpec], groups: [GraphLayoutEngine.GroupSpec]
+    ) {
         var rng = SeededGenerator(seed: seed)
         let nodes = (0..<nodeCount).map { i in
             GraphLayoutEngine.NodeSpec(id: "n\(i)", size: CGSize(width: 224, height: CGFloat(70 + rng.nextInt(60))))
@@ -142,17 +152,21 @@ final class BenchmarkTests: XCTestCase {
         var edges: [GraphLayoutEngine.EdgeSpec] = []
         for i in 1..<nodeCount {
             let target = rng.nextInt(i)
-            edges.append(.init(id: "e\(i)", fromId: "n\(target)", toId: "n\(i)",
-                               labelSize: CGSize(width: CGFloat(40 + rng.nextInt(80)), height: 20)))
+            edges.append(
+                .init(
+                    id: "e\(i)", fromId: "n\(target)", toId: "n\(i)",
+                    labelSize: CGSize(width: CGFloat(40 + rng.nextInt(80)), height: 20)))
         }
         for i in 0..<(nodeCount / 4) {
-            let a = rng.nextInt(nodeCount), b = rng.nextInt(nodeCount)
+            let a = rng.nextInt(nodeCount)
+            let b = rng.nextInt(nodeCount)
             guard a != b else { continue }
             edges.append(.init(id: "x\(i)", fromId: "n\(a)", toId: "n\(b)", labelSize: CGSize(width: 60, height: 20)))
         }
         let groupCount = max(1, nodeCount / 20)
         let groups = (0..<groupCount).map { g in
-            GraphLayoutEngine.GroupSpec(id: "g\(g)", memberIds: stride(from: g, to: nodeCount, by: groupCount).map { "n\($0)" })
+            GraphLayoutEngine.GroupSpec(
+                id: "g\(g)", memberIds: stride(from: g, to: nodeCount, by: groupCount).map { "n\($0)" })
         }
         return (nodes, edges, groups)
     }
@@ -184,31 +198,40 @@ final class BenchmarkTests: XCTestCase {
         var boundaries: [SystemBoundary]
     }
 
-    private static func makeArchitectureObject(componentCount: Int, edgeCount: Int, boundaryCount: Int, seed: UInt64) -> [String: Any] {
+    private static func makeArchitectureObject(componentCount: Int, edgeCount: Int, boundaryCount: Int, seed: UInt64)
+        -> [String: Any]
+    {
         var rng = SeededGenerator(seed: seed)
         let kinds: [ChangeKind] = [.new, .changed, .touched, .unchanged]
         let components = (0..<componentCount).map { i -> ComponentNode in
             ComponentNode(
                 id: "c\(i)", title: "Component \(i)", changeKind: kinds[rng.nextInt(kinds.count)],
-                summary: Statement(text: "Handles responsibility \(i) of the system.", provenance: .interpretation, confidence: .medium),
+                summary: Statement(
+                    text: "Handles responsibility \(i) of the system.", provenance: .interpretation, confidence: .medium
+                ),
                 refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: i + 1, endLine: i + 21)]
             )
         }
         let edges = (0..<edgeCount).map { i -> ArchitectureEdge in
-            let from = rng.nextInt(componentCount), to = rng.nextInt(componentCount)
+            let from = rng.nextInt(componentCount)
+            let to = rng.nextInt(componentCount)
             return ArchitectureEdge(id: "e\(i)", fromId: "c\(from)", toId: "c\(to)", label: "payload \(i)")
         }
         let boundaries = (0..<boundaryCount).map { i -> SystemBoundary in
-            SystemBoundary(id: "b\(i)", label: "Boundary \(i)", componentIds: (0..<10).map { "c\(($0 + i * 10) % componentCount)" })
+            SystemBoundary(
+                id: "b\(i)", label: "Boundary \(i)", componentIds: (0..<10).map { "c\(($0 + i * 10) % componentCount)" }
+            )
         }
-        let data = try! JSONEncoder().encode(ArchitecturePayload(components: components, edges: edges, boundaries: boundaries))
+        let data = try! JSONEncoder().encode(
+            ArchitecturePayload(components: components, edges: edges, boundaries: boundaries))
         return (try! JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
     func testStageDecodingArchitectureResultOnALargeGraph() {
         let object = Self.makeArchitectureObject(componentCount: 300, edgeCount: 450, boundaryCount: 40, seed: 31)
         measure {
-            _ = try? StageDecoding.decode(StageDecoding.ArchitectureResult.self, stageLabel: "architecture", from: object)
+            _ = try? StageDecoding.decode(
+                StageDecoding.ArchitectureResult.self, stageLabel: "architecture", from: object)
         }
     }
 
@@ -222,46 +245,58 @@ final class BenchmarkTests: XCTestCase {
         )
     }
 
-    private static func makeLargeGraph(componentCount: Int, decisionCount: Int, flowCount: Int, seed: UInt64) -> PRGraph {
+    private static func makeLargeGraph(componentCount: Int, decisionCount: Int, flowCount: Int, seed: UInt64) -> PRGraph
+    {
         var rng = SeededGenerator(seed: seed)
         var graph = PRGraph.shell(from: benchmarkContext())
         graph.components = (0..<componentCount).map { i in
-            ComponentNode(id: "c\(i)", title: "Component \(i)", changeKind: .changed,
-                          summary: Statement(text: "Does thing \(i).", provenance: .interpretation, confidence: .medium),
-                          refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: i + 1, endLine: i + 21)])
+            ComponentNode(
+                id: "c\(i)", title: "Component \(i)", changeKind: .changed,
+                summary: Statement(text: "Does thing \(i).", provenance: .interpretation, confidence: .medium),
+                refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: i + 1, endLine: i + 21)])
         }
         graph.architectureEdges = (0..<(componentCount * 2)).map { i in
-            let from = rng.nextInt(componentCount), to = rng.nextInt(componentCount)
+            let from = rng.nextInt(componentCount)
+            let to = rng.nextInt(componentCount)
             return ArchitectureEdge(id: "e\(i)", fromId: "c\(from)", toId: "c\(to)", label: "data \(i)")
         }
         graph.boundaries = (0..<max(1, componentCount / 15)).map { i in
-            SystemBoundary(id: "b\(i)", label: "Boundary \(i)", componentIds: (0..<10).map { "c\(($0 + i * 10) % componentCount)" })
+            SystemBoundary(
+                id: "b\(i)", label: "Boundary \(i)", componentIds: (0..<10).map { "c\(($0 + i * 10) % componentCount)" }
+            )
         }
         graph.decisions = (0..<decisionCount).map { i in
-            DecisionNode(id: "d\(i)", title: "Decision \(i)",
-                        decision: Statement(text: "Chose option \(i).", provenance: .fact),
-                        confidence: .high,
-                        refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: i + 1, endLine: i + 5)],
-                        componentIds: ["c\(rng.nextInt(componentCount))"])
+            DecisionNode(
+                id: "d\(i)", title: "Decision \(i)",
+                decision: Statement(text: "Chose option \(i).", provenance: .fact),
+                confidence: .high,
+                refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: i + 1, endLine: i + 5)],
+                componentIds: ["c\(rng.nextInt(componentCount))"])
         }
         graph.flows = (0..<flowCount).map { i in
-            FlowNode(id: "f\(i)", title: "Flow \(i)", steps: (0..<5).map { s in
-                FlowStep(id: "f\(i)-s\(s)", index: s, title: "Step \(s)", componentId: "c\(rng.nextInt(componentCount))",
+            FlowNode(
+                id: "f\(i)", title: "Flow \(i)",
+                steps: (0..<5).map { s in
+                    FlowStep(
+                        id: "f\(i)-s\(s)", index: s, title: "Step \(s)", componentId: "c\(rng.nextInt(componentCount))",
                         refs: [CodeRef(path: "src/file\(i % 50).swift", startLine: s + 1, endLine: s + 3)])
-            })
+                })
         }
         return graph
     }
 
     func testAnalysisCacheRoundTripsALargeGraph() {
-        let cache = AnalysisCache(directory: FileManager.default.temporaryDirectory
-            .appendingPathComponent("contour-benchmark-cache-\(UUID().uuidString)", isDirectory: true))
+        let cache = AnalysisCache(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("contour-benchmark-cache-\(UUID().uuidString)", isDirectory: true))
         let ctx = Self.benchmarkContext()
         let graph = Self.makeLargeGraph(componentCount: 300, decisionCount: 150, flowCount: 60, seed: 41)
         measure {
-            cache.save(owner: "acme", repo: "bench", number: 1, headSha: ctx.headSha, baseSha: ctx.baseSha, pipelineVersion: 1,
-                       graph: graph, diff: "placeholder diff", completedStages: Set(PipelineStage.analysis))
-            _ = cache.load(owner: "acme", repo: "bench", number: 1, headSha: ctx.headSha, baseSha: ctx.baseSha, pipelineVersion: 1)
+            cache.save(
+                owner: "acme", repo: "bench", number: 1, headSha: ctx.headSha, baseSha: ctx.baseSha, pipelineVersion: 1,
+                graph: graph, diff: "placeholder diff", completedStages: Set(PipelineStage.analysis))
+            _ = cache.load(
+                owner: "acme", repo: "bench", number: 1, headSha: ctx.headSha, baseSha: ctx.baseSha, pipelineVersion: 1)
         }
     }
 }

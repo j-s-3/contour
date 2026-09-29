@@ -13,13 +13,16 @@ struct StageDecodingError: LocalizedError {
         guard let decodingError = error as? DecodingError else { return "\(error)" }
         switch decodingError {
         case .keyNotFound(let key, let ctx):
-            return "missing required key \"\(key.stringValue)\" at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            return
+                "missing required key \"\(key.stringValue)\" at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
         case .typeMismatch(let type, let ctx):
-            return "expected \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")): \(ctx.debugDescription)"
+            return
+                "expected \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")): \(ctx.debugDescription)"
         case .valueNotFound(let type, let ctx):
             return "null where \(type) was required at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
         case .dataCorrupted(let ctx):
-            return "corrupted data at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")): \(ctx.debugDescription)"
+            return
+                "corrupted data at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")): \(ctx.debugDescription)"
         @unknown default:
             return "\(decodingError)"
         }
@@ -27,7 +30,9 @@ struct StageDecodingError: LocalizedError {
 }
 
 enum StageDecoding {
-    static func decode<T: Decodable>(_ type: T.Type, stageLabel: String = "stage", from object: [String: Any]) throws -> T {
+    static func decode<T: Decodable>(_ type: T.Type, stageLabel: String = "stage", from object: [String: Any]) throws
+        -> T
+    {
         let data = try JSONSerialization.data(withJSONObject: object)
         do {
             return try JSONDecoder().decode(T.self, from: data)

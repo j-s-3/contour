@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class PRLinkTests: XCTestCase {
@@ -20,8 +21,9 @@ final class PRLinkTests: XCTestCase {
     func testCanonicalizesSchemeAndHost() {
         XCTAssertEqual(PRLink.extract(from: "github.com/sharkdp/bat/pull/3877"), canonical)
         XCTAssertEqual(PRLink.extract(from: "http://www.github.com/sharkdp/bat/pull/3877"), canonical)
-        XCTAssertEqual(PRLink.extract(from: "https://github.com/acme/my.repo_name-2/pull/1"),
-                       "https://github.com/acme/my.repo_name-2/pull/1")
+        XCTAssertEqual(
+            PRLink.extract(from: "https://github.com/acme/my.repo_name-2/pull/1"),
+            "https://github.com/acme/my.repo_name-2/pull/1")
     }
 
     func testTakesTheFirstOfSeveral() {
@@ -37,7 +39,8 @@ final class PRLinkTests: XCTestCase {
     }
 
     func testContourSchemeForms() throws {
-        let encoded = try XCTUnwrap(URL(string: "contour://open?url=https%3A%2F%2Fgithub.com%2Fsharkdp%2Fbat%2Fpull%2F3877"))
+        let encoded = try XCTUnwrap(
+            URL(string: "contour://open?url=https%3A%2F%2Fgithub.com%2Fsharkdp%2Fbat%2Fpull%2F3877"))
         XCTAssertEqual(PRLink.pullRequestURL(from: encoded), canonical)
         let withHost = try XCTUnwrap(URL(string: "contour://github.com/sharkdp/bat/pull/3877"))
         XCTAssertEqual(PRLink.pullRequestURL(from: withHost), canonical)

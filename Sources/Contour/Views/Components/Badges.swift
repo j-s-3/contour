@@ -93,7 +93,8 @@ struct ProvenanceMark: View {
         switch provenance {
         case .fact: text = "Observed fact"
         case .claim: text = "The author's claim"
-        case .interpretation: text = "AI inference" + (confidence.map { " · \($0.label.lowercased()) confidence" } ?? "")
+        case .interpretation:
+            text = "AI inference" + (confidence.map { " · \($0.label.lowercased()) confidence" } ?? "")
         }
         if let source, !source.isEmpty { text += " — \(source)" }
         return text
@@ -155,7 +156,8 @@ struct WrapChips<Content: View>: View {
     let refs: [CodeRef]
     let content: (CodeRef) -> Content
     init(_ refs: [CodeRef], @ViewBuilder content: @escaping (CodeRef) -> Content) {
-        self.refs = refs; self.content = content
+        self.refs = refs
+        self.content = content
     }
     var body: some View {
         FlowLayout(spacing: 6) {
@@ -180,12 +182,16 @@ struct FlowLayout: Layout {
     }
 
     static func wrap(sizes: [CGSize], spacing: CGFloat, maxWidth: CGFloat) -> (size: CGSize, origins: [CGPoint]) {
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
         var origins: [CGPoint] = []
         origins.reserveCapacity(sizes.count)
         for size in sizes {
             if x + size.width > maxWidth, x > 0 {
-                x = 0; y += rowHeight + spacing; rowHeight = 0
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
             }
             origins.append(CGPoint(x: x, y: y))
             x += size.width + spacing

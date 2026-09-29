@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class StartScreenTests: XCTestCase {
@@ -14,8 +15,9 @@ final class StartScreenTests: XCTestCase {
     }
 
     private func record(_ cache: AnalysisCache, _ number: Int, title: String = "t", at seconds: TimeInterval) {
-        cache.recordOpened(url: "https://github.com/acme/shop/pull/\(number)", repo: "acme/shop",
-                           number: number, title: title, at: Date(timeIntervalSince1970: seconds))
+        cache.recordOpened(
+            url: "https://github.com/acme/shop/pull/\(number)", repo: "acme/shop",
+            number: number, title: title, at: Date(timeIntervalSince1970: seconds))
     }
 
     func testRecentPRsAreNewestFirst() {
@@ -42,8 +44,9 @@ final class StartScreenTests: XCTestCase {
     func testRecentPRsAreKeyedByRepoAndNumber() {
         let cache = AnalysisCache(directory: directory)
         record(cache, 7, at: 100)
-        cache.recordOpened(url: "https://github.com/acme/api/pull/7", repo: "acme/api", number: 7,
-                           title: "t", at: Date(timeIntervalSince1970: 200))
+        cache.recordOpened(
+            url: "https://github.com/acme/api/pull/7", repo: "acme/api", number: 7,
+            title: "t", at: Date(timeIntervalSince1970: 200))
         XCTAssertEqual(cache.recentPRs().map(\.repo), ["acme/api", "acme/shop"])
     }
 
@@ -65,13 +68,13 @@ final class StartScreenTests: XCTestCase {
 
     func testParsesReviewRequestsNewestUpdateFirst() {
         let json = """
-        [{"author":{"login":"alice","type":"User"},"isDraft":false,"number":12,
-          "repository":{"name":"shop","nameWithOwner":"acme/shop"},"title":"Older",
-          "updatedAt":"2026-09-24T16:15:59Z","url":"https://github.com/acme/shop/pull/12"},
-         {"author":{"login":"bob","type":"User"},"isDraft":true,"number":40,
-          "repository":{"name":"api","nameWithOwner":"acme/api"},"title":"Newer",
-          "updatedAt":"2026-09-25T14:09:07Z","url":"https://github.com/acme/api/pull/40"}]
-        """
+            [{"author":{"login":"alice","type":"User"},"isDraft":false,"number":12,
+              "repository":{"name":"shop","nameWithOwner":"acme/shop"},"title":"Older",
+              "updatedAt":"2026-09-24T16:15:59Z","url":"https://github.com/acme/shop/pull/12"},
+             {"author":{"login":"bob","type":"User"},"isDraft":true,"number":40,
+              "repository":{"name":"api","nameWithOwner":"acme/api"},"title":"Newer",
+              "updatedAt":"2026-09-25T14:09:07Z","url":"https://github.com/acme/api/pull/40"}]
+            """
         let requests = ReviewRequests.parse(json)
         XCTAssertEqual(requests.map(\.title), ["Newer", "Older"])
         XCTAssertEqual(requests.first?.repo, "acme/api")
@@ -84,9 +87,9 @@ final class StartScreenTests: XCTestCase {
 
     func testReviewRequestRowsMissingFieldsAreDropped() {
         let json = """
-        [{"number":1,"title":"no url","repository":{"nameWithOwner":"acme/shop"}},
-         {"number":2,"title":"ok","url":"https://github.com/acme/shop/pull/2","repository":{"nameWithOwner":"acme/shop"}}]
-        """
+            [{"number":1,"title":"no url","repository":{"nameWithOwner":"acme/shop"}},
+             {"number":2,"title":"ok","url":"https://github.com/acme/shop/pull/2","repository":{"nameWithOwner":"acme/shop"}}]
+            """
         let requests = ReviewRequests.parse(json)
         XCTAssertEqual(requests.map(\.number), [2])
         XCTAssertEqual(requests.first?.author, "unknown")
@@ -100,16 +103,17 @@ final class StartScreenTests: XCTestCase {
     }
 
     func testReviewRequestIDCombinesRepoAndNumber() {
-        let request = ReviewRequest(url: "https://github.com/acme/shop/pull/7", repo: "acme/shop",
-                                     number: 7, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        let request = ReviewRequest(
+            url: "https://github.com/acme/shop/pull/7", repo: "acme/shop",
+            number: 7, title: "t", author: "a", isDraft: false, updatedAt: nil)
         XCTAssertEqual(request.id, "acme/shop#7")
     }
 
     func testRowsMissingUpdatedAtSortLast() {
         let json = """
-        [{"number":1,"title":"no date","url":"https://github.com/acme/shop/pull/1","repository":{"nameWithOwner":"acme/shop"}},
-         {"number":2,"title":"has date","url":"https://github.com/acme/shop/pull/2","repository":{"nameWithOwner":"acme/shop"},"updatedAt":"2026-09-25T00:00:00Z"}]
-        """
+            [{"number":1,"title":"no date","url":"https://github.com/acme/shop/pull/1","repository":{"nameWithOwner":"acme/shop"}},
+             {"number":2,"title":"has date","url":"https://github.com/acme/shop/pull/2","repository":{"nameWithOwner":"acme/shop"},"updatedAt":"2026-09-25T00:00:00Z"}]
+            """
         let requests = ReviewRequests.parse(json)
         XCTAssertEqual(requests.map(\.title), ["has date", "no date"])
     }

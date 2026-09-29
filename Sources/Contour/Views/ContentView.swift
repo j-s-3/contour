@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ContentView: View {
     @State private var store: GraphStore
@@ -45,7 +45,7 @@ struct ContentView: View {
         }
         .onChange(of: store.phase) { _, phase in
             guard phase == .review,
-                  let target = Self.lensTarget(named: ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"])
+                let target = Self.lensTarget(named: ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"])
             else { return }
             store.navigate(to: target)
         }
@@ -96,15 +96,20 @@ struct ContentView: View {
         )
     }
 
-    private func openDifferentPR() { store.close(); urlFieldFocusRequest += 1 }
+    private func openDifferentPR() {
+        store.close()
+        urlFieldFocusRequest += 1
+    }
 
     @ViewBuilder
     private var mainBody: some View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace,
-                               focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
+                OnboardingView(
+                    initialURL: store.lastPRURL, markNamespace: markNamespace,
+                    focusRequest: urlFieldFocusRequest
+                ) { url in store.load(prURL: url) }
             case .opening:
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
@@ -113,8 +118,10 @@ struct ContentView: View {
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace,
-                                   focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
+                    OnboardingView(
+                        initialURL: store.lastPRURL, markNamespace: markNamespace,
+                        focusRequest: urlFieldFocusRequest
+                    ) { url in store.load(prURL: url) }
                 }
             }
         }
@@ -145,19 +152,21 @@ struct ContentView: View {
                 detailContent(graph)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-                .inspector(isPresented: Binding(
+            .inspector(
+                isPresented: Binding(
                     get: { store.conversations.isPresented },
                     set: { store.conversations.isPresented = $0 }
-                )) {
-                    ContextualChatView(store: store, graph: graph)
-                        .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
-                }
+                )
+            ) {
+                ContextualChatView(store: store, graph: graph)
+                    .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
+            }
         }
         .environment(\.reviewActions, Self.reviewActions(graph: graph, store: store))
         .background(
             Button("") { withAnimation(Self.spring) { store.ask(about: store.subjectForCurrentLocation) } }
-            .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
-            .opacity(0)
+                .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
+                .opacity(0)
         )
         .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
         .toolbarTitleMenu {
@@ -171,25 +180,50 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
-                Button { store.goBack() } label: { Image(systemName: "chevron.left") }
-                    .disabled(!store.canGoBack)
-                Button { store.goForward() } label: { Image(systemName: "chevron.right") }
-                    .disabled(!store.canGoForward)
+                Button {
+                    store.goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(!store.canGoBack)
+                Button {
+                    store.goForward()
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(!store.canGoForward)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                AnalysisIndicator(state: store.analysis, log: store.progressLog, metrics: store.metrics,
-                                  refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }, onRetry: { store.retry($0) })
-                Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
-                    .help("Command palette (⌘K)")
-                Button { store.copyReviewSummary() } label: { Image(systemName: "doc.on.clipboard") }
-                    .help("Copy review summary as Markdown")
-                Button { store.openOnGitHub() } label: { Image(systemName: "arrow.up.forward.square") }
-                    .help("Open on GitHub (⌘⇧O)")
-                    .disabled(store.pullRequestWebURL == nil)
+                AnalysisIndicator(
+                    state: store.analysis, log: store.progressLog, metrics: store.metrics,
+                    refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }, onRetry: { store.retry($0) })
+                Button {
+                    showPalette = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .help("Command palette (⌘K)")
+                Button {
+                    store.copyReviewSummary()
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .help("Copy review summary as Markdown")
+                Button {
+                    store.openOnGitHub()
+                } label: {
+                    Image(systemName: "arrow.up.forward.square")
+                }
+                .help("Open on GitHub (⌘⇧O)")
+                .disabled(store.pullRequestWebURL == nil)
                 approveButton(graph)
                 requestChangesButton(graph)
-                Button { withAnimation(Self.spring) { store.toggleConversations() } } label: {
-                    Image(systemName: store.conversations.isPresented ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
+                Button {
+                    withAnimation(Self.spring) { store.toggleConversations() }
+                } label: {
+                    Image(
+                        systemName: store.conversations.isPresented
+                            ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
                 }
                 .help("Conversations — ask about what you're looking at (⌘⇧A)")
             }
@@ -197,7 +231,9 @@ struct ContentView: View {
     }
 
     private func approveButton(_ graph: PRGraph) -> some View {
-        Button { confirmApprove = true } label: {
+        Button {
+            confirmApprove = true
+        } label: {
             reviewButtonLabel(.approve, symbol: "hand.thumbsup", submittedColor: .green)
         }
         .help(store.reviewUnavailableReason(.approve) ?? "Approve this pull request on GitHub")
@@ -225,13 +261,17 @@ struct ContentView: View {
     }
 
     private func requestChangesButton(_ graph: PRGraph) -> some View {
-        Button { composingChangeRequest = true } label: {
+        Button {
+            composingChangeRequest = true
+        } label: {
             reviewButtonLabel(.requestChanges, symbol: "hand.thumbsdown", submittedColor: .red)
         }
         .help(store.reviewUnavailableReason(.requestChanges) ?? "Request changes on GitHub")
         .disabled(!store.canSubmitReview(.requestChanges))
         .sheet(isPresented: $composingChangeRequest) {
-            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") { store.submitReview(.requestChanges, comment: $0) }
+            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") {
+                store.submitReview(.requestChanges, comment: $0)
+            }
         }
     }
 
@@ -253,7 +293,9 @@ struct ContentView: View {
         case submitted
     }
 
-    nonisolated static func reviewButtonPhase(for review: PRReview.State, verdict: PRReview.Verdict) -> ReviewButtonPhase {
+    nonisolated static func reviewButtonPhase(for review: PRReview.State, verdict: PRReview.Verdict)
+        -> ReviewButtonPhase
+    {
         switch review {
         case .submitting(verdict): return .submitting
         case .submitted(verdict): return .submitted
@@ -272,14 +314,17 @@ struct ContentView: View {
         let analysis = store.analysis
         return List {
             Section("Overview") {
-                sidebarRow("Overview", "house", .summary, status: analysis.sectionStatus(.whatChanged), section: .whatChanged)
+                sidebarRow(
+                    "Overview", "house", .summary, status: analysis.sectionStatus(.whatChanged), section: .whatChanged)
             }
             Section("System") {
-                sidebarRow("Architecture", "square.stack.3d.up", .architecture,
-                           status: analysis.status(.architecture), section: .architecture)
+                sidebarRow(
+                    "Architecture", "square.stack.3d.up", .architecture,
+                    status: analysis.status(.architecture), section: .architecture)
                 let flowsStatus = analysis.status(.flows)
-                sidebarRow(Self.flowsRowTitle(status: flowsStatus, count: graph.flows.count), "arrow.triangle.branch", .flows,
-                           status: flowsStatus, section: .flows)
+                sidebarRow(
+                    Self.flowsRowTitle(status: flowsStatus, count: graph.flows.count), "arrow.triangle.branch", .flows,
+                    status: flowsStatus, section: .flows)
             }
             Section("Review") {
                 let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
@@ -302,7 +347,8 @@ struct ContentView: View {
                 .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
-                sidebarRow("Raw diff", "doc.text", .diff, status: Self.diffRowStatus(diffText: store.diffText), section: nil)
+                sidebarRow(
+                    "Raw diff", "doc.text", .diff, status: Self.diffRowStatus(diffText: store.diffText), section: nil)
             }
         }
         .listStyle(.sidebar)
@@ -323,15 +369,21 @@ struct ContentView: View {
         diffText == nil ? .pending : .done
     }
 
-    private func sidebarRow(_ title: String, _ symbol: String, _ target: NavigationTarget,
-                            status: StageStatus, section: ReviewSection?) -> some View {
+    private func sidebarRow(
+        _ title: String, _ symbol: String, _ target: NavigationTarget,
+        status: StageStatus, section: ReviewSection?
+    ) -> some View {
         sidebarRow(title, symbol, target, status: status, section: section) { EmptyView() }
     }
 
-    private func sidebarRow<Trailing: View>(_ title: String, _ symbol: String, _ target: NavigationTarget,
-                                            status: StageStatus, section: ReviewSection?,
-                                            @ViewBuilder trailing: () -> Trailing) -> some View {
-        Button { store.navigate(to: target) } label: {
+    private func sidebarRow<Trailing: View>(
+        _ title: String, _ symbol: String, _ target: NavigationTarget,
+        status: StageStatus, section: ReviewSection?,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        Button {
+            store.navigate(to: target)
+        } label: {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 1) {
                     Label(title, systemImage: symbol)
@@ -374,11 +426,11 @@ struct ContentView: View {
     nonisolated static func isActive(_ target: NavigationTarget, given current: NavigationTarget) -> Bool {
         switch (current, target) {
         case (.summary, .summary), (.architecture, .architecture), (.decisions, .decisions),
-             (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
+            (.flows, .flows), (.diff, .diff), (.diffLocation(_), .diff):
             return true
         case (.componentDetail(_), .architecture), (.edgeDetail(_), .architecture), (.decisionDetail(_), .decisions),
-             (.consideration(_), .decisions), (.flowDetail(_), .flows),
-             (.flowNodeDetail(_, _), .flows):
+            (.consideration(_), .decisions), (.flowDetail(_), .flows),
+            (.flowNodeDetail(_, _), .flows):
             return true
         default:
             return false
@@ -422,7 +474,8 @@ struct ContentView: View {
             return .init(decisionId: id)
         case .consideration(let id):
             guard let item = graph.thingsToThinkAbout.first(where: { $0.id == id }),
-                  let decisionId = graph.reviewDecisionId(for: item) else { return nil }
+                let decisionId = graph.reviewDecisionId(for: item)
+            else { return nil }
             return .init(decisionId: decisionId, considerationId: id)
         default:
             return nil
@@ -480,8 +533,9 @@ struct ContentView: View {
         case .content(showsOverlay: false):
             content()
         case .failed(let message):
-            SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) },
-                              onAsk: { withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) } })
+            SectionFailedView(
+                section: section, message: message, onRetry: { store.retry(stage) },
+                onAsk: { withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) } })
         case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }
         case .pending:
@@ -494,18 +548,24 @@ struct ContentView: View {
         let analysis = store.analysis
         switch store.current {
         case .summary:
-            SummaryView(graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
-                        onRetry: { store.retry($0) }) { store.navigate(to: $0) }
+            SummaryView(
+                graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
+                onRetry: { store.retry($0) }
+            ) { store.navigate(to: $0) }
         case .architecture, .componentDetail(_), .edgeDetail(_):
-            sectionContent(.architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
-                           ask: "What part of the system does this change sit in, and how does it change it?",
-                           known: graph.dominantBehaviorChange.map { $0.after.map(\.label).joined(separator: " → ") }) {
+            sectionContent(
+                .architecture, stage: .architecture, hasContent: !graph.components.isEmpty,
+                ask: "What part of the system does this change sit in, and how does it change it?",
+                known: graph.dominantBehaviorChange.map { $0.after.map(\.label).joined(separator: " → ") }
+            ) {
                 ArchitectureView(graph: graph, focus: architectureFocus, mode: $store.diagramMode)
             }
         case .decisions, .decisionDetail(_), .consideration(_):
-            sectionContent(.decisions, stage: .decisions, hasContent: !graph.decisions.isEmpty,
-                           ask: "What are the consequential design decisions in this PR?",
-                           progress: "\(graph.decisions.count) found so far · looking for other consequential choices…") {
+            sectionContent(
+                .decisions, stage: .decisions, hasContent: !graph.decisions.isEmpty,
+                ask: "What are the consequential design decisions in this PR?",
+                progress: "\(graph.decisions.count) found so far · looking for other consequential choices…"
+            ) {
                 DecisionsView(
                     graph: graph,
                     focus: decisionsFocus(graph),
@@ -516,9 +576,11 @@ struct ContentView: View {
                 )
             }
         case .flows, .flowDetail(_), .flowNodeDetail(_, _):
-            sectionContent(.flows, stage: .flows, hasContent: !graph.flows.isEmpty,
-                           ask: "What happens at runtime when this changed behavior is triggered?",
-                           progress: "\(graph.flows.count) traced so far · tracing others…") {
+            sectionContent(
+                .flows, stage: .flows, hasContent: !graph.flows.isEmpty,
+                ask: "What happens at runtime when this changed behavior is triggered?",
+                progress: "\(graph.flows.count) traced so far · tracing others…"
+            ) {
                 FlowsView(
                     graph: graph,
                     focus: flowsFocus,

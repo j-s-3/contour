@@ -55,14 +55,16 @@ struct AnalyzingMark: View {
     var body: some View {
         Group {
             if reduceMotion {
-                let stepped = AnalysisResolution.steppedTarget(stage: stage, elapsed: 0,
-                                                                ringCount: ContourMarkGeometry.ringCount)
+                let stepped = AnalysisResolution.steppedTarget(
+                    stage: stage, elapsed: 0,
+                    ringCount: ContourMarkGeometry.ringCount)
                 ContourMarkView(resolution: stepped, drawsProgressively: false)
                     .animation(.easeInOut(duration: 0.8), value: stepped)
             } else {
                 TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-                    let target = AnalysisResolution.target(stage: stage,
-                                                           elapsed: timeline.date.timeIntervalSince(stageStarted))
+                    let target = AnalysisResolution.target(
+                        stage: stage,
+                        elapsed: timeline.date.timeIntervalSince(stageStarted))
                     ContourMarkView(resolution: smoother.value(toward: target, at: timeline.date))
                 }
             }

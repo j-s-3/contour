@@ -40,7 +40,9 @@ extension PRGraph {
         let ordered = decisionsToReview + otherDecisions
         let marked = ordered.filter { $0.reviewerState != .unreviewed || !Self.trimmedNote($0).isEmpty }
         return marked.enumerated()
-            .sorted { ($0.element.reviewerState.summaryRank, $0.offset) < ($1.element.reviewerState.summaryRank, $1.offset) }
+            .sorted {
+                ($0.element.reviewerState.summaryRank, $0.offset) < ($1.element.reviewerState.summaryRank, $1.offset)
+            }
             .map(\.element)
     }
 
@@ -56,7 +58,9 @@ extension PRGraph {
         var item = "- **\(label)** — \(brief(for: d).question)"
         let note = Self.trimmedNote(d)
         if !note.isEmpty {
-            item += "\n" + note.components(separatedBy: .newlines)
+            item +=
+                "\n"
+                + note.components(separatedBy: .newlines)
                 .map { $0.isEmpty ? "  >" : "  > \($0)" }
                 .joined(separator: "\n")
         }
@@ -68,8 +72,8 @@ extension PRGraph {
     }
 }
 
-private extension ReviewerState {
-    var summaryRank: Int {
+extension ReviewerState {
+    fileprivate var summaryRank: Int {
         switch self {
         case .discuss: return 0
         case .questioned: return 1

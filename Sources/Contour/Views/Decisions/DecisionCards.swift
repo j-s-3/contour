@@ -20,8 +20,9 @@ struct DecisionCard: View {
     @Environment(\.reviewActions) private var actions
 
     private var questions: [Consideration] {
-        DecisionsViewLogic.questions(from: graph.overviewQuestions(reviewedOn: decision.id),
-                                     leadingWith: arrivedFromConsiderationId)
+        DecisionsViewLogic.questions(
+            from: graph.overviewQuestions(reviewedOn: decision.id),
+            leadingWith: arrivedFromConsiderationId)
     }
 
     var body: some View {
@@ -88,8 +89,9 @@ struct DecisionCard: View {
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(isSelected ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.18),
-                              lineWidth: isSelected ? 1.5 : 1)
+                .strokeBorder(
+                    isSelected ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.18),
+                    lineWidth: isSelected ? 1.5 : 1)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -107,7 +109,8 @@ struct DecisionCard: View {
         if decision.reviewerPlacement == .review { line = line + Text("You added this to review. ") }
         if !impacts.isEmpty { line = line + Text("Impacts \(impacts)").fontWeight(.medium) + Text(" — ") }
         line = line + Text(attentionReason)
-        return line
+        return
+            line
             .font(.callout)
             .foregroundStyle(.secondary)
             .lineLimit(2)
@@ -130,8 +133,10 @@ struct DecisionCard: View {
             }
             if let why = brief.why {
                 GridRow {
-                    rowLabel(DecisionsViewLogic.whyLabel(hasShape: brief.shape != nil, hasTradeoff: brief.tradeoff != nil))
-                    (Text(why.text) + Text("   " + DecisionsViewLogic.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
+                    rowLabel(
+                        DecisionsViewLogic.whyLabel(hasShape: brief.shape != nil, hasTradeoff: brief.tradeoff != nil))
+                    (Text(why.text)
+                        + Text("   " + DecisionsViewLogic.provenanceNote(why)).font(.caption).foregroundStyle(.tertiary))
                         .font(.body)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +166,9 @@ struct DecisionCard: View {
                     rowLabel("Appears in")
                     FlowLayout(spacing: 12) {
                         ForEach(appearances, id: \.flow.id) { flow, nodeId in
-                            Button { actions.navigate(.flowNodeDetail(flowId: flow.id, nodeId: nodeId)) } label: {
+                            Button {
+                                actions.navigate(.flowNodeDetail(flowId: flow.id, nodeId: nodeId))
+                            } label: {
                                 Label(graph.scenarioTitle(for: flow) + " flow", systemImage: "arrow.triangle.branch")
                                     .font(.callout)
                             }
@@ -186,10 +193,13 @@ struct DecisionCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "questionmark.bubble")
                 .foregroundStyle(.orange)
-            TextField("What would you ask the author?", text: Binding(
-                get: { decision.reviewerNote },
-                set: { onSetNote($0) }
-            ), axis: .vertical)
+            TextField(
+                "What would you ask the author?",
+                text: Binding(
+                    get: { decision.reviewerNote },
+                    set: { onSetNote($0) }
+                ), axis: .vertical
+            )
             .textFieldStyle(.plain)
             .lineLimit(1...4)
             .focused(noteFocus, equals: decision.id)
@@ -267,7 +277,9 @@ struct OtherDecisionRow: View {
                     Label("Add to review", systemImage: "arrow.up.to.line")
                 }
                 .help("Make this one of the decisions you review and judge")
-                Button { actions.ask(.decision(decision.id)) } label: {
+                Button {
+                    actions.ask(.decision(decision.id))
+                } label: {
                     Label("Ask…", systemImage: "sparkles")
                 }
                 Button(action: onToggleExpanded) {
@@ -401,16 +413,22 @@ struct ReviewButtons: View {
 
     private func button(_ target: ReviewerState, _ title: String, shortcut: String) -> some View {
         let isOn = state == target
-        return Button { withAnimation(.easeOut(duration: 0.15)) { onSet(target) } } label: {
+        return Button {
+            withAnimation(.easeOut(duration: 0.15)) { onSet(target) }
+        } label: {
             Label(title, systemImage: target.symbol)
                 .font(.callout.weight(isOn ? .semibold : .regular))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .foregroundStyle(isOn ? target.tint : Color.primary)
-                .background(isOn ? target.tint.opacity(0.16) : Color.secondary.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(isOn ? target.tint.opacity(0.5) : Color.secondary.opacity(0.22)))
+                .background(
+                    isOn ? target.tint.opacity(0.16) : Color.secondary.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 7)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(isOn ? target.tint.opacity(0.5) : Color.secondary.opacity(0.22))
+                )
                 .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
