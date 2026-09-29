@@ -155,7 +155,7 @@ struct CodeRefVerifierTests {
         var judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: [:])
         judgment.considerations = [
             Consideration(
-                id: "q", question: "Safe?", detail: "", provenance: .fact, confidence: .high,
+                id: "q", headline: "Safe?", impact: "", provenance: .fact, confidence: .high,
                 refs: [CodeRef(path: "src/lib.rs", startLine: 99, endLine: 99)])
         ]
         let (judgmentResult, check) = await v.verify(.judgment(judgment))

@@ -796,51 +796,199 @@ enum ConsiderationKind: String, Codable, Hashable, Sendable {
     case question
 }
 
+enum ConsiderationCategory: String, Codable, Hashable, Sendable, CaseIterable {
+    case errorHandling = "error-handling"
+    case testCoverage = "test-coverage"
+    case compatibility
+    case reliability
+    case scaling
+    case security
+    case architecture
+    case productBehavior = "product-behavior"
+
+    var label: String {
+        switch self {
+        case .errorHandling: return "Error handling"
+        case .testCoverage: return "Test coverage"
+        case .compatibility: return "Compatibility"
+        case .reliability: return "Reliability"
+        case .scaling: return "Scaling"
+        case .security: return "Security"
+        case .architecture: return "Architecture"
+        case .productBehavior: return "Product behavior"
+        }
+    }
+
+    static func lenientKey(_ raw: String) -> String {
+        raw.lowercased()
+            .replacingOccurrences(of: "behaviour", with: "behavior")
+            .split(whereSeparator: { !$0.isLetter })
+            .joined(separator: "-")
+    }
+
+    init?(lenient raw: String) {
+        let key = Self.lenientKey(raw)
+        switch key {
+        case "performance", "scalability": self = .scaling
+        case "tests", "testing", "test": self = .testCoverage
+        case "behavior", "product": self = .productBehavior
+        default:
+            guard let match = Self(rawValue: key) else { return nil }
+            self = match
+        }
+    }
+
+    init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let category = Self(lenient: raw) else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Unknown category \(raw)"))
+        }
+        self = category
+    }
+}
+
+enum JudgmentType: String, Codable, Hashable, Sendable, CaseIterable {
+    case potentialProblem = "potential-problem"
+    case confirmIntent = "confirm-intent"
+    case designDecision = "design-decision"
+    case compatibilityDecision = "compatibility-decision"
+    case operationalRisk = "operational-risk"
+    case securityDecision = "security-decision"
+    case unclearRequirement = "unclear-requirement"
+    case externalDependency = "external-dependency"
+
+    var label: String {
+        switch self {
+        case .potentialProblem: return "Potential problem"
+        case .confirmIntent: return "Confirm intent"
+        case .designDecision: return "Design decision"
+        case .compatibilityDecision: return "Compatibility decision"
+        case .operationalRisk: return "Operational risk"
+        case .securityDecision: return "Security decision"
+        case .unclearRequirement: return "Unclear requirement"
+        case .externalDependency: return "External dependency"
+        }
+    }
+
+    init?(lenient raw: String) {
+        let key = ConsiderationCategory.lenientKey(raw)
+        switch key {
+        case "bug", "defect", "problem", "risk-of-defect": self = .potentialProblem
+        case "intent", "intentional", "confirm", "confirm-intended-behavior": self = .confirmIntent
+        case "tradeoff", "trade-off", "architectural-tradeoff", "design": self = .designDecision
+        case "compatibility", "compatibility-constraint": self = .compatibilityDecision
+        case "operational", "operations", "operability": self = .operationalRisk
+        case "security": self = .securityDecision
+        case "requirement", "unclear", "open-question": self = .unclearRequirement
+        case "dependency", "cross-product-dependency", "cross-team-dependency": self = .externalDependency
+        default:
+            guard let match = Self(rawValue: key) else { return nil }
+            self = match
+        }
+    }
+
+    init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let type = Self(lenient: raw) else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Unknown judgment type \(raw)"))
+        }
+        self = type
+    }
+}
+
 struct Consideration: Codable, Hashable, Sendable, Identifiable {
     var id: String
-    var question: String
-    var detail: String
+    var category: ConsiderationCategory?
+    var judgmentType: JudgmentType?
+    var headline: String
+    var impact: String
+    var decision: String?
     var kind: ConsiderationKind = .concern
     var provenance: Provenance = .interpretation
     var confidence: Confidence?
-    var explanation: String?
+    var evidence: String?
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
     var flowAnchors: [FlowAnchor] = []
 
     init(
-        id: String, question: String, detail: String, kind: ConsiderationKind = .concern,
+        id: String, category: ConsiderationCategory? = nil, judgmentType: JudgmentType? = nil, headline: String,
+        impact: String,
+        decision: String? = nil, kind: ConsiderationKind = .concern,
         provenance: Provenance = .interpretation, confidence: Confidence? = nil,
-        explanation: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
+        evidence: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
         flowAnchors: [FlowAnchor] = []
     ) {
         self.id = id
-        self.question = question
-        self.detail = detail
+        self.category = category
+        self.judgmentType = judgmentType
+        self.headline = headline
+        self.impact = impact
+        self.decision = decision
         self.kind = kind
         self.provenance = provenance
         self.confidence = confidence
-        self.explanation = explanation
+        self.evidence = evidence
         self.relatedIds = relatedIds
         self.refs = refs
         self.flowAnchors = flowAnchors
     }
     enum CodingKeys: String, CodingKey {
-        case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs, flowAnchors
+        case id, category, judgmentType, headline, impact, decision, kind, provenance, confidence, evidence, relatedIds,
+            refs, flowAnchors
     }
+    private enum LegacyKeys: String, CodingKey { case question, detail, explanation }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
-        question = try c.decode(String.self, forKey: .question)
-        detail = try c.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        category = try? c.decodeIfPresent(ConsiderationCategory.self, forKey: .category)
+        judgmentType = try? c.decodeIfPresent(JudgmentType.self, forKey: .judgmentType)
+        if let headline = try c.decodeIfPresent(String.self, forKey: .headline) {
+            self.headline = Self.plainProse(headline)
+        } else {
+            headline = Self.plainProse(try legacy.decode(String.self, forKey: .question))
+        }
+        impact = Self.plainProse(
+            try c.decodeIfPresent(String.self, forKey: .impact)
+                ?? legacy.decodeIfPresent(String.self, forKey: .detail) ?? "")
+        decision = Self.nonEmpty(try c.decodeIfPresent(String.self, forKey: .decision).map(Self.plainProse))
         kind = (try? c.decodeIfPresent(ConsiderationKind.self, forKey: .kind)) ?? .concern
         provenance = (try? c.decodeIfPresent(Provenance.self, forKey: .provenance)) ?? .interpretation
         confidence = try? c.decodeIfPresent(Confidence.self, forKey: .confidence)
-        explanation = try c.decodeIfPresent(String.self, forKey: .explanation)
+        evidence =
+            try c.decodeIfPresent(String.self, forKey: .evidence)
+            ?? legacy.decodeIfPresent(String.self, forKey: .explanation)
         relatedIds = try c.decodeIfPresent([String].self, forKey: .relatedIds) ?? []
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
         flowAnchors =
             (try? c.decodeIfPresent([FailableDecode<FlowAnchor>].self, forKey: .flowAnchors))?.compactMap(\.value) ?? []
+    }
+
+    static func plainProse(_ text: String) -> String {
+        text.replacingOccurrences(of: "`", with: "")
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    var reviewerAsk: String { decision ?? headline }
+
+    var contextLabel: String? {
+        let parts = [category?.label, judgmentType?.label].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    var briefing: String {
+        [headline, impact, decision.map { "Decision: \($0)" }]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .map { $0.hasSuffix(".") || $0.hasSuffix("?") ? $0 : $0 + "." }
+            .joined(separator: " ")
     }
 }
 

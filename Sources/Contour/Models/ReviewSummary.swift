@@ -24,7 +24,7 @@ extension PRGraph {
 
         let open = openQuestions
         if !open.isEmpty {
-            sections.append("### Open questions\n\n" + open.map { "- \($0.question)" }.joined(separator: "\n"))
+            sections.append("### Open questions\n\n" + open.map { "- \($0.reviewerAsk)" }.joined(separator: "\n"))
         }
 
         return sections.joined(separator: "\n\n") + "\n"

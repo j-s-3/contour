@@ -250,7 +250,7 @@ enum ChatContextBuilder {
         }
         if !considerations.isEmpty {
             out += "## Open review questions touching this\n"
-            for c in considerations.prefix(5) { out += "- \(c.question) \(c.detail)\n" }
+            for c in considerations.prefix(5) { out += "- \(c.briefing)\n" }
             out += "\n"
         }
         return out
@@ -273,8 +273,8 @@ enum ChatContextBuilder {
         for d in graph.decisions { out += "- \(d.title): \(d.decision.text)\n" }
         out += "\n### Flows\n"
         for f in graph.flows { out += "- \(graph.flowOutline(f))\n" }
-        out += "\n### Things to think about\n"
-        for c in graph.thingsToThinkAbout { out += "- \(c.question) \(c.detail)\n" }
+        out += "\n### Areas needing reviewer judgment\n"
+        for c in graph.thingsToThinkAbout { out += "- \(c.briefing)\n" }
         out += "\n"
         return out
     }

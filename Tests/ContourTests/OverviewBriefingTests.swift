@@ -7,7 +7,7 @@ struct OverviewBriefingTests {
     @Test func considerationsFromTheJudgmentStageWin() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [
-            Consideration(id: "c1", question: "Is a queue hop acceptable?", detail: "Publishing gets slower.")
+            Consideration(id: "c1", headline: "Is a queue hop acceptable?", impact: "Publishing gets slower.")
         ]
         #expect(graph.thingsToThinkAbout.map(\.id) == ["c1"])
     }
@@ -16,31 +16,41 @@ struct OverviewBriefingTests {
         let graph = ContourSampleData.publishTriggeredReindex
         let items = graph.thingsToThinkAbout
         #expect(items.map(\.kind) == [.concern, .concern, .question])
-        #expect(items.first?.question == "Can the index queue absorb a burst of publishes without falling behind?")
+        #expect(items.first?.headline == "Can the index queue absorb a burst of publishes without falling behind?")
     }
 
-    @Test func condensingLeadsWithTheQuestionAndDropsCodeLocations() {
+    @Test func condensingSplitsObservationImpactAndDecisionAndDropsCodeLocations() {
         let statement = Statement(
             text:
                 "The fix reads only the first chunk (src/input.rs:273-274). Pipes can deliver short chunks. Is timing-dependent classification acceptable? More detail follows here.",
             provenance: .interpretation, confidence: .medium
         )
         let item = PRGraph.condense(statement, id: "x", kind: .concern)
-        #expect(item.question == "Is timing-dependent classification acceptable?")
-        #expect(item.detail == "The fix reads only the first chunk.")
-        #expect(!item.question.contains("src/"))
-        #expect(item.explanation == statement.text)
+        #expect(item.headline == "The fix reads only the first chunk.")
+        #expect(item.impact == "Pipes can deliver short chunks.")
+        #expect(item.decision == "Is timing-dependent classification acceptable?")
+        #expect(!item.headline.contains("src/"))
+        #expect(item.evidence == statement.text)
         #expect(item.confidence == .medium)
     }
 
-    @Test func condensingAStatementWithoutAQuestionUsesItsFirstSentence() {
+    @Test func condensingAStatementWithoutAQuestionHasNoDecision() {
         let item = PRGraph.condense(
             Statement(text: "No timeout is set on evaluate(). It can hang the upload.", provenance: .interpretation),
             id: "y", kind: .concern
         )
-        #expect(item.question == "No timeout is set on evaluate().")
-        #expect(item.detail == "It can hang the upload.")
-        #expect(item.explanation == nil)
+        #expect(item.headline == "No timeout is set on evaluate().")
+        #expect(item.impact == "It can hang the upload.")
+        #expect(item.decision == nil)
+        #expect(item.evidence == nil)
+    }
+
+    @Test func condensingABareQuestionUsesItAsTheHeadline() {
+        let item = PRGraph.condense(
+            Statement(text: "Should this be silent?", provenance: .interpretation), id: "q", kind: .question)
+        #expect(item.headline == "Should this be silent?")
+        #expect(item.impact == "")
+        #expect(item.decision == nil)
     }
 
     @Test func abbreviationsAndBareCitationsDontBreakHeadlines() {
@@ -51,18 +61,149 @@ struct OverviewBriefingTests {
                 provenance: .interpretation),
             id: "z", kind: .concern
         )
-        #expect(item.question == "The fix is partial for stdin (e.g. `gpg -d ... | bat`).")
-        #expect(item.detail == "The test checks it.")
+        #expect(item.headline == "The fix is partial for stdin (e.g. `gpg -d ... | bat`).")
+        #expect(item.impact == "The test checks it.")
     }
 
-    @Test func considerationDecodingIsLenient() throws {
-        let json = #"{"question": "Should this be silent?", "kind": "somethingNew", "confidence": "very"}"#
+    @Test func legacyConsiderationKeysStillDecode() throws {
+        let json =
+            #"{"question": "Should this be silent?", "detail": "It hides errors.", "explanation": "See x.swift:3.", "kind": "somethingNew", "confidence": "very"}"#
         let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
-        #expect(item.question == "Should this be silent?")
-        #expect(item.detail == "")
+        #expect(item.headline == "Should this be silent?")
+        #expect(item.impact == "It hides errors.")
+        #expect(item.evidence == "See x.swift:3.")
+        #expect(item.decision == nil)
+        #expect(item.category == nil)
         #expect(item.kind == .concern)
         #expect(item.provenance == .interpretation)
         #expect(item.confidence == nil)
+    }
+
+    @Test func considerationDecodesTheReviewerFacingFields() throws {
+        let json =
+            #"{"category": "ERROR HANDLING", "headline": "Token failures behave differently", "impact": "Auth failures fail the whole run.", "decision": "Should auth failures fail the run?", "evidence": "mint() throws past gather()."}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.category == .errorHandling)
+        #expect(item.headline == "Token failures behave differently")
+        #expect(item.impact == "Auth failures fail the whole run.")
+        #expect(item.decision == "Should auth failures fail the run?")
+        #expect(item.evidence == "mint() throws past gather().")
+    }
+
+    @Test func newKeysWinOverLegacyKeys() throws {
+        let json =
+            #"{"headline": "New", "question": "Old?", "impact": "New impact", "detail": "Old detail", "evidence": "New evidence", "explanation": "Old"}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.headline == "New")
+        #expect(item.impact == "New impact")
+        #expect(item.evidence == "New evidence")
+    }
+
+    @Test func aConsiderationWithoutAHeadlineOrQuestionFailsToDecode() {
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Consideration.self, from: Data(#"{"impact": "x"}"#.utf8))
+        }
+    }
+
+    @Test func reviewerFacingFieldsDropMarkdownBackticksButEvidenceKeepsThem() throws {
+        let json =
+            #"{"headline": "Files show a `<BINARY>` header", "impact": "Unless `-A` is passed.", "decision": "Keep `--binary`?", "evidence": "See `try_new`."}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.headline == "Files show a <BINARY> header")
+        #expect(item.impact == "Unless -A is passed.")
+        #expect(item.decision == "Keep --binary?")
+        #expect(item.evidence == "See `try_new`.")
+    }
+
+    @Test func blankDecisionsAndUnknownCategoriesDecodeAsAbsent() throws {
+        let json = #"{"headline": "H", "decision": "   ", "category": "vibes"}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.decision == nil)
+        #expect(item.category == nil)
+    }
+
+    @Test(arguments: [
+        ("error-handling", ConsiderationCategory.errorHandling), ("Test Coverage", .testCoverage),
+        ("testing", .testCoverage), ("compatibility", .compatibility), ("RELIABILITY", .reliability),
+        ("performance", .scaling), ("scalability", .scaling), ("scaling", .scaling), ("security", .security),
+        ("architecture", .architecture), ("product_behaviour", .productBehavior),
+        ("PRODUCT BEHAVIOR", .productBehavior),
+        ("behavior", .productBehavior),
+    ])
+    func categoriesDecodeLeniently(raw: String, expected: ConsiderationCategory) {
+        #expect(ConsiderationCategory(lenient: raw) == expected)
+    }
+
+    @Test func everyCategoryHasALabelAndRoundTrips() throws {
+        for category in ConsiderationCategory.allCases {
+            #expect(!category.label.isEmpty)
+            let data = try JSONEncoder().encode(category)
+            #expect(try JSONDecoder().decode(ConsiderationCategory.self, from: data) == category)
+        }
+    }
+
+    @Test func aConsiderationRoundTripsThroughTheCacheEncoding() throws {
+        let item = Consideration(
+            id: "a", category: .security, judgmentType: .securityDecision, headline: "H", impact: "I", decision: "D?",
+            kind: .question, evidence: "E", relatedIds: ["d1"])
+        let decoded = try JSONDecoder().decode(Consideration.self, from: JSONEncoder().encode(item))
+        #expect(decoded == item)
+    }
+
+    @Test func briefingReadsAsPlainSentences() {
+        let full = Consideration(
+            id: "a", headline: "Token failures differ", impact: "They fail the run.", decision: "Should they?")
+        #expect(full.briefing == "Token failures differ. They fail the run. Decision: Should they?")
+        let bare = Consideration(id: "b", headline: "Is this safe?", impact: "")
+        #expect(bare.briefing == "Is this safe?")
+    }
+
+    @Test(arguments: [
+        ("potential_problem", JudgmentType.potentialProblem), ("bug", .potentialProblem),
+        ("CONFIRM INTENT", .confirmIntent), ("intentional", .confirmIntent),
+        ("design-decision", .designDecision), ("tradeoff", .designDecision),
+        ("compatibility decision", .compatibilityDecision), ("compatibility", .compatibilityDecision),
+        ("operational_risk", .operationalRisk), ("operations", .operationalRisk),
+        ("security-decision", .securityDecision), ("security", .securityDecision),
+        ("unclear requirement", .unclearRequirement), ("open-question", .unclearRequirement),
+        ("external-dependency", .externalDependency), ("cross-product dependency", .externalDependency),
+    ])
+    func judgmentTypesDecodeLeniently(raw: String, expected: JudgmentType) {
+        #expect(JudgmentType(lenient: raw) == expected)
+    }
+
+    @Test func everyJudgmentTypeHasALabelAndRoundTrips() throws {
+        for type in JudgmentType.allCases {
+            #expect(!type.label.isEmpty)
+            #expect(try JSONDecoder().decode(JudgmentType.self, from: JSONEncoder().encode(type)) == type)
+        }
+        #expect(JudgmentType(lenient: "vibes") == nil)
+    }
+
+    @Test func judgmentTypeDecodesAndAnUnknownOneIsAbsent() throws {
+        let known = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgmentType": "confirm_intent"}"#.utf8))
+        #expect(known.judgmentType == .confirmIntent)
+        let unknown = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgmentType": "hunch"}"#.utf8))
+        #expect(unknown.judgmentType == nil)
+    }
+
+    @Test func theContextLabelJoinsCategoryAndJudgmentType() {
+        #expect(
+            Consideration(id: "a", category: .compatibility, judgmentType: .confirmIntent, headline: "H", impact: "")
+                .contextLabel
+                == "Compatibility · Confirm intent")
+        #expect(Consideration(id: "b", category: .security, headline: "H", impact: "").contextLabel == "Security")
+        #expect(
+            Consideration(id: "c", judgmentType: .operationalRisk, headline: "H", impact: "").contextLabel
+                == "Operational risk")
+        #expect(Consideration(id: "d", headline: "H", impact: "").contextLabel == nil)
+    }
+
+    @Test func theReviewerAskIsTheDecisionWhenThereIsOne() {
+        #expect(Consideration(id: "a", headline: "H", impact: "", decision: "D?").reviewerAsk == "D?")
+        #expect(Consideration(id: "b", headline: "H", impact: "").reviewerAsk == "H")
     }
 
     @Test func judgmentStageDecodesConsiderations() throws {
@@ -99,7 +240,7 @@ struct OverviewBriefingTests {
         graph.pr.uncertainties = judgment.uncertainties
         let items = graph.thingsToThinkAbout
         #expect(!items.isEmpty)
-        #expect(items.allSatisfy { !$0.question.contains("src/") })
+        #expect(items.allSatisfy { !$0.headline.contains("src/") })
     }
 
     @Test func mockFixturesCarryBudgetedConsiderations() throws {
@@ -107,7 +248,7 @@ struct OverviewBriefingTests {
             StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment)
         )
         #expect((1...5).contains(judgment.considerations.count))
-        #expect(judgment.considerations.allSatisfy { $0.question.hasSuffix("?") })
+        #expect(judgment.considerations.allSatisfy { !$0.headline.isEmpty && !$0.impact.isEmpty })
         let behavior = try StageDecoding.decode(
             StageDecoding.BehaviorChangeResult.self, from: MockAnalysisFixtures.response(for: .behaviorChange)
         )

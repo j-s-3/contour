@@ -42,11 +42,11 @@ struct ArchitectureInspectorRenderTests {
                 id: "unlabeled", fromId: "search-service", toId: "index-queue", label: "", change: .removed))
         graph.pr.considerations = [
             Consideration(
-                id: "q-part", question: "Is the queue durable?", detail: "d", relatedIds: ["index-queue"]),
+                id: "q-part", headline: "Is the queue durable?", impact: "d", relatedIds: ["index-queue"]),
             Consideration(
-                id: "q-edge", question: "Does reindex block?", detail: "d", relatedIds: ["queue-indexes"]),
+                id: "q-edge", headline: "Does reindex block?", impact: "d", relatedIds: ["queue-indexes"]),
             Consideration(
-                id: "q-edge-2", question: "Is publish fast?", detail: "d", relatedIds: ["publish-queues"]),
+                id: "q-edge-2", headline: "Is publish fast?", impact: "d", relatedIds: ["publish-queues"]),
         ]
         return graph
     }

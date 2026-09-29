@@ -178,8 +178,16 @@ extension PRGraph {
         let flowIds = Set(flows.map(\.id))
         for item in thingsToThinkAbout {
             let nodeId: String?
-            if !item.flowAnchors.isEmpty {
-                nodeId = item.flowAnchors.first { $0.flowId == flow.id && behavior.node($0.nodeId) != nil }?.nodeId
+            let anchors = item.flowAnchors.filter { flowIds.contains($0.flowId) }
+            if !anchors.isEmpty {
+                nodeId =
+                    anchors.lazy
+                    .filter { $0.flowId == flow.id }
+                    .compactMap { anchor in
+                        behavior.node(anchor.nodeId)?.id
+                            ?? behavior.nodes.first { $0.stepIds.contains(anchor.nodeId) }?.id
+                    }
+                    .first
             } else {
                 let namedFlows = item.relatedIds.filter { flowIds.contains($0) }
                 if !namedFlows.isEmpty && !namedFlows.contains(flow.id) {
@@ -198,7 +206,7 @@ extension PRGraph {
                 out.append(
                     FlowAnnotation(
                         kind: .question, targetId: item.id, nodeId: nodeId,
-                        text: item.question, detail: item.detail.isEmpty ? nil : item.detail))
+                        text: item.headline, detail: item.impact.isEmpty ? nil : item.impact))
             }
         }
         return out

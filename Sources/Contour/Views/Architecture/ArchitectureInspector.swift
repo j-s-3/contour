@@ -245,7 +245,7 @@ struct ArchitectureInspector: View {
         if !items.isEmpty {
             section("Review questions") {
                 ForEach(items) { item in
-                    linkRow(icon: "exclamationmark.triangle.fill", tint: .orange, text: item.question) {
+                    linkRow(icon: "exclamationmark.triangle.fill", tint: .orange, text: item.headline) {
                         actions.navigate(.consideration(item.id))
                     }
                     .reviewContextMenu(.consideration(item.id))

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Testing
 
@@ -112,7 +113,7 @@ struct SummaryViewTests {
     @Test func relatedLinksResolvesADecision() {
         let decision = DecisionNode(
             id: "d1", title: "Use retries", decision: Statement(text: "x", provenance: .claim), confidence: .high)
-        let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["d1"])
+        let item = Consideration(id: "q1", headline: "?", impact: "", relatedIds: ["d1"])
         let links = SummaryViewLogic.relatedLinks(for: item, graph: graph(decisions: [decision]))
         #expect(links.count == 1)
         #expect(links[0].title == "Use retries")
@@ -122,7 +123,7 @@ struct SummaryViewTests {
 
     @Test func relatedLinksResolvesAComponent() {
         let component = ComponentNode(id: "c1", title: "Publisher", changeKind: .changed)
-        let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["c1"])
+        let item = Consideration(id: "q1", headline: "?", impact: "", relatedIds: ["c1"])
         let links = SummaryViewLogic.relatedLinks(for: item, graph: graph(components: [component]))
         #expect(links.count == 1)
         #expect(links[0].title == "Publisher")
@@ -132,7 +133,7 @@ struct SummaryViewTests {
 
     @Test func relatedLinksResolvesAFlow() {
         let flow = FlowNode(id: "f1", title: "Publish page")
-        let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["f1"])
+        let item = Consideration(id: "q1", headline: "?", impact: "", relatedIds: ["f1"])
         let links = SummaryViewLogic.relatedLinks(for: item, graph: graph(flows: [flow]))
         #expect(links.count == 1)
         #expect(links[0].title == "Publish page")
@@ -141,7 +142,7 @@ struct SummaryViewTests {
     }
 
     @Test func relatedLinksDropsIdsThatResolveToNothing() {
-        let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["does-not-exist"])
+        let item = Consideration(id: "q1", headline: "?", impact: "", relatedIds: ["does-not-exist"])
         #expect(SummaryViewLogic.relatedLinks(for: item, graph: graph()).isEmpty)
     }
 
@@ -149,7 +150,7 @@ struct SummaryViewTests {
         let decision = DecisionNode(
             id: "d1", title: "D", decision: Statement(text: "x", provenance: .claim), confidence: .high)
         let component = ComponentNode(id: "c1", title: "C", changeKind: .changed)
-        let item = Consideration(id: "q1", question: "?", detail: "", relatedIds: ["c1", "d1"])
+        let item = Consideration(id: "q1", headline: "?", impact: "", relatedIds: ["c1", "d1"])
         let links = SummaryViewLogic.relatedLinks(
             for: item, graph: graph(decisions: [decision], components: [component]))
         #expect(links.map(\.title) == ["C", "D"])
@@ -213,7 +214,7 @@ struct SummaryViewTests {
     }
 
     @Test func thingsToThinkAboutBranchShowsTheListOnceThereAreItems() {
-        let items = [Consideration(id: "q1", question: "?", detail: "")]
+        let items = [Consideration(id: "q1", headline: "?", impact: "")]
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: items, judgmentStopped: false) == .list)
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: items, judgmentStopped: true) == .list)
     }
@@ -227,7 +228,7 @@ struct SummaryViewTests {
     }
 
     private func considerations(_ n: Int) -> [Consideration] {
-        (1...n).map { Consideration(id: "q\($0)", question: "?\($0)", detail: "") }
+        (1...n).map { Consideration(id: "q\($0)", headline: "?\($0)", impact: "") }
     }
 
     @Test func visibleConsiderationsTrimsToTheBudgetWhenCollapsed() {
@@ -253,13 +254,24 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.showMoreLabel(count: 8, budget: 5, showingAll: true) == "Show fewer")
     }
 
-    @Test func thingsToThinkAboutHeaderTextIsSingularForOne() {
-        #expect(SummaryViewLogic.thingsToThinkAboutHeaderText(count: 1) == "1 THING TO THINK ABOUT")
+    @Test func judgmentHeaderLabelIsSingularForOne() {
+        #expect(SummaryViewLogic.judgmentHeaderLabel(count: 1) == "AREA NEEDING YOUR JUDGMENT")
     }
 
-    @Test func thingsToThinkAboutHeaderTextIsPluralOtherwise() {
-        #expect(SummaryViewLogic.thingsToThinkAboutHeaderText(count: 0) == "0 THINGS TO THINK ABOUT")
-        #expect(SummaryViewLogic.thingsToThinkAboutHeaderText(count: 4) == "4 THINGS TO THINK ABOUT")
+    @Test func judgmentHeaderLabelIsPluralOtherwiseAndBeforeTheCountIsKnown() {
+        #expect(SummaryViewLogic.judgmentHeaderLabel(count: 0) == "AREAS NEEDING YOUR JUDGMENT")
+        #expect(SummaryViewLogic.judgmentHeaderLabel(count: 4) == "AREAS NEEDING YOUR JUDGMENT")
+        #expect(SummaryViewLogic.judgmentHeaderLabel(count: nil) == "AREAS NEEDING YOUR JUDGMENT")
+    }
+
+    @Test func theSectionIsHeadedByAJudgmentSymbolNotAWarning() {
+        #expect(SummaryViewLogic.judgmentSymbol == "scalemass")
+        #expect(NSImage(systemSymbolName: SummaryViewLogic.judgmentSymbol, accessibilityDescription: nil) != nil)
+    }
+
+    @Test func decisionLabelAsksConcernsToDecideAndQuestionsToConfirm() {
+        #expect(SummaryViewLogic.decisionLabel(kind: .concern) == "Decision")
+        #expect(SummaryViewLogic.decisionLabel(kind: .question) == "To confirm")
     }
 
     @Test func resolvedProgressTextIsNilWithNothingResolvedYet() {

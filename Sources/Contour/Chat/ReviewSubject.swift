@@ -30,7 +30,7 @@ enum SubjectKind: String, Sendable {
         case .behavior: return "Behavior change"
         case .stage: return "Behavior step"
         case .statement: return "Summary"
-        case .consideration: return "Thing to think about"
+        case .consideration: return "Area needing judgment"
         case .component: return "Architecture"
         case .relationship: return "Relationship"
         case .decision: return "Decision"
@@ -170,18 +170,20 @@ extension PRGraph {
             let decisionIds = item.relatedIds.filter { decision($0) != nil }
             let componentIds = item.relatedIds.filter { component($0) != nil }
             let flowIds = item.relatedIds.filter { flow($0) != nil }
-            var summary = [item.question, item.detail]
+            var summary = [item.headline, item.impact] + [item.decision.map { "Decision: \($0)" }].compactMap { $0 }
             if let first = decisionIds.first.flatMap(decision) { summary.append("Related decision: \(first.title)") }
             var detail = """
-                Something the reviewer was asked to think about (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
-                Question: \(item.question)
-                Why it matters: \(item.detail)
+                Something the reviewer was asked to judge (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
+                Observation: \(item.headline)
+                Why it matters: \(item.impact)
                 Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
                 """
-            if let explanation = item.explanation { detail += "\nFull reasoning: \(explanation)" }
+            if let context = item.contextLabel { detail += "\nKind of judgment: \(context)" }
+            if let decision = item.decision { detail += "\nDecision asked of the reviewer: \(decision)" }
+            if let evidence = item.evidence { detail += "\nTechnical evidence: \(evidence)" }
             return ResolvedSubject(
-                subject: subject, kind: .consideration, title: item.question,
-                lineage: [prLine, "Things to think about"],
+                subject: subject, kind: .consideration, title: item.headline,
+                lineage: [prLine, "Areas needing judgment"],
                 summary: summary.compactMap(Self.oneLine),
                 detail: detail,
                 componentIds: componentIds,
@@ -237,7 +239,7 @@ extension PRGraph {
                 detail +=
                     "\nThe PR's overall architectural impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)"
             }
-            for q in questions { detail += "\n- Overview question about this part: \(q.question) \(q.detail)" }
+            for q in questions { detail += "\n- Overview question about this part: \(q.briefing)" }
             return ResolvedSubject(
                 subject: subject, kind: .component, title: node.title,
                 lineage: [prLine, "Architecture"] + ancestors,
@@ -269,7 +271,7 @@ extension PRGraph {
             let questions = architectureQuestions(touching: [edge.fromId, edge.toId], edges: [id])
             let endpoints = [edge.fromId, edge.toId].compactMap { resolve(.component($0))?.detail }
             var detail = "Relationship: \(describeEdge(edge))"
-            for q in questions { detail += "\n- Overview question about this relationship: \(q.question) \(q.detail)" }
+            for q in questions { detail += "\n- Overview question about this relationship: \(q.briefing)" }
             return ResolvedSubject(
                 subject: subject, kind: .relationship, title: "\(from) → \(to)",
                 lineage: [prLine, "Architecture"],
@@ -302,7 +304,7 @@ extension PRGraph {
             let who = d.reviewerPlacement == nil ? "the analysis placed it" : "the reviewer moved it there"
             detail += "\n- Shown under \(placement) (\(who)): \(attentionReason(for: d))"
             for q in overviewQuestions(reviewedOn: id) {
-                detail += "\n- Overview question reviewed on this decision: \(q.question) \(q.detail)"
+                detail += "\n- Overview question reviewed on this decision: \(q.briefing)"
             }
             return ResolvedSubject(
                 subject: subject, kind: .decision, title: brief.question,

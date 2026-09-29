@@ -52,7 +52,7 @@ struct SummaryViewRenderTests {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = (1...8).map {
             Consideration(
-                id: "c\($0)", question: "Question \($0)?", detail: "Detail \($0)", explanation: "Because \($0).")
+                id: "c\($0)", headline: "Question \($0)?", impact: "Detail \($0)", evidence: "Because \($0).")
         }
         var analysis = state(.done, complete: true)
         analysis.stages[.judgment] = .running(detail: nil)
@@ -79,8 +79,9 @@ struct SummaryViewRenderTests {
         let graph = ContourSampleData.publishTriggeredReindex
         let related = (graph.decisions.map(\.id) + graph.components.map(\.id) + graph.flows.map(\.id))
         let item = Consideration(
-            id: "c", question: "Is it fine?", detail: "Detail.", kind: .question,
-            explanation: "Because.", relatedIds: related + ["missing"],
+            id: "c", category: .reliability, headline: "Is it fine?", impact: "Detail.", decision: "Should it be?",
+            kind: .question,
+            evidence: "Because.", relatedIds: related + ["missing"],
             refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
         )
         for expanded in [true, false] {
@@ -91,7 +92,7 @@ struct SummaryViewRenderTests {
                 #expect(render(row) != nil)
             }
         }
-        let bare = Consideration(id: "d", question: "Q?", detail: "")
+        let bare = Consideration(id: "d", headline: "Q?", impact: "")
         #expect(
             render(
                 ConsiderationRow(
