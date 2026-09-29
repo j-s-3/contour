@@ -501,8 +501,8 @@ struct ConsiderationRow: View {
                             .lineLimit(isExpanded ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let decision = item.decision {
-                        decisionLine(decision)
+                    if let judgment = item.judgment {
+                        judgmentLine(judgment)
                             .padding(.top, 3)
                     }
                 }
@@ -535,12 +535,12 @@ struct ConsiderationRow: View {
         .reviewContextMenu(.consideration(item.id))
     }
 
-    private func decisionLine(_ decision: String) -> some View {
+    private func judgmentLine(_ judgment: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(verbatim: SummaryViewLogic.decisionLabel(kind: item.kind))
+            Text(verbatim: SummaryViewLogic.judgmentLabel(kind: item.kind))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(item.kind == .question ? Color.secondary : Color.orange)
-            Text(decision)
+            Text(judgment)
                 .font(.callout)
                 .lineLimit(isExpanded ? nil : 2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -784,8 +784,8 @@ enum SummaryViewLogic {
 
     static let judgmentSymbol = "scalemass"
 
-    static func decisionLabel(kind: ConsiderationKind) -> String {
-        kind == .question ? "To confirm" : "Decision"
+    static func judgmentLabel(kind: ConsiderationKind) -> String {
+        kind == .question ? "To confirm" : "Your judgment"
     }
 
     static func resolvedProgressText(reviewed: Int, total: Int) -> String? {

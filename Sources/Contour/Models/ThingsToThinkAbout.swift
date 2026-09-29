@@ -30,13 +30,13 @@ extension PRGraph {
         let observations = sentences.filter { !$0.hasSuffix("?") }
         let headline = observations.first ?? question ?? statement.text
         let impact = observations.dropFirst().first ?? ""
-        let decision = observations.isEmpty ? nil : question
+        let judgment = observations.isEmpty ? nil : question
         let condensedAway = observations.count > 2
         return Consideration(
             id: id,
             headline: headline,
             impact: impact,
-            decision: decision,
+            judgment: judgment,
             kind: kind,
             provenance: statement.provenance,
             confidence: statement.confidence,

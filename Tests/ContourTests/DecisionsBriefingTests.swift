@@ -103,7 +103,11 @@ struct DecisionsBriefingTests {
     }
 
     @Test func reviewProgressCountsTheThingsToThinkAbout() throws {
-        let graph = try fixtureGraph()
+        var graph = try fixtureGraph()
+        let questions = graph.pr.considerations ?? []
+        graph.pr.considerations =
+            questions
+            + (0...graph.decisionsToReview.count).map { Consideration(id: "extra-\($0)", headline: "H", impact: "") }
         #expect(graph.reviewProgress().total == graph.thingsToThinkAbout.count)
         #expect(graph.reviewProgress().total != graph.decisionsToReview.count)
         #expect(graph.reviewProgress().reviewed == 0)
@@ -291,7 +295,7 @@ struct DecisionsBriefingTests {
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
         let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
-        #expect(onBlocking == ["piped-input-detection-depends-on-chunking", "overlap-with-pending-bounded-read-pr"])
+        #expect(onBlocking == ["piped-input-short-first-read"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(
@@ -318,7 +322,7 @@ struct DecisionsBriefingTests {
         #expect(resolved.detail.contains("Read until 1 KB"))
         #expect(
             resolved.detail.contains(
-                "Overview question reviewed on this decision: Piped input may still show binary data when it arrives in small pieces"
+                "Overview question reviewed on this decision: Binary detection over piped input covers only the first chunk that arrives"
             ))
         #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
         #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))

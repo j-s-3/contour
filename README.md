@@ -58,8 +58,9 @@ of a normal run with Claude Code as the harness, not mockups.
 The **Overview** reads like a colleague's handoff. It says in one line what the PR
 changes, shows the behavior before and after as a chain of steps, and says *why* the
 change was made. It also lists the few **areas needing your judgment**, each written so it
-makes sense before you open the diff: what was noticed, why it could matter, and the
-decision you're being asked to make. Size, CI status, approvals and age sit in the header.
+makes sense before you open the diff: what is happening, why it could matter, and the one
+neutral question you're being asked to judge. There are only as many as the PR warrants.
+Size, CI status, approvals and age sit in the header.
 Each "Review →" takes you to the evidence and the decision the item is about.
 
 ### Judge the decisions that matter

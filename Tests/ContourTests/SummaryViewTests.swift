@@ -269,9 +269,9 @@ struct SummaryViewTests {
         #expect(NSImage(systemSymbolName: SummaryViewLogic.judgmentSymbol, accessibilityDescription: nil) != nil)
     }
 
-    @Test func decisionLabelAsksConcernsToDecideAndQuestionsToConfirm() {
-        #expect(SummaryViewLogic.decisionLabel(kind: .concern) == "Decision")
-        #expect(SummaryViewLogic.decisionLabel(kind: .question) == "To confirm")
+    @Test func judgmentLabelAsksConcernsForYourJudgmentAndQuestionsToConfirm() {
+        #expect(SummaryViewLogic.judgmentLabel(kind: .concern) == "Your judgment")
+        #expect(SummaryViewLogic.judgmentLabel(kind: .question) == "To confirm")
     }
 
     @Test func resolvedProgressTextIsNilWithNothingResolvedYet() {

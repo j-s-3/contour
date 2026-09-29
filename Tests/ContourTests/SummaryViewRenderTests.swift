@@ -79,7 +79,7 @@ struct SummaryViewRenderTests {
         let graph = ContourSampleData.publishTriggeredReindex
         let related = (graph.decisions.map(\.id) + graph.components.map(\.id) + graph.flows.map(\.id))
         let item = Consideration(
-            id: "c", category: .reliability, headline: "Is it fine?", impact: "Detail.", decision: "Should it be?",
+            id: "c", category: .reliability, headline: "Is it fine?", impact: "Detail.", judgment: "Should it be?",
             kind: .question,
             evidence: "Because.", relatedIds: related + ["missing"],
             refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]

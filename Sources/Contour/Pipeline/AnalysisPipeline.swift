@@ -20,7 +20,7 @@ actor AnalysisPipeline {
     private let trackerID: TrackerID
     private let github: GitHubService
 
-    static let pipelineVersion = 15
+    static let pipelineVersion = 16
 
     nonisolated let events: AsyncStream<PipelineEvent>
     private let continuation: AsyncStream<PipelineEvent>.Continuation

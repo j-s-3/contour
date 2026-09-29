@@ -28,7 +28,7 @@ struct OverviewBriefingTests {
         let item = PRGraph.condense(statement, id: "x", kind: .concern)
         #expect(item.headline == "The fix reads only the first chunk.")
         #expect(item.impact == "Pipes can deliver short chunks.")
-        #expect(item.decision == "Is timing-dependent classification acceptable?")
+        #expect(item.judgment == "Is timing-dependent classification acceptable?")
         #expect(!item.headline.contains("src/"))
         #expect(item.evidence == statement.text)
         #expect(item.confidence == .medium)
@@ -41,7 +41,7 @@ struct OverviewBriefingTests {
         )
         #expect(item.headline == "No timeout is set on evaluate().")
         #expect(item.impact == "It can hang the upload.")
-        #expect(item.decision == nil)
+        #expect(item.judgment == nil)
         #expect(item.evidence == nil)
     }
 
@@ -50,7 +50,7 @@ struct OverviewBriefingTests {
             Statement(text: "Should this be silent?", provenance: .interpretation), id: "q", kind: .question)
         #expect(item.headline == "Should this be silent?")
         #expect(item.impact == "")
-        #expect(item.decision == nil)
+        #expect(item.judgment == nil)
     }
 
     @Test func abbreviationsAndBareCitationsDontBreakHeadlines() {
@@ -72,7 +72,7 @@ struct OverviewBriefingTests {
         #expect(item.headline == "Should this be silent?")
         #expect(item.impact == "It hides errors.")
         #expect(item.evidence == "See x.swift:3.")
-        #expect(item.decision == nil)
+        #expect(item.judgment == nil)
         #expect(item.category == nil)
         #expect(item.kind == .concern)
         #expect(item.provenance == .interpretation)
@@ -86,7 +86,7 @@ struct OverviewBriefingTests {
         #expect(item.category == .errorHandling)
         #expect(item.headline == "Token failures behave differently")
         #expect(item.impact == "Auth failures fail the whole run.")
-        #expect(item.decision == "Should auth failures fail the run?")
+        #expect(item.judgment == "Should auth failures fail the run?")
         #expect(item.evidence == "mint() throws past gather().")
     }
 
@@ -111,14 +111,14 @@ struct OverviewBriefingTests {
         let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
         #expect(item.headline == "Files show a <BINARY> header")
         #expect(item.impact == "Unless -A is passed.")
-        #expect(item.decision == "Keep --binary?")
+        #expect(item.judgment == "Keep --binary?")
         #expect(item.evidence == "See `try_new`.")
     }
 
     @Test func blankDecisionsAndUnknownCategoriesDecodeAsAbsent() throws {
         let json = #"{"headline": "H", "decision": "   ", "category": "vibes"}"#
         let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
-        #expect(item.decision == nil)
+        #expect(item.judgment == nil)
         #expect(item.category == nil)
     }
 
@@ -144,7 +144,7 @@ struct OverviewBriefingTests {
 
     @Test func aConsiderationRoundTripsThroughTheCacheEncoding() throws {
         let item = Consideration(
-            id: "a", category: .security, judgmentType: .securityDecision, headline: "H", impact: "I", decision: "D?",
+            id: "a", category: .security, judgmentType: .securityDecision, headline: "H", impact: "I", judgment: "D?",
             kind: .question, evidence: "E", relatedIds: ["d1"])
         let decoded = try JSONDecoder().decode(Consideration.self, from: JSONEncoder().encode(item))
         #expect(decoded == item)
@@ -152,8 +152,8 @@ struct OverviewBriefingTests {
 
     @Test func briefingReadsAsPlainSentences() {
         let full = Consideration(
-            id: "a", headline: "Token failures differ", impact: "They fail the run.", decision: "Should they?")
-        #expect(full.briefing == "Token failures differ. They fail the run. Decision: Should they?")
+            id: "a", headline: "Token failures differ", impact: "They fail the run.", judgment: "Should they?")
+        #expect(full.briefing == "Token failures differ. They fail the run. Your judgment: Should they?")
         let bare = Consideration(id: "b", headline: "Is this safe?", impact: "")
         #expect(bare.briefing == "Is this safe?")
     }
@@ -201,8 +201,42 @@ struct OverviewBriefingTests {
         #expect(Consideration(id: "d", headline: "H", impact: "").contextLabel == nil)
     }
 
-    @Test func theReviewerAskIsTheDecisionWhenThereIsOne() {
-        #expect(Consideration(id: "a", headline: "H", impact: "", decision: "D?").reviewerAsk == "D?")
+    @Test func theContextLabelDoesNotRepeatTheCategoryInTheJudgmentType() {
+        #expect(
+            Consideration(
+                id: "a", category: .compatibility, judgmentType: .compatibilityDecision, headline: "H", impact: ""
+            ).contextLabel == "Compatibility · Decision")
+        #expect(
+            Consideration(id: "b", category: .security, judgmentType: .securityDecision, headline: "H", impact: "")
+                .contextLabel == "Security · Decision")
+        #expect(
+            Consideration(id: "c", category: .reliability, judgmentType: .operationalRisk, headline: "H", impact: "")
+                .contextLabel == "Reliability · Operational risk")
+        #expect(
+            Consideration(id: "d", category: .architecture, judgmentType: .securityDecision, headline: "H", impact: "")
+                .contextLabel == "Architecture · Security decision")
+        #expect(
+            Consideration(id: "e", judgmentType: .compatibilityDecision, headline: "H", impact: "").contextLabel
+                == "Compatibility decision")
+    }
+
+    @Test func theJudgmentDecodesFromItsOwnKeyAndFromTheLegacyDecisionKey() throws {
+        let current = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgment": "Should `X` happen?"}"#.utf8))
+        #expect(current.judgment == "Should X happen?")
+        let legacy = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "decision": "Should Y happen?"}"#.utf8))
+        #expect(legacy.judgment == "Should Y happen?")
+        let both = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgment": "New?", "decision": "Old?"}"#.utf8))
+        #expect(both.judgment == "New?")
+        let blank = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgment": "  "}"#.utf8))
+        #expect(blank.judgment == nil)
+    }
+
+    @Test func theReviewerAskIsTheJudgmentWhenThereIsOne() {
+        #expect(Consideration(id: "a", headline: "H", impact: "", judgment: "D?").reviewerAsk == "D?")
         #expect(Consideration(id: "b", headline: "H", impact: "").reviewerAsk == "H")
     }
 

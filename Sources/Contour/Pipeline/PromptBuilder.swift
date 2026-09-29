@@ -557,13 +557,14 @@ struct PromptBuilder {
         architectureImpact and intent statements you were given, unchanged, for the final summary
         object if you have them; otherwise omit those two fields.
 
-        Finally, distill everything above into "considerations": the 1-5 things a staff engineer
-        would tell the reviewer to think about before approving, most important first. Each
-        decision carries a review significance ("high" ones are what the reviewer will be asked
-        to judge). Favor concerns about high-significance decisions. A consideration you anchor
-        to a decision marks it as deserving attention, so don't anchor a minor question (e.g.
-        about test coverage) to a low-significance decision unless it reveals a real
-        consequence the decision's significance missed.
+        Finally, distill everything above into "considerations": the places where the reviewer's
+        judgment is worth more than yours, most important first, at most five. There is no quota:
+        two genuinely useful items beat five padded ones, so return only as many as clear the
+        rules below, even one or none. Each decision carries a review significance ("high" ones
+        are what the reviewer will be asked to judge). Favor concerns about high-significance
+        decisions. A consideration you anchor to a decision marks it as deserving attention, so
+        don't anchor a minor question (e.g. about test coverage) to a low-significance decision
+        unless it reveals a real consequence the decision's significance missed.
 
         These are a handoff of judgment from you to the reviewer, not a list of warnings: each is
         a place where a human's call is worth more than yours. Not every item is a defect. It may
@@ -571,49 +572,84 @@ struct PromptBuilder {
         tradeoff, a compatibility constraint, an operational risk, a security boundary, an
         unclear requirement, or a dependency on another product or team.
 
-        Write each one one level of abstraction ABOVE the code: system behavior → concrete
-        consequence → the human judgment needed. Not implementation detail → technical
-        consequence → implementation choice. The reviewer sees category, judgmentType, headline,
-        impact and decision without having read the diff and without knowing this codebase.
-        Keep method, class, type and variable names, file paths, line numbers, control flow and
-        mechanism jargon out of those fields ("token minting", "Optional", "throws past
-        gather()", "process-local limiter") unless the name itself is what must be decided. Name
-        the behavior the mechanism produces instead ("a temporary GitHub authentication
-        problem", "each service replica"). All of that precision belongs in evidence.
+        Each item is ONE coherent concern → ONE understandable consequence → ONE human judgment,
+        written one level of abstraction ABOVE the code: system behavior → concrete consequence
+        → the judgment needed. Not implementation detail → technical consequence →
+        implementation choice. The reviewer sees category, judgmentType, headline, impact and
+        judgment without having read the diff and without knowing this codebase. Keep method,
+        class, type and variable names, file paths, line numbers, control flow and mechanism
+        jargon out of those fields ("token minting", "Optional", "throws past gather()",
+        "process-local limiter") unless the name itself is what must be decided. Name the
+        behavior the mechanism produces instead ("a temporary GitHub authentication problem",
+        "each service replica"). All of that precision belongs in evidence.
 
-        Every consideration must pass four tests:
-        - Headline test: an experienced engineer understands WHAT is happening without reading
-          the code. Describe observable system behavior or the product/architectural concern.
-          BAD: "A token or rate-limit failure crashes the evidence read instead of reporting it
-          incomplete". GOOD: "A temporary GitHub authentication problem can fail the entire
-          evidence request".
-        - Impact test: the reviewer can picture a concrete scenario — what could actually
-          happen if this merges — told as cause → consequence in plain language. BAD: "The rate
-          limiter is process-local and therefore doesn't provide installation-level
-          guarantees." GOOD: "With three service replicas, each can request tokens for the
-          same GitHub installation independently, so the installation can see about three
-          times the requests the configured limit suggests."
-        - Decision test: the reviewer can answer without designing the implementation. Ask
-          what behavior, risk, contract, architectural intent, compatibility expectation,
-          security boundary, operational expectation or product semantics we want — not which
-          code-level solution to pick. BAD: "Should failure listing only include each check's
-          latest run, or filter to the requested attempt?" GOOD: "Should failures from
-          superseded build attempts ever be included?" BAD: "Is the on-prem implementation
-          planned and sequenced, or should these methods have safe defaults?" GOOD: "Is it
-          acceptable for this change to require a coordinated on-prem update?"
+        Every consideration must follow five rules:
+        - ONE JUDGMENT RULE: each item asks for exactly one judgment. If two concerns would lead
+          the reviewer to different decisions, they are separate items. Test: can you state the
+          concern in one sentence without "and" joining two unrelated risks? If not, split it.
+          BAD: one item "Shared source-control contract changes, and unmigrated hosts silently
+          degrade" whose impact covers on-prem compilation, a changed "could not read" result,
+          broader write credentials and merge safety. GOOD: separate items for the on-prem
+          contract, the credentials a read needs, and merge safety, each kept only if it clears
+          the other rules. If splitting yields more than five, keep the strongest five.
+        - COHERENCE RULE: headline, impact and judgment are about the SAME underlying issue. The
+          judgment must be answerable from the headline and impact alone; never raise in the
+          judgment a concern the headline and impact didn't describe.
+        - HUMAN-VALUE RULE: include an item only where a human's judgment is meaningfully
+          useful: a behavior, risk, contract or tradeoff someone must own. An unusual
+          implementation detail with nothing to decide is not an item.
+        - NEUTRALITY RULE: state the tradeoff without choosing the answer. The judgment must not
+          make one answer sound obviously irresponsible, safer or more correct. Avoid "Is X
+          acceptable?", "Is X safe enough?", "Is X really sufficient?" and "Is X acceptable in
+          exchange for Y?". Prefer "Should X happen?", "Should the system do X or Y?", "What
+          should happen when X?", "Is the intended behavior X?", "Should this contract require
+          X?". The risk itself belongs in the impact, stated plainly.
+          BAD: "Is an indefinitely open pull request acceptable in exchange for never closing
+          one wrongly?" GOOD: "When failure evidence stays unreadable, should the pull request
+          remain open indefinitely, or should the system eventually make a terminal decision?"
+          BAD: "Is requiring write access for a read-only operation acceptable?" GOOD: "Should
+          reading failure evidence require write access to the repository?"
+          BAD: "Is silent degradation acceptable?" GOOD: "What should happen on an on-prem host
+          that has not yet implemented the new interface?"
+        - ABSTRACTION RULE: headline, impact and judgment explain behavior and consequences; the
+          judgment asks WHAT the system should do, never HOW to implement it. Implementation
+          mechanics and alternatives belong in evidence.
+          BAD: "Should failure listing only include each check's latest run, or filter to the
+          requested attempt?" GOOD: "Should failures from superseded build attempts ever be
+          included?" BAD: "Is the on-prem implementation planned and sequenced, or should these
+          methods have safe defaults?" GOOD: "Should this interface change require a
+          coordinated on-prem update?" BAD: "Should the failed stale-branch reset be logged at a
+          higher level?" GOOD: "Should a failed branch reset be visible as its own
+          customer-facing failure?"
+
+        And pass four tests:
+        - Headline test (what is happening?): an experienced engineer understands the observable
+          system behavior without reading the code. BAD: "A token or rate-limit failure crashes
+          the evidence read instead of reporting it incomplete". GOOD: "A temporary GitHub
+          authentication problem can fail the entire evidence request".
+        - Impact test (why might it matter?): the reviewer can picture a concrete scenario, what
+          could actually happen if this merges, told as cause → consequence in plain language.
+          BAD: "The rate limiter is process-local and therefore doesn't provide
+          installation-level guarantees." GOOD: "With three service replicas, each can request
+          tokens for the same GitHub installation independently, so the installation can see
+          about three times the requests the configured limit suggests."
+        - Judgment test (what am I asked to judge?): one specific, neutral question about the
+          desired behavior, risk, contract, architectural intent, compatibility expectation,
+          security boundary, operational expectation or product semantics, answerable without
+          designing the implementation.
         - Evidence test: evidence shows exactly why you raised it — the methods, classes,
           changed lines, call paths and tests involved, with path:line locations — so the
           reviewer's drill-down deepens understanding rather than supplying it.
 
         A complete example:
-          category "security", judgmentType "confirm-intent",
-          headline "Reading build failures requires write-level GitHub access",
-          impact "A caller that only needs to inspect why a build failed must first obtain
-          credentials that can modify the repository, giving a read-only operation more
-          privilege than it appears to need.",
-          decision "Should reading failure evidence require write access to the repository?",
-          evidence "explainFailure() calls TokenBroker.mintWrite() (src/broker.ts:41) before
-          mintRead() (src/broker.ts:58) on every call; ..."
+          category "reliability", judgmentType "operational-risk",
+          headline "Disconnect can move an existing customer branch",
+          impact "Disconnect resets a removal branch before deleting it. If that branch has moved
+          since the last operation, the service can modify a branch holding newer customer
+          work.",
+          judgment "Should disconnect be allowed to move an existing customer branch?",
+          evidence "disconnect() force-resets the branch via resetBranch() (src/scm/disconnect.ts:41)
+          before deleteBranch() (src/scm/disconnect.ts:58), with no check of its current head; ..."
 
         Fields:
         - category: exactly one of "error-handling", "test-coverage", "compatibility",
@@ -624,12 +660,12 @@ struct PromptBuilder {
           "operational-risk", "security-decision", "unclear-requirement" (the intended
           behavior isn't established), "external-dependency" (relies on another product,
           service or team).
-        - headline, impact and decision are plain prose shown as-is: no Markdown, no backticks.
+        - headline, impact and judgment are plain prose shown as-is: no Markdown, no backticks.
         - headline: what is happening, as a plain statement (not a question), at most ~12 words.
         - impact: ONE or TWO plain-language sentences (at most ~40 words) giving the concrete
           scenario and its consequence.
-        - decision: the judgment you need from the reviewer, a question ending in "?", at most
-          ~15 words, about desired behavior rather than implementation. For an open question,
+        - judgment: the one neutral question the reviewer must answer, ending in "?", at most
+          ~20 words, about desired behavior rather than implementation. For an open question,
           what the reviewer should confirm.
         - kind: "concern" for a judgment call or risk; "question" for something you could not
           establish from the repo.
@@ -647,12 +683,12 @@ struct PromptBuilder {
           which the concern arises (e.g. the stage that inspects piped data, for a question about
           chunking). Only anchor where it genuinely applies; [] if it isn't about a flow.
         If the behavior change's humanQuestion is still the most important question, include it
-        as the first consideration, rewritten into headline, impact and decision. Merge
-        overlapping items rather than listing near-duplicates.
+        as the first consideration, rewritten into headline, impact and judgment. Merge items
+        that would ask the reviewer the same judgment rather than listing near-duplicates.
 
         Respond with ONLY this JSON object:
         {
-          "considerations": [{"id": "short-slug", "category": "error-handling|test-coverage|compatibility|reliability|scaling|security|architecture|product-behavior", "judgmentType": "potential-problem|confirm-intent|design-decision|compatibility-decision|operational-risk|security-decision|unclear-requirement|external-dependency", "headline": "...", "impact": "...", "decision": "...?", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "evidence": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
+          "considerations": [{"id": "short-slug", "category": "error-handling|test-coverage|compatibility|reliability|scaling|security|architecture|product-behavior", "judgmentType": "potential-problem|confirm-intent|design-decision|compatibility-decision|operational-risk|security-decision|unclear-requirement|external-dependency", "headline": "...", "impact": "...", "judgment": "...?", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "evidence": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
           "needsJudgment": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "uncertainties": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "questions": [{"id": "short-slug", "text": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],
