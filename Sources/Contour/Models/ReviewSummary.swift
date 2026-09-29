@@ -1,9 +1,5 @@
 import Foundation
 
-/// The reviewer's judgment, rendered as Markdown to paste into a GitHub review comment: what
-/// changed in one line, each decision they judged with its state and note, and the Overview
-/// questions no "Looks good" has settled yet. Posting reviews is deferred (§8); when it
-/// lands, this is the payload it sends.
 extension PRGraph {
     var reviewSummaryMarkdown: String {
         var sections: [String] = []
@@ -34,16 +30,12 @@ extension PRGraph {
         return sections.joined(separator: "\n\n") + "\n"
     }
 
-    /// The plain-language "how it was solved" when the analysis has it, else the PR's intent —
-    /// first sentence only, code locations stripped.
     private var whatChangedLine: String? {
         let text = pr.howItWasSolved?.text ?? pr.intent.text
         let line = Self.firstSentence(text).trimmingCharacters(in: .whitespacesAndNewlines)
         return line.isEmpty ? nil : line
     }
 
-    /// Decisions the reviewer marked or annotated, the ones that need a response first, in
-    /// the order Decisions shows them within each state.
     private var judgedDecisions: [DecisionNode] {
         let ordered = decisionsToReview + otherDecisions
         let marked = ordered.filter { $0.reviewerState != .unreviewed || !Self.trimmedNote($0).isEmpty }
@@ -52,7 +44,6 @@ extension PRGraph {
             .map(\.element)
     }
 
-    /// Overview questions whose decision the reviewer hasn't accepted — the ones still open.
     private var openQuestions: [Consideration] {
         thingsToThinkAbout.filter { item in
             guard let id = reviewDecisionId(for: item), let d = decision(id) else { return true }
@@ -65,7 +56,6 @@ extension PRGraph {
         var item = "- **\(label)** — \(brief(for: d).question)"
         let note = Self.trimmedNote(d)
         if !note.isEmpty {
-            // Quoted and indented under the bullet so a multi-line note stays one list item.
             item += "\n" + note.components(separatedBy: .newlines)
                 .map { $0.isEmpty ? "  >" : "  > \($0)" }
                 .joined(separator: "\n")
@@ -79,7 +69,6 @@ extension PRGraph {
 }
 
 private extension ReviewerState {
-    /// Needs discussion, then questioned, then accepted: what the author must answer first.
     var summaryRank: Int {
         switch self {
         case .discuss: return 0

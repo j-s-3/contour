@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The detail for one selected part or relationship: what it is for, what this PR did to
-/// it, and the way out to the rest of the review — flows through it, decisions that shaped
-/// it, the Overview questions that live there, its implementation and code. Everything the
-/// drawing leaves out on purpose lives here.
 struct ArchitectureInspector: View {
     let graph: PRGraph
     let level: ArchLevel
@@ -28,8 +24,6 @@ struct ArchitectureInspector: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-
-    // MARK: - A part
 
     @ViewBuilder
     private func partDetail(_ part: ComponentNode) -> some View {
@@ -86,8 +80,6 @@ struct ArchitectureInspector: View {
         askButton(.component(part.id))
     }
 
-    /// Pulled out of the view (static, taking `graph` explicitly) so it's directly
-    /// testable, per the "extract inspector content-selection/formatting logic" guidance.
     nonisolated static func eyebrow(for part: ComponentNode, in graph: PRGraph) -> String {
         let kind = part.parentId.flatMap(graph.component).map { "Part of \($0.title)" } ?? "Part"
         switch part.changeKind {
@@ -107,13 +99,9 @@ struct ArchitectureInspector: View {
         }
     }
 
-    /// Whether the "This PR" section falls back to `unchangedLine` — only when there's no
-    /// delta summary to show *and* no complete before/after pair either.
     nonisolated static func showsUnchangedNote(_ part: ComponentNode) -> Bool {
         part.delta?.summary == nil && (part.delta?.before == nil || part.delta?.after == nil)
     }
-
-    // MARK: - Connection row content
 
     nonisolated static func connectionIcon(direction: String) -> String {
         direction == "from" ? "arrow.down.right" : "arrow.up.right"
@@ -152,8 +140,6 @@ struct ArchitectureInspector: View {
         .buttonStyle(.plain)
         .reviewContextMenu(.relationship(e.id))
     }
-
-    // MARK: - A relationship
 
     @ViewBuilder
     private func relationshipDetail(_ drawn: ArchLevelEdge) -> some View {
@@ -215,33 +201,24 @@ struct ArchitectureInspector: View {
         return parts.joined(separator: " · ")
     }
 
-    /// The relationship header's eyebrow: unqualified for an existing relationship, tagged
-    /// with its change word otherwise.
     nonisolated static func relationshipEyebrow(_ change: EdgeChange) -> String {
         "Relationship" + (change == .existing ? "" : " · \(changeWord(change))")
     }
 
-    /// The "What crosses it" label when there's no previous label to diff against.
     nonisolated static func crossesLabel(_ e: ArchitectureEdge) -> String {
         e.label.isEmpty ? "Not labeled" : e.label
     }
 
-    /// The "This PR" text for a relationship: its note when there is one, else a fallback
-    /// line for an existing (drawn-for-context) relationship, else nothing to show.
-    /// `isFallback` marks the fallback case so the caller can render it de-emphasized.
     nonisolated static func relationshipThisPRNote(_ e: ArchitectureEdge) -> (text: String, isFallback: Bool)? {
         if let note = e.note, !note.isEmpty { return (note, false) }
         if e.change == .existing { return ("Not changed by this PR — drawn for context.", true) }
         return nil
     }
 
-    /// One line of the "Also between these parts" list: the other relationship folded into
-    /// this arrow, by the parts it connects.
     nonisolated static func foldedEdgeLine(fromTitle: String, toTitle: String, label: String) -> String {
         "\(fromTitle) → \(toTitle): \(label)"
     }
 
-    /// Flows that pass through both endpoints of a relationship — order follows `toFlows`.
     nonisolated static func sharedFlows(_ fromFlows: [FlowNode], _ toFlows: [FlowNode]) -> [FlowNode] {
         let fromIds = Set(fromFlows.map(\.id))
         return toFlows.filter { fromIds.contains($0.id) }
@@ -255,8 +232,6 @@ struct ArchitectureInspector: View {
         case .removed: return "Removed"
         }
     }
-
-    // MARK: - Shared sections
 
     @ViewBuilder
     private func questions(_ items: [Consideration]) -> some View {
@@ -300,16 +275,12 @@ struct ArchitectureInspector: View {
         }
     }
 
-    /// The "N implementation component(s)" caption, or nil when there's nothing to count —
-    /// the singular/plural boundary is the only wrinkle worth pinning.
     nonisolated static func implementationCountLabel(nodeCount: Int, nameCount: Int) -> String? {
         let count = nodeCount + nameCount
         guard count > 0 else { return nil }
         return "\(count) implementation \(count == 1 ? "component" : "components")"
     }
 
-    /// The refs chip row: the part's own refs plus its implementation nodes' refs, deduplicated
-    /// in that order.
     nonisolated static func mergedRefs(partRefs: [CodeRef], implRefs: [CodeRef]) -> [CodeRef] {
         unique(partRefs + implRefs)
     }
@@ -345,8 +316,6 @@ struct ArchitectureInspector: View {
             }
         }
     }
-
-    // MARK: - Building blocks
 
     private func header(eyebrow: String, title: String, subject: ReviewSubject) -> some View {
         HStack(alignment: .top, spacing: 8) {

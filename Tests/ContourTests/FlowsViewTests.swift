@@ -2,17 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `FlowsView`'s scenario-cycling, selection, drill-down and focus-publishing logic were
-/// pulled out into `FlowsViewLogic` per CLAUDE.md's guidance for this file, so they're
-/// directly testable against a `PRGraph` without a view instance. `FlowsView`'s own methods
-/// (`apply`, `openFlow`, `select`, `drill`, `handleKey`, `publishFocus`) are thin wrappers
-/// that just apply these results to `@State`, and are `private` to the view's file so they
-/// stay untested here — that, plus the diagram, header and scenario tabs, is view-rendering
-/// with no UI-testing infrastructure in this suite to host it.
 struct FlowsViewTests {
-
-    /// A minimal but valid graph carrying the given flows — the seam this suite uses in
-    /// place of `MockAnalysisFixtures` when only `PRGraph.flows` matters.
     private func graph(flows: [FlowNode] = []) -> PRGraph {
         var g = PRGraph(pr: PRSummary(
             repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
@@ -22,8 +12,6 @@ struct FlowsViewTests {
         g.flows = flows
         return g
     }
-
-    // MARK: - scenarioOffset
 
     @Test func openBracketCyclesBackward() {
         #expect(FlowsViewLogic.scenarioOffset(for: "[") == -1)
@@ -37,8 +25,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.scenarioOffset(for: "a") == nil)
         #expect(FlowsViewLogic.scenarioOffset(for: "") == nil)
     }
-
-    // MARK: - nextLevel
 
     @Test func nextLevelFromBehaviorSkipsToTheFirstAvailableRungBelow() {
         #expect(FlowsViewLogic.nextLevel(after: .behavior, available: [.behavior, .implementation, .code]) == .implementation)
@@ -55,8 +41,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.nextLevel(after: .steps, available: all) == .implementation)
         #expect(FlowsViewLogic.nextLevel(after: .implementation, available: all) == .code)
     }
-
-    // MARK: - condensedChangeSummary
 
     private func node(_ id: String, kind: FlowNodeKind = .step, change: FlowChange = .existing, label: String) -> FlowBehaviorNode {
         FlowBehaviorNode(id: id, label: label, kind: kind, change: change)
@@ -95,8 +79,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.condensedChangeSummary(behavior) == "Changes “A”, “B”, “C”, and 1 more.")
     }
 
-    // MARK: - recognizesScenarioKey
-
     @Test func recognizesScenarioKeyRequiresMoreThanOneFlow() {
         #expect(!FlowsViewLogic.recognizesScenarioKey("[", modifiers: [], flowCount: 1))
         #expect(FlowsViewLogic.recognizesScenarioKey("[", modifiers: [], flowCount: 2))
@@ -109,15 +91,12 @@ struct FlowsViewTests {
     }
 
     @Test func recognizesScenarioKeyAllowsOtherModifiers() {
-        // Shift-] is still a bracket keypress we own; only command/control/option aren't ours.
         #expect(FlowsViewLogic.recognizesScenarioKey("]", modifiers: .shift, flowCount: 3))
     }
 
     @Test func recognizesScenarioKeyRejectsUnrecognizedCharacters() {
         #expect(!FlowsViewLogic.recognizesScenarioKey("x", modifiers: [], flowCount: 3))
     }
-
-    // MARK: - currentFlow
 
     private func flow(_ id: String, title: String = "Flow") -> FlowNode { FlowNode(id: id, title: title) }
 
@@ -139,8 +118,6 @@ struct FlowsViewTests {
     @Test func currentFlowIsNilWhenThereAreNoFlows() {
         #expect(FlowsViewLogic.currentFlow(in: graph(), selectedFlowId: nil) == nil)
     }
-
-    // MARK: - applying (Focus)
 
     @Test func applyingAKnownFocusSelectsItsFlowAndNodeAtBehaviorLevel() {
         let g = graph(flows: [flow("f1"), flow("f2")])
@@ -165,8 +142,6 @@ struct FlowsViewTests {
         #expect(FlowsViewLogic.applying(FlowsView.Focus(flowId: "gone"), to: g) == nil)
     }
 
-    // MARK: - opening
-
     @Test func openingAKnownFlowSelectsItAndClearsTheNode() {
         let g = graph(flows: [flow("f1"), flow("f2")])
         let result = FlowsViewLogic.opening("f2", in: g)
@@ -177,8 +152,6 @@ struct FlowsViewTests {
     @Test func openingAnUnknownFlowIsIgnored() {
         #expect(FlowsViewLogic.opening("gone", in: graph(flows: [flow("f1")])) == nil)
     }
-
-    // MARK: - selecting
 
     @Test func selectingADifferentNodeResetsTheLevelToBehavior() {
         let result = FlowsViewLogic.selecting(node("n2", label: "B"), currentSelectedNodeId: "n1")
@@ -197,8 +170,6 @@ struct FlowsViewTests {
         #expect(result.nodeId == nil)
         #expect(result.level == .behavior)
     }
-
-    // MARK: - drilling
 
     @Test func drillingANewlySelectedStageOpensAtTheFirstRungBelowBehavior() {
         let result = FlowsViewLogic.drilling(
@@ -225,8 +196,6 @@ struct FlowsViewTests {
         )
         #expect(result.level == .code)
     }
-
-    // MARK: - focusToPublish
 
     @Test func focusToPublishIsNilWhenThereIsNoFlow() {
         #expect(FlowsViewLogic.focusToPublish(flow: nil, node: nil) == nil)

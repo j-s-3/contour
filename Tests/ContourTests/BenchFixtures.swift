@@ -1,17 +1,9 @@
 import Foundation
 @testable import Contour
 
-/// Deterministically generated, PR-shaped fixtures for `BenchTests` (issue #60): "Contour's
-/// own latency on a fixture corpus," independent of any real GitHub PR so the numbers are
-/// reproducible from one CI run to the next. Diffs and file contents come from a seeded
-/// PRNG rather than being committed as large files — `large` alone would otherwise mean
-/// tens of thousands of lines checked into the repo.
 enum BenchCorpus: String, CaseIterable {
     case small, medium, large
 
-    /// Ordinary changed files. `large` also gets one oversized file (`oversizedFileLines`)
-    /// — the "one very large single file" shape DESIGN.md §14 calls out as the thing that
-    /// stresses truncation and per-file work hardest.
     var fileCount: Int {
         switch self {
         case .small: return 3
@@ -20,7 +12,6 @@ enum BenchCorpus: String, CaseIterable {
         }
     }
 
-    /// Diff lines contributed by each ordinary changed file.
     var linesPerFile: Int {
         switch self {
         case .small: return 20
@@ -29,9 +20,6 @@ enum BenchCorpus: String, CaseIterable {
         }
     }
 
-    /// Extra lines in one additional, oversized file, so `large`'s diff totals tens of
-    /// thousands of lines the way a generated-code or vendored-file PR would. Zero for the
-    /// smaller corpora, which stay small on purpose.
     var oversizedFileLines: Int {
         switch self {
         case .small, .medium: return 0
@@ -40,10 +28,6 @@ enum BenchCorpus: String, CaseIterable {
     }
 }
 
-/// One materialized fixture: the `RawPRContext` bench mode feeds the pipeline, plus a real
-/// on-disk checkout shaped like what `RepoContextService.checkout` produces — so
-/// `CodeRefVerifier`'s file reads and the context-file write do real, size-scaled I/O
-/// rather than being no-ops. The caller owns `rootDir` and must remove it when done.
 struct BenchFixture {
     var context: RawPRContext
     var checkout: RepoCheckout
@@ -51,10 +35,6 @@ struct BenchFixture {
 }
 
 enum BenchFixtures {
-
-    /// A tiny seeded PRNG (SplitMix64) so every corpus is byte-for-byte the same on every
-    /// run and every machine — no `Int.random`, no timestamp-seeded state, so a slowdown
-    /// measured today reproduces tomorrow.
     private struct SplitMix64: RandomNumberGenerator {
         var state: UInt64
         mutating func next() -> UInt64 {
@@ -72,8 +52,6 @@ enum BenchFixtures {
         "config", "schema", "cursor", "socket", "reader", "writer", "matcher", "builder"
     ]
 
-    /// Builds and writes one corpus to a fresh temp directory. The caller owns cleanup
-    /// (`FileManager.default.removeItem(at: fixture.rootDir)`).
     static func make(_ corpus: BenchCorpus) throws -> BenchFixture {
         var rng = SplitMix64(state: seed(for: corpus))
         let rootDir = FileManager.default.temporaryDirectory
@@ -99,8 +77,6 @@ enum BenchFixtures {
             try addFile(path: "src/generated/big_table.rs", lines: corpus.oversizedFileLines)
         }
 
-        // Not a real git object id — offline bench mode never asks git to resolve it — just
-        // a stable, corpus-distinct 40-character stand-in shaped like one.
         let sha = String(repeating: String(corpus.rawValue.first!), count: 40)
         let ctx = RawPRContext(
             url: "https://example.invalid/bench/\(corpus.rawValue)/pull/1",
@@ -129,8 +105,6 @@ enum BenchFixtures {
 
     private static func word(_ rng: inout SplitMix64) -> String { words[Int(rng.next() % UInt64(words.count))] }
 
-    // A plain loop, not `.map`: a closure can't capture its own enclosing `inout`
-    // parameter, so `rng` has to be threaded through by hand here.
     private static func contentLines(count: Int, rng: inout SplitMix64) -> [String] {
         var lines: [String] = []
         lines.reserveCapacity(count)
@@ -140,9 +114,6 @@ enum BenchFixtures {
         return lines
     }
 
-    /// One file's unified-diff hunk. Every generated line is an addition to a new file: the
-    /// point isn't a realistic diff, it's a diff of the right *shape and size* for
-    /// `UnifiedDiff.parse` and `PromptBuilder.contextFileContents` to do real, scaled work on.
     private static func fileDiff(path: String, lines: [String]) -> String {
         var out = "diff --git a/\(path) b/\(path)\n"
         out += "new file mode 100644\n"

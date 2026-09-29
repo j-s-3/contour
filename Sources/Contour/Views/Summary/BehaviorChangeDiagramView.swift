@@ -1,35 +1,17 @@
 import SwiftUI
 
-/// The Overview's hero: a before/after pipeline of short labeled boxes, readable without
-/// reading a sentence. Before is quiet (it's the past); After carries the emphasis. Color is
-/// restrained and always means the same thing — green for a step this PR introduces, a
-/// dashed outline for a step that no longer happens, red/green glyphs only on an outcome.
-///
-/// Each box is a review object: click to drill into its component or flow, right-click for
-/// "Ask about this…" and friends.
 struct BehaviorChangeDiagramView: View {
     let change: BehaviorChange
-    /// Smaller type and spacing, for a secondary behavior change expanded inline.
     var compact = false
     var onSelectStage: (BehaviorStage) -> Void
 
-    /// How tightly the chain is set. Each side must read left to right as one sequence, so
-    /// rather than wrap a row onto a second line, the diagram steps down through denser
-    /// settings until both rows fit, and scrolls sideways only as a last resort.
-    ///
-    /// Internal rather than `fileprivate` so `BehaviorChangeDiagramMetrics` (below) is
-    /// directly testable from `Tests/ContourTests` against plain `Density` cases.
     enum Density {
-        /// Full-size boxes, one-line labels.
         case regular
-        /// Smaller type, padding and arrows; one-line labels.
         case tight
-        /// As tight, with each label wrapping inside a narrow box.
         case wrapped
     }
 
     var body: some View {
-        // Before and After step down together so their boxes stay the same size.
         ViewThatFits(in: .horizontal) {
             if !compact { diagram(.regular) }
             diagram(.tight)
@@ -59,7 +41,6 @@ struct BehaviorChangeDiagramView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                // Equal-height boxes, so a wrapped label doesn't leave its neighbors floating.
                 HStack(spacing: 0) { chain(stages, isAfter: isAfter, density: density) }
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -81,9 +62,6 @@ struct BehaviorChangeDiagramView: View {
     }
 }
 
-/// The density-dependent sizing `diagram`/`row`/`chain`/`StageBox` step through as the
-/// chain runs out of horizontal room — pulled out so it's directly testable against plain
-/// `Density` cases rather than through the SwiftUI view bodies that consume it.
 enum BehaviorChangeDiagramMetrics {
     static func gridSpacing(for density: BehaviorChangeDiagramView.Density) -> (horizontal: CGFloat, vertical: CGFloat) {
         density == .regular ? (18, 16) : (12, 10)
@@ -122,7 +100,6 @@ private struct StageBox: View {
 
     @State private var hovered = false
 
-    /// A step this PR introduces (in After) or removes (in Before).
     private var isDelta: Bool { StageBoxLogic.isDelta(isAfter: isAfter, tag: stage.tag) }
 
     var body: some View {
@@ -157,7 +134,6 @@ private struct StageBox: View {
     @ViewBuilder
     private var label: some View {
         if density == .wrapped {
-            // Short labels keep their own width; longer ones break onto a second or third line.
             CappedWidth(maxWidth: 88) {
                 Text(stage.label).lineLimit(3)
             }
@@ -181,11 +157,7 @@ private struct StageBox: View {
     private var helpText: String { StageBoxLogic.helpText(isDelta: isDelta, isAfter: isAfter, outcome: stage.outcome) }
 }
 
-/// The delta/tint/help-text derivation CLAUDE.md calls out for this file, pulled out of
-/// `StageBox`'s body so it's directly testable against plain `BehaviorStageTag`/
-/// `BehaviorOutcome` fixtures rather than through the SwiftUI `body`.
 enum StageBoxLogic {
-    /// A step this PR introduces (in After) or removes (in Before).
     static func isDelta(isAfter: Bool, tag: BehaviorStageTag) -> Bool {
         isAfter ? tag == .afterOnly : tag == .beforeOnly
     }
@@ -208,9 +180,6 @@ enum StageBoxLogic {
         return Color.secondary.opacity(isAfter ? 0.3 : 0.25)
     }
 
-    /// A delta or an outcome (success/failure) draws a slightly heavier border; a removed
-    /// stage in the Before row dashes it, to read as "no longer happens" rather than an
-    /// ordinary boundary.
     static func strokeStyle(isDelta: Bool, hasOutcome: Bool, isAfter: Bool) -> (lineWidth: CGFloat, dash: [CGFloat]) {
         (lineWidth: isDelta || hasOutcome ? 1.2 : 1, dash: !isAfter && isDelta ? [4, 3] : [])
     }
@@ -225,10 +194,6 @@ enum StageBoxLogic {
     }
 }
 
-/// Sizes its content to its natural width up to `maxWidth`, wrapping beyond that — the same
-/// answer whatever width it's offered. A plain `.frame(maxWidth:)` passes an unspecified
-/// proposal straight through, so inside `ViewThatFits` or a horizontal `ScrollView` the text
-/// would measure as one line and then be clipped once it wraps.
 private struct CappedWidth: Layout {
     let maxWidth: CGFloat
 
@@ -243,12 +208,7 @@ private struct CappedWidth: Layout {
     }
 }
 
-/// `CappedWidth`'s one piece of math, pulled out so it's directly testable: `sizeThatFits`
-/// itself needs a real SwiftUI `Subview` to measure, which this suite has no
-/// infrastructure to construct (no ViewInspector or similar dependency).
 enum CappedWidthLogic {
-    /// A natural width at or under `maxWidth` passes through unchanged (short labels keep
-    /// their own width); anything wider is capped so the label wraps instead.
     static func cap(naturalWidth: CGFloat, at maxWidth: CGFloat) -> CGFloat {
         min(naturalWidth, maxWidth)
     }

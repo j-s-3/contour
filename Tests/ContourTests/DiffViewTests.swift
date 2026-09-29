@@ -3,26 +3,11 @@ import Foundation
 import SwiftUI
 @testable import Contour
 
-/// `UnifiedDiff` parsing is already covered by `UnifiedDiffTests`; this pins `DiffViewLogic`
-/// — the file/hunk navigation, line highlighting, and path formatting CLAUDE.md calls out
-/// for this file — pulled out of `DiffView`'s instance methods so it's testable the same
-/// way, plus `DiffFileStatus.color` (already plain, no production change needed; `.label`
-/// lives on the model and needed none either).
-///
-/// A second pass (#120) pulled the remaining state-transition and text-selection decisions
-/// out of `DiffView`'s button closures and `@ViewBuilder` branches — the collapse/expand-all
-/// toggle, a single file's disclosure toggle, the "jump/land always expands" rule, the
-/// binary/empty/renamed note text, the rename-arrow header title, and the citation
-/// overflow split — so each of those is pinned here too instead of only being reachable by
-/// actually rendering the view (which this suite has no infrastructure to do).
 struct DiffViewTests {
-
     private func parsedFile(_ diff: String) throws -> DiffFile {
         try #require(UnifiedDiff.parse(diff + "\n").first)
     }
 
-    /// Both fixture diffs parsed together, so the two files get distinct ids (0 and 1) the
-    /// way they would in a real multi-file PR diff, instead of both defaulting to 0.
     private func parsedFiles() throws -> [DiffFile] {
         let files = UnifiedDiff.parse(modifiedDiff + "\n" + deletedDiff + "\n")
         try #require(files.count == 2)
@@ -53,8 +38,6 @@ struct DiffViewTests {
     -fn b() {}
     """
 
-    // MARK: - landingTarget
-
     @Test func landingTargetIsNilForANilReference() throws {
         let file = try parsedFile(modifiedDiff)
         #expect(DiffViewLogic.landingTarget(for: nil, in: [file]) == nil)
@@ -76,14 +59,11 @@ struct DiffViewTests {
 
     @Test func landingTargetFindsTheFileWithNoHunkWhenTheReferenceIsOutsideEveryHunk() throws {
         let file = try parsedFile(modifiedDiff)
-        // Line 99 is well past this file's single hunk (lines 1-4 on the new side).
         let ref = CodeRef(path: "src/input.rs", startLine: 99, endLine: 99)
         let target = try #require(DiffViewLogic.landingTarget(for: ref, in: [file]))
         #expect(target.file == file)
         #expect(target.hunk == nil)
     }
-
-    // MARK: - hunkRef
 
     @Test func hunkRefUsesTheNewSideForAModifiedFile() throws {
         let file = try parsedFile(modifiedDiff)
@@ -103,8 +83,6 @@ struct DiffViewTests {
         #expect((ref.startLine, ref.endLine) == (1, 2))
     }
 
-    // MARK: - marker / markerColor
-
     @Test func markerAndColorMatchEveryLineKind() {
         #expect(DiffViewLogic.marker(.added) == "+")
         #expect(DiffViewLogic.marker(.removed) == "−")
@@ -116,8 +94,6 @@ struct DiffViewTests {
         #expect(DiffViewLogic.markerColor(.context) == .secondary)
         #expect(DiffViewLogic.markerColor(.noNewlineMarker) == .secondary)
     }
-
-    // MARK: - isFocused / background
 
     @Test func isFocusedMatchesTheCitedRangeOnTheCitedSide() throws {
         let file = try parsedFile(modifiedDiff)
@@ -163,14 +139,10 @@ struct DiffViewTests {
         #expect(DiffViewLogic.background(context, in: file, focus: nil) == .clear)
     }
 
-    // MARK: - gutterWidth
-
     @Test func gutterWidthGrowsWithLargerLineNumbers() throws {
         let small = try parsedFile(modifiedDiff)
         let smallWidth = DiffViewLogic.gutterWidth(small)
 
-        // Enough lines to push the new-side count past 999 — the gutter has a 3-digit floor,
-        // so a smaller number wouldn't move it.
         let manyLines = (1...1000).map { "+line\($0)" }.joined(separator: "\n")
         let bigDiff = """
         diff --git a/src/big.rs b/src/big.rs
@@ -184,8 +156,6 @@ struct DiffViewTests {
         #expect(DiffViewLogic.gutterWidth(big) > smallWidth)
     }
 
-    // MARK: - fileName / directory
-
     @Test func fileNameIsTheLastPathComponent() {
         #expect(DiffViewLogic.fileName("src/main/java/App.java") == "App.java")
         #expect(DiffViewLogic.fileName("App.java") == "App.java")
@@ -195,8 +165,6 @@ struct DiffViewTests {
         #expect(DiffViewLogic.directory("src/main/java/App.java") == "src/main/java")
         #expect(DiffViewLogic.directory("App.java") == nil)
     }
-
-    // MARK: - DiffFileStatus
 
     @Test func everyDiffFileStatusHasItsOwnLabel() {
         #expect(DiffFileStatus.modified.label == "Modified")
@@ -214,8 +182,6 @@ struct DiffViewTests {
         #expect(DiffFileStatus.copied.color == .blue)
     }
 
-    // MARK: - fileCountLabel / totalLineCounts
-
     @Test func fileCountLabelIsSingularForExactlyOneFile() {
         #expect(DiffViewLogic.fileCountLabel(1) == "1 file")
         #expect(DiffViewLogic.fileCountLabel(0) == "0 files")
@@ -223,7 +189,7 @@ struct DiffViewTests {
     }
 
     @Test func totalLineCountsSumsAcrossEveryFile() throws {
-        let files = try parsedFiles() // modifiedDiff: +2 -1, deletedDiff: +0 -2
+        let files = try parsedFiles()
         let totals = DiffViewLogic.totalLineCounts(files)
         #expect(totals == (2, 3))
     }
@@ -233,8 +199,6 @@ struct DiffViewTests {
         #expect(totals == (0, 0))
     }
 
-    // MARK: - toggleAllCollapsed / toggleCollapsed / removingFile
-
     @Test func toggleAllCollapsedCollapsesEveryFileWhenNoneAreCollapsed() throws {
         let files = try parsedFiles()
         let next = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: [])
@@ -243,7 +207,6 @@ struct DiffViewTests {
 
     @Test func toggleAllCollapsedExpandsEveryFileWhenAnyAreCollapsed() throws {
         let files = try parsedFiles()
-        // Only one of two files collapsed still counts as "some collapsed" — expand all.
         let next = DiffViewLogic.toggleAllCollapsed(files: files, collapsed: [0])
         #expect(next.isEmpty)
     }
@@ -255,11 +218,8 @@ struct DiffViewTests {
 
     @Test func removingFileDropsOnlyTheGivenFile() {
         #expect(DiffViewLogic.removingFile(1, from: [1, 2]) == [2])
-        // Removing a file that wasn't collapsed is a no-op, not an error.
         #expect(DiffViewLogic.removingFile(3, from: [1, 2]) == [1, 2])
     }
-
-    // MARK: - emptyStateNote
 
     @Test func emptyStateNoteIsBinaryTextRegardlessOfHunks() {
         let file = DiffFile(id: 0, oldPath: "a.png", newPath: "a.png", status: .modified, isBinary: true)
@@ -282,8 +242,6 @@ struct DiffViewTests {
         #expect(DiffViewLogic.emptyStateNote(for: modified) == "No content changes")
     }
 
-    // MARK: - headerTitle
-
     @Test func headerTitleShowsTheRenameArrowWhenBothPathsAreKnown() {
         let file = DiffFile(id: 0, oldPath: "old/path.rs", newPath: "new/path.rs", status: .renamed)
         let title = DiffViewLogic.headerTitle(for: file)
@@ -292,7 +250,6 @@ struct DiffViewTests {
     }
 
     @Test func headerTitleFallsBackToThePathForACopyMissingEitherSide() {
-        // A copy the parser only partially resolved (e.g. mid-stream) still needs a title.
         let file = DiffFile(id: 0, oldPath: nil, newPath: "new/path.rs", status: .copied)
         let title = DiffViewLogic.headerTitle(for: file)
         #expect(title.old == nil)
@@ -305,8 +262,6 @@ struct DiffViewTests {
         #expect(title.old == nil)
         #expect(title.new == "m.rs")
     }
-
-    // MARK: - visibleCitations
 
     private func citation(_ n: Int) -> DiffCitation {
         DiffCitation(kind: .decision, title: "Decision \(n)", target: .decisionDetail("d\(n)"))

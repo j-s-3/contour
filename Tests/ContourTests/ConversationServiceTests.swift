@@ -2,20 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// Fills the gap this repo's coverage series left in `ConversationService.swift`:
-/// `turnPrompt`'s history-limit/empty-history/empty-message/per-message-length branches,
-/// and `mockResponse`'s no-selection and no-code-ref fallbacks. `respond(...)`'s
-/// `CONTOUR_MOCK_ANALYSIS=1` short-circuit and its real-harness path both stay untested:
-/// the former needs setting that process-global env var, which `AnalysisCache` also reads
-/// (`ProgressiveAnalysisTests`) — Swift Testing runs both suites in the same parallel pool,
-/// so setting it here raced `AnalysisCache.save`/`load` into silently no-op'ing mid-test in
-/// an unrelated suite and broke CI twice (see #76's PR); the latter shells out to a real
-/// `pi`/`claude` executable, and this suite never fakes those on `PATH` (per the established
-/// `HarnessContractTests` convention — replay captured streams instead of spawning a real CLI).
 struct ConversationServiceTests {
-
-    // MARK: - turnPrompt
-
     @Test func turnPromptWithNoHistoryOmitsTheConversationBlock() {
         let prompt = ConversationService.turnPrompt(history: [], question: "What changed?")
         #expect(!prompt.contains("<conversation_so_far>"))
@@ -50,8 +37,6 @@ struct ConversationServiceTests {
         #expect(!prompt.contains(long))
         #expect(prompt.contains(String(repeating: "x", count: 4_000)))
     }
-
-    // MARK: - mockResponse fallbacks
 
     @Test func mockResponseFallsBackToThisWithNoSelectedLine() async throws {
         let doc = "## Nothing selected here\njust prose"

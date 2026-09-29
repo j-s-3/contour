@@ -2,12 +2,6 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// Issue #130: `SummaryView.swift`'s logic already lives in `SummaryViewLogic`
-/// (`SummaryViewTests`), which leaves the SwiftUI `body`s as the uncovered bulk of the file.
-/// These tests evaluate those bodies for real by rasterising the view with `ImageRenderer`
-/// against the sample graph in each state the Overview can be in (finished, still
-/// analysing, failed, stopped, considerations expanded). Each asserts a non-empty image, so
-/// a body that traps or lays out to nothing fails here rather than at review time.
 @MainActor
 struct SummaryViewRenderTests {
 
@@ -78,8 +72,6 @@ struct SummaryViewRenderTests {
         #expect(render(summary(graph, AnalysisState(isComplete: true))) != nil)
     }
 
-    /// The expanded drill-down is driven by a parent `@State`, so render the row directly
-    /// with `isExpanded` set: explanation, related links, code refs and the Ask button.
     @Test func rendersAnExpandedConsiderationRow() {
         let graph = ContourSampleData.publishTriggeredReindex
         let related = (graph.decisions.map(\.id) + graph.components.map(\.id) + graph.flows.map(\.id))

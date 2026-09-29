@@ -2,15 +2,7 @@ import Foundation
 import Testing
 @testable import Contour
 
-/// `GHCLISource.swift` was at 0.00% coverage. Per CLAUDE.md's guidance for this file, the
-/// parsing logic was pulled out of `fetchContext`/`fetchIssue` into static functions
-/// (`parsePRView`, `assembleContext`, `parseUnresolvedThreadCount`, `graphQLArgs`,
-/// `parseIssue`) that take `gh`'s JSON output as a plain string, so it can be tested without
-/// shelling out to a real `gh`. The two `Shell.run` call sites themselves (and the
-/// `unresolvedThreadCount`/`fetchContext`/`fetchIssue` wrappers around them) are left
-/// uncovered.
 struct GHCLISourceTests {
-
     private func json(_ object: Any) -> String {
         String(data: try! JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
     }
@@ -48,8 +40,6 @@ struct GHCLISourceTests {
         return obj
     }
 
-    // MARK: - parsePRView
-
     @Test func parsePRViewExtractsEveryRequiredFieldAndDerivesOwnerRepoFromTheURL() throws {
         let parsed = try GHCLISource.parsePRView(json: json(fullPRView()))
         #expect(parsed.url == "https://github.com/acme/shop/pull/5")
@@ -83,8 +73,6 @@ struct GHCLISourceTests {
             try GHCLISource.parsePRView(json: payload)
         }
     }
-
-    // MARK: - assembleContext
 
     @Test func assembleContextFillsInEveryFieldFromTheParsedView() throws {
         let parsed = try GHCLISource.parsePRView(json: json(fullPRView()))
@@ -136,8 +124,6 @@ struct GHCLISourceTests {
         #expect(context.glance.createdAt == nil)
     }
 
-    // MARK: - graphQLArgs
-
     @Test func graphQLArgsOmitsHostnameForGitHubDotCom() {
         let args = GHCLISource.graphQLArgs(
             query: "q", owner: "acme", repo: "shop", number: 5, prURL: "https://github.com/acme/shop/pull/5"
@@ -154,8 +140,6 @@ struct GHCLISourceTests {
         #expect(args.contains("ghe.internal"))
     }
 
-    // MARK: - parseUnresolvedThreadCount
-
     @Test func parseUnresolvedThreadCountCountsOnlyThreadsThatArentResolved() {
         let payload: [String: Any] = [
             "data": ["repository": ["pullRequest": ["reviewThreads": ["nodes": [
@@ -169,8 +153,6 @@ struct GHCLISourceTests {
         #expect(GHCLISource.parseUnresolvedThreadCount(json: "{}") == nil)
         #expect(GHCLISource.parseUnresolvedThreadCount(json: "not json") == nil)
     }
-
-    // MARK: - parseIssue
 
     @Test func parseIssueReturnsTitleBodyAndURL() {
         let payload: [String: Any] = ["title": "Bug", "body": "desc", "url": "https://github.com/acme/shop/issues/42"]
@@ -196,17 +178,6 @@ struct GHCLISourceTests {
         #expect(GHCLISource().describesItself == "gh CLI")
     }
 
-    // MARK: - assembleContext: malformed entries are dropped, not crashed on
-
-    /// Real `gh pr view --json` output is exactly as tolerant-or-not as GitHub's GraphQL
-    /// schema says it should be, but a stray malformed row (an author GitHub couldn't
-    /// resolve, a file rename GitHub omitted a path for) shouldn't be able to drop a whole
-    /// PR's context. Pins every `compactMap`/fallback branch the happy-path fixture in
-    /// `fullPRView` doesn't exercise: a commit missing `oid` is dropped entirely, one whose
-    /// only author lacks `login` falls back to "unknown", a comment/review missing `author`
-    /// falls back to "someone", a file missing `path` is dropped, and a review missing
-    /// `state` (or `author`) still shows up in the reviews text list (it has a body) but is
-    /// excluded from the approvals/changes-requested tally.
     @Test func assembleContextDropsMalformedEntriesAndAppliesFallbacks() throws {
         let payload: [String: Any] = [
             "url": "https://github.com/acme/shop/pull/5", "number": 5, "title": "t",
@@ -243,32 +214,17 @@ struct GHCLISourceTests {
                 "neither review has both an author login and a state, so the tally counts neither")
     }
 
-    // MARK: - fetchContext / fetchIssue: the real Shell.run wrappers
-
-    /// `fetchContext`'s own guard (not `GitHubService.normalize`'s, already pinned in
-    /// `PRSourceTests`) rejects a non-PR URL before any process is spawned — this is the one
-    /// branch of the real `fetchContext`/`fetchIssue`/`unresolvedThreadCount` wrappers that's
-    /// reachable without shelling out to `gh` at all.
     @Test func fetchContextRejectsANonPRURLWithoutShellingOut() async {
         await #expect(throws: GitHubServiceError.self) {
             try await GHCLISource().fetchContext(prURL: "not a github pr url")
         }
     }
 
-    /// `fetchContext`, `fetchIssue` and the private `unresolvedThreadCount` (only reachable
-    /// through `fetchContext`) are otherwise thin wrappers around `Shell.run("gh", …)`, and
-    /// per this program's convention they're driven against a real `gh` rather than a faked
-    /// one stubbed onto `PATH`. `gh` may not be installed or authenticated wherever this
-    /// runs, so both are tolerant of either outcome: the point is exercising the wiring
-    /// (the call sites, the async-let fan-out, `parsePRView`/`assembleContext` fed with a
-    /// real response when one comes back) rather than asserting on a network response the
-    /// static-function tests above already pin against fixed JSON.
     @Test func fetchContextReachesTheRealGHForAWellFormedPRURL() async {
         do {
             let context = try await GHCLISource().fetchContext(prURL: "https://github.com/cli/cli/pull/1")
             #expect(context.number == 1, "gh answered: the well-known PR's number should come back unchanged")
         } catch {
-            // No gh, or gh isn't authenticated here: still exercised the call site.
         }
     }
 
@@ -277,6 +233,5 @@ struct GHCLISourceTests {
         if let issue {
             #expect(!issue.title.isEmpty, "gh answered: a real issue always has a title")
         }
-        // nil is the documented best-effort outcome when gh can't answer.
     }
 }
