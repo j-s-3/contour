@@ -2,11 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// "Copy review summary" turns the reviewer's marks and notes into Markdown ready to paste
-/// into a GitHub review comment: what changed in one line, each judged decision with its
-/// state and note, and the questions still open.
 struct ReviewSummaryTests {
-
     private func decision(_ id: String, question: String, significance: ReviewSignificance = .high,
                           state: ReviewerState = .unreviewed, note: String = "") -> DecisionNode {
         DecisionNode(
@@ -27,8 +23,6 @@ struct ReviewSummaryTests {
         return graph
     }
 
-    /// The whole payload, in order: the one-line change, the judged decisions most
-    /// actionable first with their notes quoted beneath, then open questions.
     @Test func rendersChangeJudgedDecisionsAndOpenQuestions() {
         let g = graph([
             decision("a", question: "Should publish reindex synchronously?", state: .accepted),
@@ -58,8 +52,6 @@ struct ReviewSummaryTests {
         """)
     }
 
-    /// Unjudged decisions are left out but still counted, and an empty review says so rather
-    /// than rendering an empty list.
     @Test func saysSoWhenNothingIsJudged() {
         let g = graph([decision("a", question: "Q?"), decision("b", question: "R?")])
         let md = g.reviewSummaryMarkdown
@@ -68,8 +60,6 @@ struct ReviewSummaryTests {
         #expect(!md.contains("Open questions"))
     }
 
-    /// A decision outside Decisions to Review still appears once judged or annotated; a note
-    /// without a mark is labeled as a note, never "Unreviewed".
     @Test func includesOtherDecisionsTheReviewerMarkedOrAnnotated() {
         let g = graph([
             decision("a", question: "Main?", state: .accepted),
@@ -83,8 +73,6 @@ struct ReviewSummaryTests {
         #expect(!md.contains("Unreviewed"))
     }
 
-    /// Without the plain-language "how it was solved", the PR's intent is the one line — its
-    /// first sentence, code locations stripped.
     @Test func fallsBackToIntentForWhatChanged() {
         var g = graph([])
         g.pr.howItWasSolved = nil

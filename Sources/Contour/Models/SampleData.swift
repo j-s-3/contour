@@ -1,9 +1,5 @@
 import Foundation
 
-/// A realistic sample `PRGraph` exercising the full Behavior → System → Components →
-/// Implementation → Code hierarchy, for SwiftUI previews and tests. Models a PR that
-/// makes publishing a docs page trigger an immediate search reindex instead of waiting for
-/// the next nightly rebuild.
 enum ContourSampleData {
     static let publishTriggeredReindex: PRGraph = {
         let publishing = ComponentNode(

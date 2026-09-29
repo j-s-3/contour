@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Asks what should change before submitting a request for changes — GitHub won't take one
-/// without a comment, and the comment is what the author will act on.
 struct RequestChangesSheet: View {
     let title: String
     let onSubmit: (String) -> Void
@@ -49,18 +47,11 @@ struct RequestChangesSheet: View {
         .onAppear { editorFocused = true }
     }
 
-    /// Pulled out (static, taking its dependencies explicitly) so the submit action is
-    /// directly testable. The comment-required validation that gates the button lives in
-    /// `PRReview.isReady`, already covered by `PRReviewTests`.
     static func submit(comment: String, onSubmit: (String) -> Void, dismiss: () -> Void) {
         onSubmit(comment)
         dismiss()
     }
 
-    /// Whether the "What should change?" placeholder shows over the empty editor. Pulled
-    /// out alongside `submit` so both bits of this file's own logic are directly testable;
-    /// everything else below is declarative SwiftUI layout with no hosting environment to
-    /// exercise it under `swift test` (see `RequestChangesSheetTests.swift`).
     static func showsPlaceholder(comment: String) -> Bool {
         comment.isEmpty
     }

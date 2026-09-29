@@ -11,20 +11,16 @@ struct ChatMessage: Identifiable, Hashable, Sendable {
     var error: String?
 }
 
-/// One contextual thread, anchored to the thing it was opened on. The subject never
-/// changes — asking about something else opens (or returns to) that thing's own thread —
-/// so every conversation keeps the context it started with.
 @Observable
+@MainActor
 final class Conversation: Identifiable {
     let id = UUID()
     let subject: ReviewSubject
     let createdAt = Date()
     var expansions: Set<ContextExpansion> = []
-    /// Code ranges the reviewer explicitly brought into this thread ("Why this line?").
     var pinnedRefs: [CodeRef] = []
     var messages: [ChatMessage] = []
     var draft = ""
-    /// The live progress line while the harness works, nil when idle.
     var activity: String?
     var isResponding: Bool { task != nil }
 
@@ -35,22 +31,16 @@ final class Conversation: Identifiable {
     }
 }
 
-/// Every contextual conversation for the PR under review. Lives as long as the review
-/// session (reset when a new PR loads), independent of navigation — moving around the
-/// review, opening code, and coming back never loses a thread.
 @Observable
+@MainActor
 final class ConversationStore {
     private(set) var conversations: [Conversation] = []
     var activeId: UUID?
     var isPresented = false
-    /// Bumped whenever the composer should take focus (opening a thread, asking again).
     private(set) var focusRequest = 0
 
     var active: Conversation? { conversations.first { $0.id == activeId } }
 
-    /// The Overview questions the reviewer has actually asked about — a thread they wrote
-    /// in, not one merely opened. A question with no decision to judge it on is resolved
-    /// this way (`PRGraph.isResolved`).
     var discussedConsiderationIds: Set<String> {
         Set(conversations.compactMap { c in
             guard case .consideration(let id) = c.subject, c.messages.contains(where: { $0.role == .user }) else { return nil }
@@ -58,8 +48,6 @@ final class ConversationStore {
         })
     }
 
-    /// Opens the thread for a subject, reusing an existing one so asking about the same
-    /// box twice continues the same conversation instead of starting over.
     @discardableResult
     func open(_ subject: ReviewSubject) -> Conversation {
         let conversation = conversations.first { $0.subject == subject } ?? {
@@ -99,8 +87,6 @@ final class ConversationStore {
         conversation.task?.cancel()
     }
 
-    /// Sends one question. The context document is rebuilt from the graph every turn, so a
-    /// reviewer who expands scope or pins a line mid-thread gets it on the very next answer.
     @MainActor
     func send(_ text: String, in conversation: Conversation, graph: PRGraph, checkout: RepoCheckout?, harnessID: HarnessID?) {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -139,9 +125,6 @@ final class ConversationStore {
             let document = ChatContextBuilder.document(
                 graph: graph, resolved: resolved, expansions: expansions, pinnedRefs: pinned, excerpts: excerpts
             )
-            // Text streamed before a tool call is the model thinking aloud ("let me check
-            // the listener"); the real answer comes after the last tool call. So a new
-            // tool call clears the preview rather than appending to it.
             var sawToolSinceText = false
             do {
                 for try await event in service.respond(
@@ -178,11 +161,6 @@ final class ConversationStore {
         change(&conversation.messages[i])
     }
 
-    /// Code is only inlined when the reviewer is looking at code: a pinned range, a code
-    /// reference subject, or the Implementation expansion. Everything else is left for the
-    /// harness to read on demand, which keeps the first answer at the concept's level.
-    /// Internal rather than `private` so it's directly testable against a real checkout,
-    /// without needing `CONTOUR_MOCK_ANALYSIS` (a process-global env var other tests read).
     static func excerpts(
         for resolved: ResolvedSubject, expansions: Set<ContextExpansion>, pinned: [CodeRef], checkout: RepoCheckout
     ) async -> [(ref: CodeRef, text: String)] {
@@ -193,7 +171,6 @@ final class ConversationStore {
         let repo = RepoContextService()
         var out: [(CodeRef, String)] = []
         for ref in unique(refs).prefix(8) {
-            // Clamp pathological ranges: an excerpt is a view of the code, not the file.
             let end = min(ref.endLine, ref.startLine + 80)
             guard let result = try? await repo.readLines(
                 in: checkout, path: ref.path, startLine: ref.startLine, endLine: end, contextLines: 3, side: ref.side

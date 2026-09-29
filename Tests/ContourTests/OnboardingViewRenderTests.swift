@@ -4,12 +4,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// Smoke renders of the start-screen views. `OnboardingViewLogic` holds every decision
-/// (see `OnboardingViewTests`), so what is left in these bodies is layout. Hosting each
-/// view in an `NSHostingView` and forcing a layout pass evaluates its body and its
-/// row/list builders, so a change that crashes on construction or in layout fails here
-/// rather than at launch. The hosting view is never put in a window, so
-/// `.onAppear`/`.task` (real `gh`, real analysis cache, real pasteboard) never fire.
 @MainActor
 struct OnboardingViewRenderTests {
     private func render<V: View>(_ view: V) -> CGSize {
@@ -25,8 +19,6 @@ struct OnboardingViewRenderTests {
         var body: some View { content(ns) }
     }
 
-    /// Pins that the start screen builds and lays out with no initial URL and with a
-    /// pre-filled one (the retry-after-failure path).
     @Test func startScreenLaysOut() {
         _ = render(NamespaceHost { OnboardingView(markNamespace: $0, onSubmit: { _ in }) })
         _ = render(NamespaceHost {
@@ -35,8 +27,6 @@ struct OnboardingViewRenderTests {
         })
     }
 
-    /// Pins that a PR list holding one row with detail and date and one without builds
-    /// and lays out.
     @Test func pullRequestListAndRowsLayOut() {
         let size = render(
             PullRequestList(title: "Awaiting your review", systemImage: "person") {
@@ -51,7 +41,6 @@ struct OnboardingViewRenderTests {
         #expect(size.width > 0 && size.height > 0)
     }
 
-    /// Pins the analyzing screen's build for several stages, with and without a log.
     @Test func analyzingViewLaysOut() {
         let log = [PipelineProgressEntry(stage: "Analyzing architecture", detail: "Reading GraphStore.swift")]
         for stage in [PipelineStage.fetching, .architecture, .judgment] {
@@ -60,8 +49,6 @@ struct OnboardingViewRenderTests {
         _ = render(NamespaceHost { AnalyzingView(stage: .fetching, log: [], markNamespace: $0) })
     }
 
-    /// Pins that both PR lists build from real rows: a draft and a non-draft review
-    /// request, and a recent PR.
     @Test func pullRequestListsLayOutWithBothSources() {
         let requests = [
             ReviewRequest(url: "u1", repo: "acme/shop", number: 1, title: "t1", author: "a", isDraft: true, updatedAt: Date()),
@@ -74,15 +61,12 @@ struct OnboardingViewRenderTests {
         _ = render(PullRequestLists(requests: [], recents: [], onOpen: { _ in }))
     }
 
-    /// Pins that both clipboard offers (a recognized PR and an unread link) build.
     @Test func clipboardOfferRowLaysOutForBothOffers() {
         for offer in [ClipboardOffer.pullRequest("https://github.com/acme/shop/pull/1"), .unreadLink(changeCount: 4)] {
             _ = render(ClipboardOfferRow(offer: offer, onOpen: { _ in }, onOpenUnread: { _ in }, onDismiss: {}))
         }
     }
 
-    /// Pins that the activity console builds, and that the analyzing screen shows it (with
-    /// its divider) when the reviewer has left activity expanded.
     @Test func analysisConsoleLaysOutAndShowsWhenExpanded() {
         let log = [
             PipelineProgressEntry(stage: "Opening", detail: "Fetching"),
@@ -100,8 +84,6 @@ struct OnboardingViewRenderTests {
         _ = render(NamespaceHost { AnalyzingView(stage: .architecture, log: log, markNamespace: $0) })
     }
 
-    /// Pins that a resolved clipboard read opens a PR, fills the field, or does nothing,
-    /// and never more than one of those.
     @Test func performCarriesOutEachClipboardReadAction() {
         var opened: [String] = []
         var filled: [String] = []
@@ -112,8 +94,6 @@ struct OnboardingViewRenderTests {
         #expect(filled == ["text"])
     }
 
-    /// Pins the paste hook: pasted text is resolved (a PR link canonicalized) and applied
-    /// on the main queue, and an empty provider list does nothing.
     @Test func loadPastedTextAppliesTheResolvedText() async {
         OnboardingView.loadPastedText(from: [], apply: { _ in Issue.record("nothing was pasted") })
 
@@ -125,7 +105,6 @@ struct OnboardingViewRenderTests {
         #expect(applied == "https://github.com/acme/shop/pull/3")
     }
 
-    /// Pins that the failure screen builds with its two actions.
     @Test func failedViewLaysOut() {
         _ = render(FailedView(message: "Couldn't reach GitHub.", onRetry: {}, onOpenDifferent: {}))
     }

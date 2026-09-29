@@ -2,21 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `SettingsViewLogic` is the status-derivation, precedence-aware footer, and override-notice
-/// text logic CLAUDE.md calls out for this file, pulled out of `SettingsView`/`ToolStatusRow`'s
-/// bodies so it's directly testable against plain `ToolStatus`/`ExternalTool`/`HarnessID`
-/// fixtures. What's left in `SettingsView.swift` itself — the three `Form`/`Section`/`Picker`
-/// tab bodies, `ToolStatusRow.body`, and the private async `refresh()` that drives a real
-/// `EnvironmentProbe()` — is SwiftUI view construction and process-probing with no seam for
-/// injection, matching the same accepted gap `WelcomeWizardTests.swift` documents for its
-/// near-identical `refresh()`/probe pattern. There is no UI-testing/snapshot infrastructure in
-/// this suite to render or inspect a `body` value, so that portion stays out of reach of this
-/// file's line-coverage number; every non-trivial branch of logic this file contains is tested
-/// below.
 struct SettingsViewTests {
-
-    // MARK: - harnessTool / label
-
     @Test func harnessToolMapsEachHarnessIdToItsExternalTool() {
         #expect(SettingsViewLogic.harnessTool(.pi) == .pi)
         #expect(SettingsViewLogic.harnessTool(.claude) == .claude)
@@ -41,15 +27,11 @@ struct SettingsViewTests {
         #expect(SettingsViewLogic.label(for: .pi, statuses: [.pi: status]) == "pi")
     }
 
-    // MARK: - githubFooter
-
     @Test func githubFooterNamesEveryAccessMode() {
         #expect(SettingsViewLogic.githubFooter(for: .auto).contains("gh when it's installed"))
         #expect(SettingsViewLogic.githubFooter(for: .gh).contains("Always uses gh"))
         #expect(SettingsViewLogic.githubFooter(for: .anonymous).contains("anonymous API"))
     }
-
-    // MARK: - jiraLabel
 
     @Test func jiraLabelIsPlainWhenAvailable() {
         #expect(SettingsViewLogic.jiraLabel(jiraAvailable: true) == TrackerID.jira.displayName)
@@ -59,14 +41,10 @@ struct SettingsViewTests {
         #expect(SettingsViewLogic.jiraLabel(jiraAvailable: false) == "Jira — acli not found")
     }
 
-    // MARK: - overrideNoticeText
-
     @Test func overrideNoticeTextNamesTheSpecificVariable() {
         #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_HARNESS") == "Overridden by CONTOUR_HARNESS in the environment.")
         #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_TRACKER") == "Overridden by CONTOUR_TRACKER in the environment.")
     }
-
-    // MARK: - symbol / tint
 
     @Test func symbolAndTintAreNeutralWithNoStatusYet() {
         #expect(SettingsViewLogic.symbol(for: nil, tool: .git) == "circle.dotted")
