@@ -130,112 +130,145 @@ enum ReviewContextMenuLogic {
     static func codeRefMenuItems(for resolved: ResolvedSubject) -> [CodeRef] {
         Array(resolved.refs.prefix(12))
     }
+
+    static func navigationItems(
+        for resolved: ResolvedSubject, subject: ReviewSubject, in graph: PRGraph
+    ) -> [ReviewMenuItem] {
+        var items: [ReviewMenuItem] = []
+        if let (label, target) = detailButton(for: resolved) {
+            items.append(.button(ReviewMenuEntry(title: label, command: .navigate(target))))
+        }
+        if let ref = diffRef(for: resolved, subject: subject) {
+            items.append(.button(ReviewMenuEntry(title: "Show in Diff", command: .navigate(.diffLocation(ref)))))
+        }
+        items += choice(
+            single: "Show in Architecture", multiple: "Show in Architecture",
+            entries: architectureParts(for: resolved, in: graph).map {
+                ReviewMenuEntry(title: $0.title, command: .navigate(.componentDetail($0.id)))
+            })
+        items += choice(
+            single: "Show Related Decision", multiple: "Show Related Decisions",
+            entries: relatedDecisions(for: resolved, in: graph).map {
+                ReviewMenuEntry(title: $0.title, command: .navigate(.decisionDetail($0.id)))
+            })
+        items += choice(
+            single: "Show Related Flow", multiple: "Show Related Flows",
+            entries: relatedFlows(for: resolved, in: graph).map {
+                ReviewMenuEntry(title: $0.title, command: .navigate(.flowDetail($0.id)))
+            })
+        if resolved.kind != .code {
+            let title = showInCodeTitle(for: resolved.kind)
+            items += choice(
+                single: title, multiple: title,
+                entries: codeRefMenuItems(for: resolved).map {
+                    ReviewMenuEntry(title: $0.display, command: .navigate(.evidence($0)))
+                })
+        }
+        return items
+    }
+
+    static func choice(single: String, multiple: String, entries: [ReviewMenuEntry]) -> [ReviewMenuItem] {
+        switch entries.count {
+        case 0: []
+        case 1: [.button(ReviewMenuEntry(title: single, command: entries[0].command))]
+        default: [.submenu(multiple, entries)]
+        }
+    }
+}
+
+struct ReviewMenuEntry: Equatable {
+    var title: String
+    var command: ReviewMenuCommand
+}
+
+enum ReviewMenuItem: Equatable {
+    case button(ReviewMenuEntry)
+    case submenu(String, [ReviewMenuEntry])
+}
+
+enum ReviewMenuCommand: Equatable {
+    case ask(ReviewSubject)
+    case askTradeoff(ReviewSubject)
+    case navigate(NavigationTarget)
+    case openURL(URL)
+    case copyURL(URL)
+}
+
+extension ReviewActions {
+    func perform(_ command: ReviewMenuCommand) {
+        switch command {
+        case .ask(let subject): ask(subject)
+        case .askTradeoff(let subject):
+            askQuestion("Why did the PR choose this side of the tradeoff?", subject)
+        case .navigate(let target): navigate(target)
+        case .openURL(let url): NSWorkspace.shared.open(url)
+        case .copyURL(let url):
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        }
+    }
 }
 
 private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
-    @Environment(\.reviewActions) private var actions
     let subject: ReviewSubject
     let extra: Extra
 
     func body(content: Content) -> some View {
-        content.contextMenu { menu }
+        content.contextMenu { ReviewContextMenuContent(subject: subject, extra: extra) }
     }
+}
+
+struct ReviewContextMenuContent<Extra: View>: View {
+    @Environment(\.reviewActions) private var actions
+    let subject: ReviewSubject
+    let extra: Extra
 
     @ViewBuilder
-    private var menu: some View {
+    var body: some View {
         if let graph = actions.graph, let resolved = graph.resolve(subject) {
             Button {
-                actions.ask(subject)
+                actions.perform(.ask(subject))
             } label: {
                 Label("Ask about this…", systemImage: "sparkles")
             }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
             if ReviewContextMenuLogic.showsTradeoffQuestion(for: resolved.kind) {
-                Button("Why did the PR choose this side?") {
-                    actions.askQuestion("Why did the PR choose this side of the tradeoff?", subject)
-                }
+                entryButton(ReviewMenuEntry(title: "Why did the PR choose this side?", command: .askTradeoff(subject)))
             }
 
             Divider()
 
             extra
 
-            if let (label, target) = ReviewContextMenuLogic.detailButton(for: resolved) {
-                Button(label) { actions.navigate(target) }
+            ForEach(
+                Array(ReviewContextMenuLogic.navigationItems(for: resolved, subject: subject, in: graph).enumerated()),
+                id: \.offset
+            ) { _, item in
+                itemView(item)
             }
-            if let ref = ReviewContextMenuLogic.diffRef(for: resolved, subject: subject) {
-                Button("Show in Diff") { actions.navigate(.diffLocation(ref)) }
-            }
-            showInArchitecture(resolved, graph)
-            relatedDecisions(resolved, graph)
-            relatedFlows(resolved, graph)
-            if resolved.kind != .code { showInCode(resolved) }
-            if let url = githubURL(resolved) {
-                Button("Open on GitHub") { NSWorkspace.shared.open(url) }
-            }
+            if let url = ReviewContextMenuLogic.githubURL(for: resolved, actions: actions) {
+                entryButton(ReviewMenuEntry(title: "Open on GitHub", command: .openURL(url)))
 
-            Divider()
+                Divider()
 
-            if let url = githubURL(resolved) {
-                Button("Copy Link") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(url.absoluteString, forType: .string)
-                }
+                entryButton(ReviewMenuEntry(title: "Copy Link", command: .copyURL(url)))
             }
         }
     }
 
     @ViewBuilder
-    private func showInArchitecture(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let parts = ReviewContextMenuLogic.architectureParts(for: resolved, in: graph)
-        if parts.count == 1, let part = parts.first {
-            Button("Show in Architecture") { actions.navigate(.componentDetail(part.id)) }
-        } else if parts.count > 1 {
-            Menu("Show in Architecture") {
-                ForEach(parts) { part in Button(part.title) { actions.navigate(.componentDetail(part.id)) } }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func relatedDecisions(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let decisions = ReviewContextMenuLogic.relatedDecisions(for: resolved, in: graph)
-        if decisions.count == 1, let d = decisions.first {
-            Button("Show Related Decision") { actions.navigate(.decisionDetail(d.id)) }
-        } else if decisions.count > 1 {
-            Menu("Show Related Decisions") {
-                ForEach(decisions) { d in Button(d.title) { actions.navigate(.decisionDetail(d.id)) } }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func relatedFlows(_ resolved: ResolvedSubject, _ graph: PRGraph) -> some View {
-        let flows = ReviewContextMenuLogic.relatedFlows(for: resolved, in: graph)
-        if flows.count == 1, let f = flows.first {
-            Button("Show Related Flow") { actions.navigate(.flowDetail(f.id)) }
-        } else if flows.count > 1 {
-            Menu("Show Related Flows") {
-                ForEach(flows) { f in Button(f.title) { actions.navigate(.flowDetail(f.id)) } }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func showInCode(_ resolved: ResolvedSubject) -> some View {
-        let title = ReviewContextMenuLogic.showInCodeTitle(for: resolved.kind)
-        if resolved.refs.count == 1, let ref = resolved.refs.first {
-            Button(title) { actions.navigate(.evidence(ref)) }
-        } else if resolved.refs.count > 1 {
+    private func itemView(_ item: ReviewMenuItem) -> some View {
+        switch item {
+        case .button(let entry):
+            entryButton(entry)
+        case .submenu(let title, let entries):
             Menu(title) {
-                ForEach(ReviewContextMenuLogic.codeRefMenuItems(for: resolved)) { ref in
-                    Button(ref.display) { actions.navigate(.evidence(ref)) }
-                }
+                ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in entryButton(entry) }
             }
         }
     }
 
-    private func githubURL(_ resolved: ResolvedSubject) -> URL? {
-        ReviewContextMenuLogic.githubURL(for: resolved, actions: actions)
+    private func entryButton(_ entry: ReviewMenuEntry) -> some View {
+        Button(entry.title) { actions.perform(entry.command) }
     }
 }
