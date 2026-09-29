@@ -142,14 +142,12 @@ struct FlowBehaviorTests {
     }
 
     @Test func aReviewQuestionAppearsOnlyInTheFlowItConcerns() throws {
-        let graph = try fixtureGraph()
+        var graph = try fixtureGraph()
         let question = try pipeQuestion(graph)
-        #expect(
-            graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
-        )
-        #expect(
-            !graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
-        )
+        let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        graph.pr.considerations?[q].flowAnchors = []
+        #expect(graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
+        #expect(!graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
     }
 
     @Test func anchorsNamingNoRealFlowFallBackToTheQuestionsRelatedIds() throws {
@@ -163,6 +161,18 @@ struct FlowBehaviorTests {
         #expect(
             !graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
         )
+    }
+
+    @Test func anAnchorNamingAFlowStepLandsOnTheStageRunningThatStep() throws {
+        var graph = try fixtureGraph()
+        let stdin = try stdinFlow(graph)
+        let question = try pipeQuestion(graph)
+        let step = try #require(stdin.steps.last)
+        let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: stdin.id, nodeId: step.id)]
+        let stage = try #require(graph.behavior(for: stdin).nodes.first { $0.stepIds.contains(step.id) })
+        let annotation = graph.annotations(for: stdin).first { $0.targetId == question.id }
+        #expect(annotation?.nodeId == stage.id)
     }
 
     @Test func anAnchoredQuestionSitsExactlyWhereTheJudgmentStagePutIt() throws {
