@@ -31,12 +31,12 @@ enum MainThreadWatchdog {
         }
     }
 
-    nonisolated(unsafe) private static var beat: Beat?
-    nonisolated(unsafe) private static var observer: CFRunLoopObserver?
-    nonisolated(unsafe) private static var timer: DispatchSourceTimer?
-    nonisolated(unsafe) private static var started = false
+    @MainActor private static var beat: Beat?
+    @MainActor private static var observer: CFRunLoopObserver?
+    @MainActor private static var timer: DispatchSourceTimer?
+    @MainActor private static var started = false
 
-    static func start(
+    @MainActor static func start(
         thresholdMs: Double = defaultThresholdMs,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -49,13 +49,13 @@ enum MainThreadWatchdog {
 
         let observer = CFRunLoopObserverCreateWithHandler(
             kCFAllocatorDefault, CFRunLoopActivity.allActivities.rawValue, true, 0
-        ) { _, _ in beat.touch() }
+        ) { @Sendable _, _ in beat.touch() }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         self.observer = observer
 
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.contour.app.watchdog", qos: .utility))
         timer.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
-        timer.setEventHandler {
+        timer.setEventHandler { @Sendable in
             if let elapsedMs = beat.checkStall(thresholdMs: thresholdMs) {
                 logger.warning("Main thread blocked for \(Int(elapsedMs), privacy: .public) ms")
             }

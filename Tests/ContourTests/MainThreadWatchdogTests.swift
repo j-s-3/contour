@@ -33,10 +33,12 @@ struct MainThreadWatchdogTests {
         #expect(beat.checkStall(thresholdMs: 0) != nil, "touch() should re-arm reporting")
     }
 
+    @MainActor
     @Test func startIsANoOpWhenDisabledViaEnvironment() {
         MainThreadWatchdog.start(thresholdMs: 1, environment: ["CONTOUR_DISABLE_WATCHDOG": "1"])
     }
 
+    @MainActor
     @Test func startInstallsOnceAndIsIdempotentOnRepeatedCalls() {
         MainThreadWatchdog.start(thresholdMs: 60_000, environment: [:])
         MainThreadWatchdog.start(thresholdMs: 60_000, environment: [:])
