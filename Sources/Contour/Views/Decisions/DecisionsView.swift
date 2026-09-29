@@ -1,36 +1,15 @@
 import SwiftUI
 
-/// The Decisions lens: where the reviewer makes judgments. The Overview says what deserves
-/// thought; this is where that thought is recorded, one consequential choice at a time.
-///
-/// Each decision is drawn as the question the engineer had to answer, the options on the
-/// table with the chosen one marked, what that choice traded, and why it landed on that
-/// side — one visual unit, scannable in a few seconds, followed by an explicit Looks good /
-/// Question / Discuss. Tradeoffs are never a separate destination: a tradeoff exists because
-/// a decision was made, so it is drawn on, and judged with, that decision.
-/// Everything else (full rationale, alternatives, consequences, what it affects, evidence)
-/// is behind More…, a right-click, or a conversation.
-///
-/// The lens directs scarce attention: the decisions where the reviewer's judgment appears to
-/// matter most are shown as Decisions to Review; everything else the analysis found is
-/// collapsed under Other Decisions, compact but still inspectable. Significance decides which
-/// is which, never abstraction level — and the reviewer can move a decision either way.
-/// The lens is built for a sequential, keyboard-only loop — J/K to move, A/Q/C to judge —
-/// and has a one-at-a-time mode that reads like a design review.
 struct DecisionsView: View {
     let graph: PRGraph
-    /// Where navigation asked the lens to open.
     var focus: Focus?
-    /// Overview questions talked through in a conversation, for review progress.
     var discussed: Set<String> = []
     var onSetState: (String, ReviewerState) -> Void
     var onSetNote: (String, String) -> Void
-    /// Add to review (true) / Not worth reviewing (false).
     var onSetToReview: (String, Bool) -> Void
 
     struct Focus: Equatable {
         var decisionId: String
-        /// The Overview question that brought the reviewer here, if any.
         var considerationId: String? = nil
     }
 
@@ -42,7 +21,6 @@ struct DecisionsView: View {
     @Environment(\.reviewActions) private var actions
     @AppStorage("decisions.mode") private var mode: Mode = .list
     @State private var selectedId: String?
-    /// The decision briefly lit up after navigating to it.
     @State private var arrivedId: String?
     @State private var expandedIds: Set<String> = []
     @State private var showOther = false
@@ -51,9 +29,7 @@ struct DecisionsView: View {
 
     private var toReview: [DecisionNode] { graph.decisionsToReview }
     private var other: [DecisionNode] { graph.otherDecisions }
-    /// Other Decisions open by default only when nothing was proposed for review.
     private var otherShown: Bool { showOther || toReview.isEmpty }
-    /// The review sequence J/K walks: decisions to review, then other decisions once shown.
     private var sequence: [DecisionNode] { toReview + (otherShown ? other : []) }
     private var selected: DecisionNode? { graph.decision(selectedId) ?? sequence.first }
 
@@ -93,8 +69,6 @@ struct DecisionsView: View {
         }
     }
 
-    // MARK: - Header
-
     private var header: some View {
         let progress = graph.reviewProgress(discussed: discussed)
         return VStack(alignment: .leading, spacing: 6) {
@@ -115,8 +89,6 @@ struct DecisionsView: View {
                 Text(Self.framing(toReview: toReview.count, total: graph.decisions.count))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                // The same n of m as the Overview and the sidebar: its things to think
-                // about, resolved — judging a decision here resolves the questions on it.
                 if progress.total > 0 {
                     ReviewProgressDots(graph: graph, discussed: discussed)
                     Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
@@ -129,8 +101,6 @@ struct DecisionsView: View {
         }
     }
 
-    /// Says what the list is for — where the reviewer's time is best spent — without claiming
-    /// the analysis ranked importance perfectly, and that more was found than is shown.
     nonisolated static func framing(toReview: Int, total: Int) -> String {
         let others = total - toReview
         if toReview == 0 {
@@ -143,8 +113,6 @@ struct DecisionsView: View {
         let found = others > 0 ? ", out of \(total) identified" : ""
         return lead + found + (toReview == 1 ? ". Do you agree with it?" : ". Do you agree with them?")
     }
-
-    // MARK: - List mode
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -220,7 +188,6 @@ struct DecisionsView: View {
         .id(decision.id)
     }
 
-    /// A decision to review in the list or one-at-a-time, or an other decision's compact row.
     @ViewBuilder
     private func item(_ decision: DecisionNode) -> some View {
         if let index = toReview.firstIndex(where: { $0.id == decision.id }) {
@@ -252,8 +219,6 @@ struct DecisionsView: View {
         )
         .id(decision.id)
     }
-
-    // MARK: - One at a time
 
     @ViewBuilder
     private var oneAtATime: some View {
@@ -309,10 +274,6 @@ struct DecisionsView: View {
         }
     }
 
-    // MARK: - Behavior
-
-    /// Opens the decision navigation asked for: reveal it, select it, scroll to it, and
-    /// light it up briefly so the eye lands on it.
     private func arrive(_ proxy: ScrollViewProxy) {
         let id = focus?.decisionId
         let exists = id.flatMap { graph.decision($0) } != nil
@@ -368,8 +329,6 @@ struct DecisionsView: View {
         if let proxy { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(nextId) } }
     }
 
-    /// Records a judgment. "Looks good" moves on to the next decision still waiting for
-    /// one; "Question" opens a note for the author; "Discuss" opens a conversation.
     private func judge(_ decision: DecisionNode, _ state: ReviewerState, proxy: ScrollViewProxy? = nil) {
         let turningOn = decision.reviewerState != state
         selectedId = decision.id
@@ -391,8 +350,6 @@ struct DecisionsView: View {
         }
     }
 
-    /// Add to review / Not worth reviewing. A decision added to review is selected where it
-    /// lands; one taken out hands the selection to the next decision still to review.
     private func setToReview(_ decision: DecisionNode, _ toReview: Bool) {
         let nextId = DecisionsViewLogic.selectionAfterTogglingReview(
             toReview: self.toReview, decisionId: decision.id, addingToReview: toReview)
@@ -411,17 +368,12 @@ struct DecisionsView: View {
     }
 }
 
-/// Pure grouping/ordering logic pulled out of this file's views (per CLAUDE.md's guidance)
-/// so it's directly testable without a live view.
 enum DecisionsViewLogic {
-    /// Reorders a decision's Overview questions so the one the reviewer arrived from leads,
-    /// leaving the rest in their original order.
     static func questions(from all: [Consideration], leadingWith arrivedFromConsiderationId: String?) -> [Consideration] {
         guard let lead = arrivedFromConsiderationId, let item = all.first(where: { $0.id == lead }) else { return all }
         return [item] + all.filter { $0.id != lead }
     }
 
-    /// Provenance is metadata: a quiet note after the why, not a badge in front of it.
     nonisolated static func provenanceNote(_ s: Statement) -> String {
         switch s.provenance {
         case .claim: return "Author rationale"
@@ -436,10 +388,6 @@ enum DecisionsViewLogic {
         return text.prefix(1).uppercased() + text.dropFirst()
     }
 
-    // MARK: - Keyboard shortcuts
-
-    /// What a keypress in the Decisions lens should do, decided from plain inputs rather than
-    /// `KeyPress` itself so it's directly testable. Mirrors `DecisionsView.handleKey`.
     enum KeyAction: Equatable {
         case step(Int)
         case judge(ReviewerState)
@@ -447,14 +395,6 @@ enum DecisionsViewLogic {
         case ignored
     }
 
-    /// - Parameters:
-    ///   - isArrowDown/isArrowUp: the two keys handled before any selection is required.
-    ///   - character: the pressed key's characters, lowercased by the caller for j/k/a/q/c/m.
-    ///   - modifiersBlockShortcuts: true when Command/Control/Option was held — never ours.
-    ///   - noteFieldFocused: a reviewer note field has focus, so typing isn't a shortcut.
-    ///   - hasSelection: a decision is currently selected.
-    ///   - selectionIsToReview: the selected decision is one being reviewed — A/Q/C only ever
-    ///     judge those; an Other Decision must be added to review first.
     nonisolated static func keyAction(isArrowDown: Bool, isArrowUp: Bool, character: String,
                                        modifiersBlockShortcuts: Bool, noteFieldFocused: Bool,
                                        hasSelection: Bool, selectionIsToReview: Bool) -> KeyAction {
@@ -475,10 +415,6 @@ enum DecisionsViewLogic {
         }
     }
 
-    // MARK: - Navigation / selection math
-
-    /// Where `step(_:)` moves: `delta` positions from `currentId` in `ids`, clamped to the
-    /// ends. Nil when there's nothing to select.
     nonisolated static func stepId(in ids: [String], currentId: String?, delta: Int) -> String? {
         guard !ids.isEmpty else { return nil }
         let current = currentId.flatMap { ids.firstIndex(of: $0) } ?? 0
@@ -486,16 +422,12 @@ enum DecisionsViewLogic {
         return ids[next]
     }
 
-    /// After accepting a decision, the review moves on: the next still-`unreviewed` decision
-    /// after it in the sequence, or failing that the next one at all, or nil past the end.
     nonisolated static func nextAfterAccepting(sequence: [DecisionNode], decisionId: String) -> String? {
         guard let at = sequence.firstIndex(where: { $0.id == decisionId }) else { return nil }
         let after = sequence[sequence.index(after: at)...]
         return (after.first { $0.reviewerState == .unreviewed } ?? after.first)?.id
     }
 
-    /// Where selection lands after toggling a decision's review placement: itself when added,
-    /// or the next decision still to review (falling back to any other one) when removed.
     nonisolated static func selectionAfterTogglingReview(toReview: [DecisionNode], decisionId: String,
                                                           addingToReview: Bool) -> String? {
         guard !addingToReview else { return decisionId }
@@ -503,9 +435,6 @@ enum DecisionsViewLogic {
         return (next ?? toReview.first { $0.id != decisionId })?.id
     }
 
-    /// What `arrive(_:)` should do with navigation's requested decision: reveal Other
-    /// Decisions and select it when it exists, otherwise leave the current selection alone
-    /// (defaulting it only when nothing was selected yet).
     nonisolated static func arrivalSelection(decisionId: String?, decisionExists: Bool, isOtherDecision: Bool,
                                               existingSelectedId: String?, fallbackId: String?)
         -> (selectedId: String?, revealOther: Bool) {
@@ -515,27 +444,18 @@ enum DecisionsViewLogic {
         return (id, isOtherDecision)
     }
 
-    // MARK: - Presentation
-
-    /// The impacts line under a decision's question — its top few, joined for one glance.
     nonisolated static func impactsSummary(_ impacts: [DecisionImpact]) -> String {
         impacts.prefix(3).map(\.label).joined(separator: " · ")
     }
 
-    /// The tint behind a decision's numbered badge: neutral until it's judged.
     nonisolated static func badgeTint(for state: ReviewerState) -> Color {
         state == .unreviewed ? .secondary : state.tint
     }
 
-    /// `TradeoffSpectrum`'s tooltip: the model's own explanation, or a plain fallback naming
-    /// which side the choice leans toward.
     nonisolated static func tradeoffHelp(_ tradeoff: DecisionTradeoff) -> String {
         (tradeoff.explanation?.text ?? "Leans toward \(tradeoff.chosenDimension)") + " — right-click to ask about it"
     }
 
-    /// Splits a before/after option's label ("Reader → Printer") on any `→` or `>` into its
-    /// chain of parts, trimming surrounding whitespace and stray leading/trailing dashes
-    /// from each one, and dropping empties left by adjacent separators.
     nonisolated static func beforeAfterParts(from label: String) -> [String] {
         label.components(separatedBy: CharacterSet(charactersIn: "→>"))
             .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "-")) }
@@ -543,17 +463,11 @@ enum DecisionsViewLogic {
     }
 }
 
-// MARK: - A decision
-
-/// One decision's default surface — question, choice, tradeoff, why, judgment — plus its
-/// More… drill-down.
 private struct DecisionCard: View {
     let decision: DecisionNode
     let brief: DecisionBrief
     let graph: PRGraph
-    /// Decisions to review are numbered.
     let number: Int?
-    /// Why this decision is highlighted, as quiet metadata under the question.
     let attentionReason: String
     var arrivedFromConsiderationId: String?
     var isSelected: Bool
@@ -568,7 +482,6 @@ private struct DecisionCard: View {
 
     @Environment(\.reviewActions) private var actions
 
-    /// Overview questions reviewed here; the one the reviewer arrived from leads.
     private var questions: [Consideration] {
         DecisionsViewLogic.questions(from: graph.overviewQuestions(reviewedOn: decision.id),
                                      leadingWith: arrivedFromConsiderationId)
@@ -651,8 +564,6 @@ private struct DecisionCard: View {
         .onTapGesture(perform: onSelect)
     }
 
-    /// Why this is highlighted — what it could affect and why it matters, in one quiet line.
-    /// Reasoning, never a score.
     private var whyHighlighted: some View {
         let impacts = DecisionsViewLogic.impactsSummary(decision.impacts)
         var line = Text("")
@@ -667,7 +578,6 @@ private struct DecisionCard: View {
             .help("Why this is highlighted for review")
     }
 
-    // WHAT WE'RE TRADING / WHY THIS SIDE?, aligned on one label column.
     private var briefGrid: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
             if let tradeoff = brief.tradeoff, let index = decision.tradeoffs.firstIndex(of: tradeoff) {
@@ -692,8 +602,6 @@ private struct DecisionCard: View {
                         .reviewContextMenu(.decision(decision.id))
                 }
             }
-            // The Overview's questions are the review checklist; judging this decision
-            // resolves them, so they're named here as one more line — not re-quoted.
             if !questions.isEmpty {
                 GridRow {
                     rowLabel("Overview asks")
@@ -714,8 +622,6 @@ private struct DecisionCard: View {
             if !appearances.isEmpty {
                 GridRow {
                     rowLabel("Appears in")
-                    // Where this choice shows up in the runtime behavior — opens the flow with
-                    // that stage selected.
                     FlowLayout(spacing: 12) {
                         ForEach(appearances, id: \.flow.id) { flow, nodeId in
                             Button { actions.navigate(.flowNodeDetail(flowId: flow.id, nodeId: nodeId)) } label: {
@@ -760,11 +666,6 @@ private struct DecisionCard: View {
     }
 }
 
-// MARK: - An other decision
-
-/// An other decision, compact: the question, what was chosen, and why it isn't among the
-/// decisions to review. Still fully usable — Show opens the drawn choice, reasoning and
-/// evidence; Ask… opens a conversation; Add to review promotes it to a full decision.
 private struct OtherDecisionRow: View {
     let decision: DecisionNode
     let brief: DecisionBrief
@@ -872,13 +773,11 @@ private struct OtherDecisionRow: View {
             .font(.caption2.weight(.bold))
             .tracking(0.5)
             .foregroundStyle(.secondary)
-            // Fixed, so the value column lines up across rows (each row is its own grid).
             .frame(width: 104, alignment: .leading)
             .gridColumnAlignment(.leading)
     }
 }
 
-/// The number in a circle, which becomes the verdict once there is one.
 private struct DecisionBadge: View {
     let number: Int?
     let state: ReviewerState
@@ -909,7 +808,6 @@ private struct DecisionBadge: View {
     private var tint: Color { DecisionsViewLogic.badgeTint(for: state) }
 }
 
-/// "✓ Reviewed" — obvious, never loud.
 private struct ReviewedChip: View {
     let state: ReviewerState
 
@@ -926,8 +824,6 @@ private struct ReviewedChip: View {
     }
 }
 
-/// One dot per thing to think about, filled once resolved — in its decision's judgment
-/// color, or green when it was talked through instead.
 private struct ReviewProgressDots: View {
     let graph: PRGraph
     let discussed: Set<String>
@@ -946,10 +842,6 @@ private struct ReviewProgressDots: View {
     }
 }
 
-// MARK: - Judgment
-
-/// Explicit, labeled review actions — this screen exists for human judgment, so they are
-/// words, not glyphs. Selecting the current state again clears it.
 private struct ReviewButtons: View {
     let state: ReviewerState
     var onSet: (ReviewerState) -> Void
@@ -1010,11 +902,6 @@ extension ReviewerState {
     }
 }
 
-// MARK: - The choice, drawn
-
-/// The options on the table and which one this PR took, drawn in the form that fits the
-/// choice: two approaches on a line, an ordered scale, or a list. Every option label can be
-/// right-clicked to ask about it.
 private struct DecisionChoiceView: View {
     let decisionId: String
     let brief: DecisionBrief
@@ -1029,7 +916,6 @@ private struct DecisionChoiceView: View {
         }
     }
 
-    // A ○──────────● B
     private var binary: some View {
         let a = brief.options[0], b = brief.options[1]
         return VStack(spacing: 7) {
@@ -1052,7 +938,6 @@ private struct DecisionChoiceView: View {
         .frame(maxWidth: 640)
     }
 
-    // 1 line ── 256 B ── 1 KB ● ── 4 KB
     private var threshold: some View {
         let last = brief.options.count - 1
         return HStack(alignment: .top, spacing: 0) {
@@ -1076,7 +961,6 @@ private struct DecisionChoiceView: View {
         .frame(maxWidth: 680)
     }
 
-    // ○ Read more  ● Inspect the buffer  ○ Disable for streams
     private var optionList: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(brief.options.enumerated()), id: \.offset) { index, option in
@@ -1097,7 +981,6 @@ private struct DecisionChoiceView: View {
         }
     }
 
-    // BEFORE  [Reader]→[Printer]      AFTER  [Reader]→[Inspector]→[Printer]
     private var beforeAfter: some View {
         let before = brief.options[0], after = brief.options[1]
         return VStack(alignment: .leading, spacing: 10) {
@@ -1106,7 +989,6 @@ private struct DecisionChoiceView: View {
         }
     }
 
-    /// One side of a before/after: its label drawn as a chain of tiny boxes.
     private func structure(_ option: DecisionOption, index: Int, title: String) -> some View {
         let parts = DecisionsViewLogic.beforeAfterParts(from: option.label)
         let tint = option.chosen ? Color.accentColor : Color.secondary
@@ -1138,7 +1020,6 @@ private struct DecisionChoiceView: View {
         .reviewContextMenu(.decisionOption(decisionId: decisionId, index: index))
     }
 
-    // No options were extracted: the answer and the road not taken, one line each.
     private var answerLines: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 8) {
             GridRow {
@@ -1203,7 +1084,6 @@ private struct DecisionChoiceView: View {
     }
 }
 
-/// Where the choice landed between the two things it traded — a line, not a paragraph.
 struct TradeoffSpectrum: View {
     let tradeoff: DecisionTradeoff
 
@@ -1245,11 +1125,6 @@ struct TradeoffSpectrum: View {
     }
 }
 
-// MARK: - More…
-
-/// Everything that isn't needed to judge the choice at a glance: how it's implemented, the
-/// full reasoning, what else was considered, what it constrains, where it reaches in the
-/// system, and the code behind it.
 private struct DecisionDrillDown: View {
     let decision: DecisionNode
     let graph: PRGraph
@@ -1297,8 +1172,6 @@ private struct DecisionDrillDown: View {
         }
     }
 
-    /// One tradeoff in full: the line, what it means, and the code that shows it. Secondary
-    /// tradeoffs only ever appear here.
     private func tradeoffDetail(_ tradeoff: DecisionTradeoff, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             TradeoffSpectrum(tradeoff: tradeoff)

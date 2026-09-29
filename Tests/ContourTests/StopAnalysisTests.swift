@@ -2,11 +2,7 @@ import Foundation
 import Testing
 @testable import Contour
 
-/// "Stop analysis": what landed stays, everything else is stopped and resumable one section
-/// at a time, and stopping really ends the subprocesses that were billing for it.
 struct StopAnalysisTests {
-
-    /// Mid-run: two stages landed, one failed, two running, judgment not started.
     private func midRun() -> [PipelineStage: StageStatus] {
         [
             .fetching: .done, .checkingOut: .done, .cacheCheck: .done, .ticket: .running(detail: nil),
@@ -21,8 +17,6 @@ struct StopAnalysisTests {
         state.stages.merge(AnalysisState.stopping(statuses)) { _, new in new }
         return state
     }
-
-    // MARK: - What stopping changes
 
     @Test func stoppingKeepsWhatLandedAndStopsEverythingElse() {
         let changes = AnalysisState.stopping(midRun())
@@ -46,8 +40,6 @@ struct StopAnalysisTests {
         #expect(AnalysisState.stopping(statuses).isEmpty)
         #expect(!AnalysisState(stages: statuses).canStop)
     }
-
-    // MARK: - The state it leaves
 
     @Test func afterStoppingNothingIsLeftToStopAndStoppedSectionsShow() {
         #expect(AnalysisState(stages: midRun()).canStop)
@@ -96,16 +88,12 @@ struct StopAnalysisTests {
         #expect(metrics.elapsed(.usefulOverview) == nil)
     }
 
-    // MARK: - Subprocesses
-
-    /// A `sleep` with a duration no other process will have, so `pgrep` finds only ours.
     private func uniqueSleep() -> String { "30.\(Int.random(in: 100_000...999_999))" }
 
     private func isRunning(_ commandLine: String) async -> Bool {
         (try? await Shell.run("/usr/bin/pgrep", ["-f", commandLine])) != nil
     }
 
-    /// Whether the process is gone, allowing it a moment to exit after being signalled.
     private func exits(_ commandLine: String) async -> Bool {
         for _ in 0..<20 {
             guard await isRunning(commandLine) else { return true }

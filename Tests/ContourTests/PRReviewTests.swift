@@ -9,7 +9,6 @@ final class PRReviewTests: XCTestCase {
         XCTAssertFalse(PRReview.canReview(prState: "CLOSED", ghAvailable: true))
     }
 
-    /// The anonymous REST source can't write, so reviewing needs `gh`.
     func testReviewingNeedsGH() {
         XCTAssertFalse(PRReview.canReview(prState: "OPEN", ghAvailable: false))
     }
@@ -27,7 +26,6 @@ final class PRReviewTests: XCTestCase {
         )
     }
 
-    /// GitHub rejects a request for changes that doesn't say what to change.
     func testRequestingChangesNeedsAComment() {
         XCTAssertFalse(PRReview.isReady(.requestChanges, comment: ""))
         XCTAssertFalse(PRReview.isReady(.requestChanges, comment: "  \n "))
@@ -35,10 +33,6 @@ final class PRReviewTests: XCTestCase {
         XCTAssertTrue(PRReview.isReady(.approve, comment: ""))
     }
 
-    /// `mockEnabled` is an injected override rather than reading `CONTOUR_MOCK_ANALYSIS`
-    /// directly, so this exercises the short-circuit branch without touching the process
-    /// environment (which `AnalysisCache` also reads, and which Swift Testing's parallel
-    /// runner would race) or shelling out to a real `gh`.
     func testSubmitShortCircuitsWithoutCallingGHWhenMockIsEnabled() async throws {
         let url = "https://github.com/j-s-3/contour/pull/10"
         try await PRReview.submit(prURL: url, verdict: .approve, mockEnabled: true)

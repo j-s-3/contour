@@ -1,10 +1,7 @@
 import XCTest
 @testable import Contour
 
-/// The start screen's two PR lists: the recent-PR index kept beside the analysis cache,
-/// and `gh search prs` output for PRs awaiting review.
 final class StartScreenTests: XCTestCase {
-
     private var directory: URL!
 
     override func setUp() {
@@ -31,7 +28,6 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(cache.recentPRs(limit: 2).map(\.number), [3, 2])
     }
 
-    /// Reopening a PR moves it to the top with its current title, rather than listing it twice.
     func testReopeningMovesToTopWithoutDuplicating() {
         let cache = AnalysisCache(directory: directory)
         record(cache, 1, title: "old title", at: 100)
@@ -43,7 +39,6 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(recents.first?.lastOpened, Date(timeIntervalSince1970: 300))
     }
 
-    /// Same number in a different repo is a different PR.
     func testRecentPRsAreKeyedByRepoAndNumber() {
         let cache = AnalysisCache(directory: directory)
         record(cache, 7, at: 100)
@@ -60,7 +55,6 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(recents.first?.number, AnalysisCache.recentCapacity + 5)
     }
 
-    /// A mock run opens the canned fixture PR; it isn't one the reviewer actually reviewed.
     func testRecentIndexIsBypassedInMockMode() {
         let cache = AnalysisCache(directory: directory)
         setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
@@ -88,7 +82,6 @@ final class StartScreenTests: XCTestCase {
         XCTAssertNotNil(requests.first?.updatedAt)
     }
 
-    /// A row that can't be opened is dropped; the rest of the list still shows.
     func testReviewRequestRowsMissingFieldsAreDropped() {
         let json = """
         [{"number":1,"title":"no url","repository":{"nameWithOwner":"acme/shop"}},
@@ -112,8 +105,6 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(request.id, "acme/shop#7")
     }
 
-    /// A row with no `updatedAt` sorts as though it were the oldest possible update, so a
-    /// row that actually has a timestamp always comes first regardless of list order.
     func testRowsMissingUpdatedAtSortLast() {
         let json = """
         [{"number":1,"title":"no date","url":"https://github.com/acme/shop/pull/1","repository":{"nameWithOwner":"acme/shop"}},
@@ -123,18 +114,11 @@ final class StartScreenTests: XCTestCase {
         XCTAssertEqual(requests.map(\.title), ["has date", "no date"])
     }
 
-    /// Pinning anonymous access means "don't use gh", so the start screen doesn't either.
     func testNoReviewRequestsWhenAccessIsAnonymous() async {
         let requests = await ReviewRequests.fetch(access: .anonymous)
         XCTAssertNil(requests)
     }
 
-    /// With access not pinned to anonymous, `fetch` reaches past the anonymous guard and
-    /// shells out to a real `gh` — this repo's convention is never to fake a real CLI on
-    /// PATH (`HarnessContractTests` replays a captured stream instead of spawning one), so
-    /// this drives the real call. `gh` may or may not be installed or authenticated in the
-    /// environment running this test; either way `fetch`'s `try?` degrades a failure to
-    /// `nil` rather than throwing or crashing, so both outcomes are valid.
     func testFetchReachesGHWhenAccessIsntAnonymous() async {
         let requests = await ReviewRequests.fetch(access: .gh)
         if let requests { XCTAssertTrue(requests.allSatisfy { !$0.repo.isEmpty }) }

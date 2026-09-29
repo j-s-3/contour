@@ -3,11 +3,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `FlowsView`'s body, header, scenario tabs, story and diagram builders are SwiftUI view
-/// code; the decisions inside them live in `FlowsViewLogic`. This suite hosts the real view
-/// in a window (so `.onAppear`/`.onChange` fire) over `ContourSampleData` for the empty,
-/// single-flow, multi-flow, focused and every-diagram-mode cases. It pins that none of them
-/// traps while building or laying out, which the pure-logic tests cannot see.
 @MainActor
 struct FlowsViewRenderTests {
 
@@ -19,7 +14,6 @@ struct FlowsViewRenderTests {
         window.contentView = hosting
         window.orderBack(nil)
         hosting.layoutSubtreeIfNeeded()
-        // Let onAppear's state changes (selection, focus) re-render the body.
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         hosting.layoutSubtreeIfNeeded()
         withExtendedLifetime(window) {}
@@ -77,10 +71,7 @@ struct FlowsViewRenderTests {
         _ = host(graph)
     }
 
-    // MARK: - Interaction
 
-    /// Owns a window, a hosted `FlowsView`, and a handle to its mode binding so a test can
-    /// press keys and switch modes the way the reviewer does.
     @MainActor private final class Session {
         struct Wrapper: View {
             let graph: PRGraph
@@ -129,7 +120,6 @@ struct FlowsViewRenderTests {
         func close() { window.orderOut(nil) }
     }
 
-    /// `[` and `]` cycle scenarios through `handleKey` and `openFlow`; other keys are ignored.
     @Test func bracketKeysCycleScenarios() throws {
         let session = Session(try multiFlowGraph())
         for key in ["]", "]", "[", "[", "x"] { session.press(key) }
@@ -137,7 +127,6 @@ struct FlowsViewRenderTests {
         session.close()
     }
 
-    /// A stage that the new mode hides is deselected through `select(nil)`.
     @Test func switchingToAModeThatHidesTheSelectedStageDeselectsIt() throws {
         let graph = ContourSampleData.publishTriggeredReindex
         let flow = try #require(graph.flows.first)
@@ -150,7 +139,6 @@ struct FlowsViewRenderTests {
         session.close()
     }
 
-    /// A flow that another flow hands off into lists the sources it is also reached from.
     @Test func convergingFlowsShowAlsoReachedFrom() throws {
         var graph = ContourSampleData.publishTriggeredReindex
         let target = try #require(graph.flows.first)

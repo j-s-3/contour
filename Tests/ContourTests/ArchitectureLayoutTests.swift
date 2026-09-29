@@ -2,12 +2,7 @@ import Testing
 import CoreGraphics
 @testable import Contour
 
-/// The architecture drawing must read like a whiteboard sketch: boxes never overlap, a
-/// container never encloses a part that isn't in it, and no connector runs through a box.
-/// These are the failures issue #1 showed (a node hanging outside its boundary, edges
-/// crossing boxes), checked in both orientations.
 struct ArchitectureLayoutTests {
-
     private func node(_ id: String, _ height: CGFloat = 90) -> GraphLayoutEngine.NodeSpec {
         .init(id: id, size: CGSize(width: 224, height: height))
     }
@@ -15,8 +10,6 @@ struct ArchitectureLayoutTests {
         .init(id: "\(from)->\(to)", fromId: from, toId: to, labelSize: CGSize(width: label, height: 20))
     }
 
-    /// The captured bat drawing: a pipeline with a skip edge, an external source and sink
-    /// grouped into one boundary, and the process boundary between them.
     private var bat: (nodes: [GraphLayoutEngine.NodeSpec], edges: [GraphLayoutEngine.EdgeSpec], groups: [GraphLayoutEngine.GroupSpec]) {
         (
             [node("source"), node("reader", 110), node("inspection", 140), node("printer"), node("terminal", 60)],
@@ -33,15 +26,11 @@ struct ArchitectureLayoutTests {
         let layout = GraphLayoutEngine.layout(nodes: nodes, edges: edges, groups: groups, vertical: vertical)
         assertClean(layout, groups: groups)
         let frames = Dictionary(uniqueKeysWithValues: layout.nodes.map { ($0.id, $0.frame) })
-        // Direction of travel reads left-to-right (or top-to-bottom).
         let order = ["source", "reader", "inspection", "printer", "terminal"].map { vertical ? frames[$0]!.minY : frames[$0]!.minX }
         #expect(order == order.sorted())
-        // The external group's members are far apart, so it's drawn as two containers.
         #expect(layout.boundaries.map(\.id).sorted() == ["bat", "external#0", "external#1"])
     }
 
-    /// Parts in the same column but different boundaries are stacked in separate bands, and
-    /// every edge still avoids every box.
     @Test(arguments: [false, true])
     func overlappingBoundariesStack(vertical: Bool) {
         let nodes = [node("api"), node("queue"), node("worker"), node("db"), node("cache")]
@@ -61,8 +50,6 @@ struct ArchitectureLayoutTests {
         let frames = Dictionary(uniqueKeysWithValues: wide.nodes.map { ($0.id, $0.frame) })
         #expect(frames["b"]!.minX - frames["a"]!.maxX >= 240)
     }
-
-    // MARK: -
 
     private func assertClean(_ layout: ArchDiagramLayout, groups: [GraphLayoutEngine.GroupSpec]) {
         let frames = layout.nodes

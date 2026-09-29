@@ -1,12 +1,8 @@
 import Foundation
 
-/// One turn's worth of output from the harness, as the chat surface consumes it.
 enum ConversationEvent: Sendable, Equatable {
-    /// What the model is doing right now ("reading src/Listener.java").
     case activity(String)
-    /// A fragment of the answer as it is written.
     case delta(String)
-    /// The authoritative full answer. Replaces any streamed preview.
     case final(String)
 }
 
@@ -22,22 +18,12 @@ enum ConversationError: LocalizedError {
     }
 }
 
-/// Contextual chat is another consumer of the same harness the analysis pipeline uses —
-/// same CLI, same read-only tools, same refusal to load instruction files from the
-/// checkout, same untrusted-content rule. What differs is only the shape of the exchange:
-/// prose instead of JSON, a focused context document instead of the whole-PR one, and the
-/// conversation so far replayed into each turn (every invocation is ephemeral, so the
-/// history has to travel with the question).
 struct ConversationService {
     let harness: any Harness
     let checkout: RepoCheckout
 
-    /// Chat favors a quick answer: the reviewer is mid-thought. The model can still read as
-    /// much of the checkout as the question needs.
     static let tier: AnalysisTier = .fast
 
-    /// How much history each turn carries. Older turns fall off rather than growing the
-    /// prompt without bound; the context document restates the subject every turn anyway.
     static let historyLimit = 12
 
     func respond(
@@ -84,8 +70,6 @@ struct ConversationService {
         }
     }
 
-    // MARK: - Prompts
-
     static func turnPrompt(history: [ChatMessage], question: String) -> String {
         var out = ""
         let recent = history.suffix(historyLimit).filter { !$0.text.isEmpty }
@@ -101,9 +85,6 @@ struct ConversationService {
         return out
     }
 
-    /// The chat counterpart of `AnalysisService.groundingSystemPrompt`: the same trust
-    /// boundary and grounding rules, but asking for a conversational answer at the selected
-    /// object's level of abstraction rather than a JSON object.
     static let systemPrompt = """
     You are the engineer who analyzed this pull request, answering a reviewer's question about \
     the specific part of the review they selected. The context file describes the pull request, \
@@ -131,11 +112,6 @@ struct ConversationService {
        blocks only for short, essential excerpts.
     """
 
-    // MARK: - Mock
-
-    /// With `CONTOUR_MOCK_ANALYSIS=1`, answer from the context document instead of calling
-    /// the harness, streaming word by word so the chat surface can be exercised end to end
-    /// (links included) without a model.
     static func mockResponse(contextDocument: String, question: String) -> AsyncThrowingStream<ConversationEvent, Error> {
         let selected = contextDocument
             .components(separatedBy: "\n")
