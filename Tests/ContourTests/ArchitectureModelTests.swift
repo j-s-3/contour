@@ -61,10 +61,10 @@ struct ArchitectureModelTests {
         ]
         graph.pr.considerations = [
             Consideration(
-                id: "chunking", question: "Is detection that depends on pipe chunking acceptable?",
-                detail: "", relatedIds: ["how-much", "input", "classification"]),
+                id: "chunking", headline: "Is detection that depends on pipe chunking acceptable?",
+                impact: "", relatedIds: ["how-much", "input", "classification"]),
             Consideration(
-                id: "explicit", question: "Is the BOM still honored?", detail: "",
+                id: "explicit", headline: "Is the BOM still honored?", impact: "",
                 relatedIds: ["input-encoding"]),
         ]
         return graph

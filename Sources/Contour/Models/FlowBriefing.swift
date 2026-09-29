@@ -199,7 +199,7 @@ extension PRGraph {
                 out.append(
                     FlowAnnotation(
                         kind: .question, targetId: item.id, nodeId: nodeId,
-                        text: item.question, detail: item.detail.isEmpty ? nil : item.detail))
+                        text: item.headline, detail: item.impact.isEmpty ? nil : item.impact))
             }
         }
         return out

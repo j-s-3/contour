@@ -5,7 +5,7 @@ import Testing
 
 struct DecisionsViewTests {
     private func consideration(_ id: String) -> Consideration {
-        Consideration(id: id, question: "Q \(id)", detail: "")
+        Consideration(id: id, headline: "Q \(id)", impact: "")
     }
 
     private func decision(_ id: String, state: ReviewerState = .unreviewed) -> DecisionNode {

@@ -149,12 +149,12 @@ struct DecisionCard: View {
                     rowLabel("Overview asks")
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(questions) { item in
-                            Text(item.question)
+                            Text(item.reviewerAsk)
                                 .font(.body.weight(item.id == arrivedFromConsiderationId ? .semibold : .regular))
                                 .foregroundStyle(.orange)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .help(item.detail)
+                                .help(item.decision == nil ? item.impact : "\(item.headline). \(item.impact)")
                                 .reviewContextMenu(.consideration(item.id))
                         }
                     }
@@ -261,7 +261,7 @@ struct OtherDecisionRow: View {
                 if let question = graph.overviewQuestions(reviewedOn: decision.id).first {
                     GridRow {
                         label("Overview asks")
-                        Text(question.question)
+                        Text(question.reviewerAsk)
                             .font(.callout)
                             .foregroundStyle(.orange)
                             .lineLimit(2)
@@ -393,7 +393,7 @@ struct ReviewProgressDots: View {
                 Circle()
                     .fill(fill(DecisionsViewLogic.progressDotFill(resolved: resolved, state: state)))
                     .frame(width: 7, height: 7)
-                    .help(item.question + (resolved ? " — resolved" : ""))
+                    .help(item.headline + (resolved ? " — resolved" : ""))
             }
         }
     }

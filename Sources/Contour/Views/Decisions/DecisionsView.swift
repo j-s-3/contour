@@ -165,7 +165,7 @@ struct DecisionsView: View {
                     ReviewProgressDots(graph: graph, discussed: discussed)
                     Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
                         .monospacedDigit()
-                        .help("Things to think about from the Overview you've resolved")
+                        .help("Areas needing your judgment from the Overview you've resolved")
                 }
             }
             .font(.callout)

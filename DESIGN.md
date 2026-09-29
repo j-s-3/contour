@@ -166,14 +166,20 @@ ago`, `PRGlance`) that omits whatever the source couldn't tell; **What changed**
 before/after stage diagram as the hero (3–6 short stages per side, green for a step this PR
 adds, dashed for a step that no longer happens, an optional success/failure outcome on the
 last stage); **Why** and **Consequence** at one or two lines each; **Things to think
-about**, 1–5 question-shaped items (a question plus one sentence) that merge what used to
-be separate needs-judgment and uncertainty lists, distinguished only by a subtle badge;
+about**, headed "n areas needing your judgment": 1–5 items that merge what used to be
+separate needs-judgment and uncertainty lists, distinguished only by a subtle badge. Each
+item reads top to bottom as observation, impact, decision: a quiet category (error
+handling, test coverage, compatibility, reliability, scaling, security, architecture,
+product behavior), a headline stating what was noticed, one plain-language sentence on why
+it could matter, and the decision asked of the reviewer ("To confirm" for an open
+question). Those four fields are written for an engineer who has not read the diff, so
+they describe system behavior rather than methods or types; the technical evidence, which
+may name exact symbols and lines, is shown only on drill-down;
 **Other behavior changes**, one line each, expanding inline; and **Explore the change**,
 three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
 with a tooltip rather than a colored badge. The things to think about are the review
-checklist: there is one measure of review progress, "n of m things to think about
-resolved", and the list's header, its checked-off badges, the Decisions tile, the Decisions
-header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An item is
+checklist: there is one measure of review progress, "n of m resolved", and the list's
+header, its checked-off badges, the Decisions tile, the Decisions header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An item is
 resolved by judging the decision it's reviewed on; when it has no decision to be judged on
 (none, or one outside Decisions to Review), by talking it through in a conversation. Longer
 reasoning, evidence, and file locations are drill-down only — an expansion, a click, or

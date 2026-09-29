@@ -121,7 +121,7 @@ struct ContentViewHostingTests {
 
     @Test func rendersTheDecisionsRowAsFullyReviewed() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
+        graph.pr.considerations = [Consideration(id: "q1", headline: "Why?", impact: "d", relatedIds: ["d1"])]
         graph.decisions = [
             DecisionNode(id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high)
         ]

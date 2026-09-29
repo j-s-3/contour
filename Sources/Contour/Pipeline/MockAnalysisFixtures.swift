@@ -1474,30 +1474,42 @@ enum MockAnalysisFixtures {
           "changeMap": [
             {
               "filesChanged": 1,
-              "name": "Content Inspection"
-            },
-            {
-              "filesChanged": 1,
               "name": "Input Reading"
             },
             {
               "filesChanged": 1,
-              "name": "Integration tests"
+              "name": "Content Inspection"
+            },
+            {
+              "filesChanged": 0,
+              "name": "Printer"
+            },
+            {
+              "filesChanged": 0,
+              "name": "Terminal"
             },
             {
               "filesChanged": 1,
-              "name": "Changelog"
+              "name": "InputReader::try_new"
             }
           ],
           "considerations": [
             {
-              "confidence": "high",
-              "detail": "Only the bytes from the first buffer fill are inspected, so on a pipe, a NUL that arrives in a later chunk is still missed.",
-              "explanation": "try_new calls fill_buf() once and copies at most 1024 bytes. Nothing tops the buffer up to 1024 bytes (src/input.rs:272-275). Ordinary files are wrapped in BufReader (src/input.rs:241), and the in-memory LESSOPEN Cursor (src/lessopen.rs:235) normally hands over a full 1 KB, so the file case from #3554 is fixed. With stdin (StdinLock passed straight in, src/input.rs:212), the first fill can return one short pipe read, e.g. `gpg -d ... | bat` or a slow producer. A NUL that arrives after that read, but before byte 1024, is not inspected. The same bytes can therefore be classified differently depending on whether they come from a file or a pipe. The author chose this on purpose ('does not add a post-line blocking read') to avoid stalling streaming input. The reviewer should decide whether that is acceptable, and whether a follow-up should either top up to 1024 bytes for non-interactive inputs or check later chunks and switch to binary mode. Neither new test uses a reader that returns a short first chunk followed by a NUL, so this limit is not covered by any test.",
-              "id": "short-first-read-gap",
+              "category": "reliability",
+              "confidence": "medium",
+              "decision": "Is detection that depends on how the input is chunked acceptable, or should bat read ahead to 1 KB?",
+              "evidence": "The sample comes from a single `reader.fill_buf()?` call and is capped at CONTENT_INSPECTION_LIMIT (src/input.rs:272-275). Nothing loops to fill the sample up to 1024 bytes. Ordinary files are wrapped in `BufReader::new(file)` (src/input.rs:241), and LESSOPEN piped output is wrapped in `BufReader::new(Cursor)` (src/lessopen.rs:205, 235). The first fill on either usually returns the full 1 KB, so those paths behave as the PR intends. Stdin is different: the `StdinLock` is passed straight to try_new (src/input.rs:212), and on a pipe `fill_buf` returns whatever a single read(2) delivered. A producer that writes a short header line first and flushes (e.g. a streaming decryptor or `tail -f`) will have only that line inspected. The fallback at src/input.rs:284-288 then can't help either, because the first line is not longer than the snapshot. The author chose this on purpose ('it does not add a post-line blocking read'), and input_detection_does_not_read_twice (src/input.rs:456-479) pins the single-read property. No test documents the known miss: every new test either fits in one chunk or uses a file. Possible fixes: read ahead only for OrdinaryFile inputs, where extra reads don't block; or add a test that states the stdin limitation. Also consider whether issue #3554 (gpg) is often hit through `gpg -d | bat` rather than `bat file.gpg`.",
+              "flowAnchors": [
+                {
+                  "flowId": "binary-detection-beyond-first-line",
+                  "nodeId": "AFBBD27B-37CC-4D02-979F-3D526578A3C1"
+                }
+              ],
+              "headline": "Binary detection on pipes only checks the first chunk of data, not 1 KB",
+              "id": "short-first-chunk-misses-binary",
+              "impact": "If piped or streamed input arrives in small pieces, a null byte after the first piece but within 1 KB goes unseen, and garbled binary can still be printed to the terminal.",
               "kind": "concern",
               "provenance": "interpretation",
-              "question": "Can binary data still slip through when the first read is short?",
               "refs": [
                 {
                   "endLine": 290,
@@ -1510,78 +1522,79 @@ enum MockAnalysisFixtures {
                   "path": "src/input.rs",
                   "side": "head",
                   "startLine": 199
+                },
+                {
+                  "endLine": 479,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 456
                 }
               ],
               "relatedIds": [
                 "use-already-buffered-bytes",
                 "edge-input-inspection",
                 "flow-cli-stdin-binary-detection",
-                "content-inspection"
+                "fallback-to-longer-first-line"
               ]
             },
             {
+              "category": "product-behavior",
               "confidence": "medium",
-              "detail": "A stray NUL anywhere in the first 1 KB now hides the whole file's content behind a <BINARY> header.",
-              "explanation": "Before this PR, only a NUL in the first line made a file binary. Now any NUL in the first 1024 bytes does, even after many lines of readable text (src/input.rs:290, pinned by the test at src/input.rs:435-454). Examples that could newly be suppressed: logs with NUL padding, text with embedded NUL separators, and config files with a stray NUL. bat prints nothing for binary content unless the user passes --show-all or --binary=as-text (src/printer.rs:497-516, 664-669). This matches what content_inspector was designed to do and is the intended fix, but it is a user-visible behavior change. The CHANGELOG describes it only in terms of encrypted files. The reviewer may want to confirm that the maintainers accept it.",
-              "id": "text-files-flip-to-binary",
-              "kind": "concern",
-              "provenance": "interpretation",
-              "question": "Is it acceptable that mostly-text files may now show as binary?",
-              "refs": [
+              "decision": "Is hiding these previously visible files acceptable as the default behavior?",
+              "evidence": "Before this PR, inspect_content_type saw only the first line. It now sees up to 1024 bytes that can span several lines (src/input.rs:290, 344-355). content_inspector treats any NUL byte in its window as BINARY. The test at src/input.rs:435-454 confirms that a NUL at offset 1023, after a newline at offset 1, gives BINARY. For BINARY content the printer skips every line unless `--binary=as-text` or `-A` is used (src/printer.rs:664-669). With the header off, it prints '[bat warning]: Binary content ... will not be printed' (src/printer.rs:496-508); with the header on, it shows '<BINARY>' (src/printer.rs:516). This is what the PR intends for encrypted files, but it also catches text files with a few embedded NULs. Such output was previously shown, possibly with escape sequences. The CHANGELOG entry lists this only under Bugfixes. Worth deciding whether that is enough notice, or whether this belongs in release notes as a user-visible behavior change. Piped output (non-interactive) is unaffected, per the warning text.",
+              "flowAnchors": [
                 {
-                  "endLine": 290,
-                  "path": "src/input.rs",
-                  "side": "head",
-                  "startLine": 284
+                  "flowId": "binary-detection-beyond-first-line",
+                  "nodeId": "78346D4D-F7E1-491F-9D7D-0C10AA83A5C5"
                 },
                 {
-                  "endLine": 516,
+                  "flowId": "binary-detection-beyond-first-line",
+                  "nodeId": "B1DE8219-8FC5-4619-B2D8-8FCD56779350"
+                }
+              ],
+              "headline": "Mostly-text files with a stray null byte early on are now hidden",
+              "id": "text-files-with-late-nul-now-hidden",
+              "impact": "Files that used to display, such as logs or configs with a null byte a few lines in, now show a <BINARY> header or warning and their content is not printed to the terminal.",
+              "kind": "concern",
+              "provenance": "interpretation",
+              "refs": [
+                {
+                  "endLine": 355,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 344
+                },
+                {
+                  "endLine": 454,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 435
+                },
+                {
+                  "endLine": 518,
                   "path": "src/printer.rs",
                   "side": "head",
-                  "startLine": 497
+                  "startLine": 496
                 }
               ],
               "relatedIds": [
                 "inspect-multi-line-prefix",
                 "content-inspection",
-                "printer"
+                "printer",
+                "edge-inspection-printer"
               ]
             },
             {
-              "confidence": "medium",
-              "detail": "The tests feed a byte slice that exposes everything at once, so the fallback branch never runs in tests.",
-              "explanation": "binary_detection_scans_beyond_first_line_and_preserves_input builds its InputReader from `&content[..]` (src/input.rs:440). A byte slice's fill_buf returns the whole slice, so the snapshot is always the full 1024 bytes and the check `first_line_prefix_len > inspection_prefix.len()` (src/input.rs:285) is never true. input_detection_does_not_read_twice only uses 'text\\n' and empty input. The fallback branch, and the case where a short first chunk is followed by a NUL on a later line, therefore have no direct test. A test with a reader that yields small chunks would pin both behaviors.",
-              "id": "fallback-path-untested",
-              "kind": "concern",
-              "provenance": "interpretation",
-              "question": "Is the long-first-line fallback path actually exercised by any test?",
-              "refs": [
-                {
-                  "endLine": 288,
-                  "path": "src/input.rs",
-                  "side": "head",
-                  "startLine": 282
-                },
-                {
-                  "endLine": 479,
-                  "path": "src/input.rs",
-                  "side": "head",
-                  "startLine": 435
-                }
-              ],
-              "relatedIds": [
-                "fallback-to-longer-first-line",
-                "use-already-buffered-bytes"
-              ]
-            },
-            {
-              "confidence": "medium",
-              "detail": "The constant copies an internal detail of a dependency, so the two could quietly drift apart after an upgrade.",
-              "explanation": "CONTENT_INSPECTION_LIMIT is hard-coded to 1024 (src/input.rs:12) on the basis of the author's claim that content_inspector scans at most 1024 bytes. The dependency is pinned at 0.2.4 (Cargo.toml:52, Cargo.lock:376-378). I could not read the crate source from this checkout to confirm the value. If a later crate version scans more bytes, bat would pass a shorter sample than the crate can use. If it scans fewer, the boundary test (NUL at byte 1023 → BINARY) would start to fail, which at least makes that direction visible.",
-              "id": "hardcoded-inspector-limit",
+              "category": "compatibility",
+              "confidence": "low",
+              "decision": "Is hard-coding 1024 acceptable, or should it be tied to the dependency's limit?",
+              "evidence": "`const CONTENT_INSPECTION_LIMIT: usize = 1024;` (src/input.rs:12) and the comment at src/input.rs:268 ('content_inspector scans at most 1024 bytes') both assume content_inspector's internal window. I could not confirm from this checkout that the crate exports this value. The boundary test (src/input.rs:449-453) expects a NUL at offset 1024 to give UTF_8, so it would catch a crate change only if the crate's window grew.",
+              "flowAnchors": [],
+              "headline": "The 1 KB sample size copies a limit internal to a dependency",
+              "id": "limit-duplicates-crate-constant",
+              "impact": "If the content-inspection library changes its scan window, bat's sample would silently no longer match it, either missing binary bytes or copying bytes that are never inspected.",
               "kind": "question",
               "provenance": "interpretation",
-              "question": "Does the 1024 limit really match content_inspector's scan window?",
               "refs": [
                 {
                   "endLine": 12,
@@ -1590,10 +1603,10 @@ enum MockAnalysisFixtures {
                   "startLine": 12
                 },
                 {
-                  "endLine": 52,
-                  "path": "Cargo.toml",
+                  "endLine": 275,
+                  "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 52
+                  "startLine": 268
                 }
               ],
               "relatedIds": [
@@ -1604,75 +1617,70 @@ enum MockAnalysisFixtures {
           ],
           "needsJudgment": [
             {
-              "confidence": "high",
+              "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "The fix relies on how the reader happens to chunk its data rather than always reading up to 1 KB. Reviewers should decide whether it is acceptable that detection is complete for files and LESSOPEN output but only best-effort for stdin and pipes."
+              "text": "The buffered-only snapshot appears to trade detection completeness on stdin/pipes for never blocking beyond the first-line read. The reviewer has to judge whether that is acceptable for the gpg case in #3554, which may often come through a pipe."
             },
             {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "Any NUL in the first 1024 bytes now classifies the input as BINARY and suppresses its output. Reviewers should decide whether mostly-text files with stray NULs being newly hidden is an acceptable consequence, given the --binary=as-text and --show-all escape hatches."
-            },
-            {
-              "confidence": "low",
-              "provenance": "interpretation",
-              "source": null,
-              "text": "try_new now calls fill_buf() directly before read_until. The standard library's read_until retries on ErrorKind::Interrupted, but a bare fill_buf call appears to pass that error straight up, so an EINTR on the very first read could now fail the open. No signal handlers were found in src/, so the risk appears low."
+              "text": "Widening the sample from the first line to 1 KB appears likely to reclassify some mostly-text files with embedded NULs as binary and suppress their terminal output. Whether this counts as a fix or a regression for those users is a product call."
             }
           ],
           "questions": [
             {
-              "id": "inspector-limit-source",
+              "id": "stdin-cross-line-test",
               "refs": [
                 {
-                  "endLine": 12,
-                  "path": "src/input.rs",
+                  "endLine": 2476,
+                  "path": "tests/integration_tests.rs",
                   "side": "head",
-                  "startLine": 12
-                },
-                {
-                  "endLine": 378,
-                  "path": "Cargo.lock",
-                  "side": "head",
-                  "startLine": 376
+                  "startLine": 2465
                 }
               ],
               "relatedIds": [
-                "inspect-multi-line-prefix"
+                "use-already-buffered-bytes",
+                "flow-cli-stdin-binary-detection"
               ],
-              "text": "Is 1024 bytes confirmed as content_inspector 0.2.4's scan window? The crate source was not available in this checkout."
+              "text": "No test covers stdin input with a NUL after the first line. The only stdin binary test (filename_stdin_binary, tests/integration_tests.rs:2465-2476) writes a single NUL byte. Should an integration test pin the stdin behavior, either passing or documenting the known limitation?"
             },
             {
               "id": "pr-3763-interaction",
               "refs": [
                 {
-                  "endLine": 304,
+                  "endLine": 288,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 267
+                  "startLine": 277
                 }
               ],
               "relatedIds": [
-                "use-already-buffered-bytes",
-                "fallback-to-longer-first-line"
+                "fallback-to-longer-first-line",
+                "impl-try-new"
               ],
-              "text": "Has PR #3763 (bounded reads for newline-free binary files) merged? If so, does its change to try_new still keep the non-consuming fill_buf snapshot and the fallback to the first line?"
+              "text": "The author says PR #3763 (bounded reads for binary files with no newlines) changes the same initialization path. I could not find it in this checkout, so I can't tell whether its bounded first-line read changes the fallback at src/input.rs:282-288."
             }
           ],
           "uncertainties": [
             {
-              "confidence": "medium",
+              "confidence": "high",
               "provenance": "interpretation",
               "source": null,
-              "text": "I could not confirm from the checkout that content_inspector 0.2.4 scans exactly 1024 bytes, because the crate source is outside the repo. The constant rests on the author's claim."
+              "text": "The PR metadata in the prior analysis (headSha 'a1b2c3d', baseSha '9f8e7d6', author 'jane-dev', branch 'feature/immediate-reindex', baseBranch 'main', state OPEN, 6 files, +210/-42) does not match the PR context file. That file shows head 5fee86b9, base 66ad54c2 on master, state MERGED, 3 changed files, and author Matei02355. The pr header fields appear to be placeholders."
             },
             {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "The PR description says PR #3763 (bounded reads for newline-free binaries) touches the same initialization path. I did not determine whether #3763 has merged or how it would combine with the fill_buf snapshot."
+              "text": "I could not confirm from this checkout how large a single read from piped stdin typically is in practice (it depends on the producer's write pattern and the OS pipe buffer), so I can't estimate how often the short-chunk miss happens."
+            },
+            {
+              "confidence": "medium",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "I did not verify the content_inspector crate source in this checkout, so the claim that it scans exactly 1024 bytes rests on the code comment and the boundary test, not on the crate itself."
             }
           ]
         }

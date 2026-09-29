@@ -158,7 +158,7 @@ struct ArchitectureViewTests {
 
     @Test func legendInfoFlagsAPartMarkedWithAReviewQuestion() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .changed)
-        let consideration = Consideration(id: "c1", question: "Why?", detail: "", relatedIds: ["p"])
+        let consideration = Consideration(id: "c1", headline: "Why?", impact: "", relatedIds: ["p"])
         let graph = minimalGraph(components: [part], considerations: [consideration])
         let level = graph.architectureLevel(path: [])
         #expect(ArchitectureView.legendInfo(level, graph: graph, mode: .delta)?.hasQuestion == true)

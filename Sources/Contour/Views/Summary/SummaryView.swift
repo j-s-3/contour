@@ -230,7 +230,7 @@ struct SummaryView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange.opacity(0.5))
                     .font(.callout)
-                Text("THINGS TO THINK ABOUT")
+                Text(verbatim: SummaryViewLogic.judgmentHeaderLabel(count: nil))
                     .font(.callout.weight(.semibold))
                     .tracking(0.5)
             }
@@ -297,11 +297,15 @@ struct SummaryView: View {
         let progress = graph.reviewProgress(discussed: discussed)
         let resolvedText = SummaryViewLogic.resolvedProgressText(reviewed: progress.reviewed, total: progress.total)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .font(.callout)
-                Text(verbatim: SummaryViewLogic.thingsToThinkAboutHeaderText(count: items.count))
+                Text(verbatim: "\(items.count)")
+                    .font(.title3.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.orange)
+                Text(verbatim: SummaryViewLogic.judgmentHeaderLabel(count: items.count))
                     .font(.callout.weight(.semibold))
                     .tracking(0.5)
                 Spacer()
@@ -481,16 +485,26 @@ struct ConsiderationRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 badge
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.question)
+                    if let category = item.category {
+                        Text(verbatim: category.label.uppercased())
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(item.headline)
                         .font(.body.weight(.semibold))
                         .lineLimit(isExpanded ? nil : 2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !item.detail.isEmpty {
-                        Text(item.detail)
+                    if !item.impact.isEmpty {
+                        Text(item.impact)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineLimit(isExpanded ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let decision = item.decision {
+                        decisionLine(decision)
+                            .padding(.top, 3)
                     }
                 }
                 Spacer(minLength: 16)
@@ -520,6 +534,24 @@ struct ConsiderationRow: View {
         .background(hovered ? Color.secondary.opacity(0.06) : Color.clear)
         .onHover { hovered = $0 }
         .reviewContextMenu(.consideration(item.id))
+    }
+
+    private func decisionLine(_ decision: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(verbatim: SummaryViewLogic.decisionLabel(kind: item.kind))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(item.kind == .question ? Color.secondary : Color.orange)
+            Text(decision)
+                .font(.callout)
+                .lineLimit(isExpanded ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 8)
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill((item.kind == .question ? Color.secondary : Color.orange).opacity(0.5))
+                .frame(width: 2)
+        }
     }
 
     private var badge: some View {
@@ -552,8 +584,8 @@ struct ConsiderationRow: View {
     @ViewBuilder
     private var expanded: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let explanation = item.explanation, !explanation.isEmpty {
-                Text(explanation)
+            if let evidence = item.evidence, !evidence.isEmpty {
+                Text(evidence)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -747,8 +779,12 @@ enum SummaryViewLogic {
         return showingAll ? "Show fewer" : "Show \(count - budget) more"
     }
 
-    static func thingsToThinkAboutHeaderText(count: Int) -> String {
-        "\(count) \(count == 1 ? "thing" : "things") to think about".uppercased()
+    static func judgmentHeaderLabel(count: Int?) -> String {
+        (count == 1 ? "area needing your judgment" : "areas needing your judgment").uppercased()
+    }
+
+    static func decisionLabel(kind: ConsiderationKind) -> String {
+        kind == .question ? "To confirm" : "Decision"
     }
 
     static func resolvedProgressText(reviewed: Int, total: Int) -> String? {

@@ -87,7 +87,7 @@ struct SummaryViewInteractionTests {
     @Test func showingMoreConsiderationsRevealsTheRest() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = (1...8).map {
-            Consideration(id: "c\($0)", question: "Question \($0)?", detail: "Detail \($0)")
+            Consideration(id: "c\($0)", headline: "Question \($0)?", impact: "Detail \($0)")
         }
         let recorder = pressEveryButton(graph, analysis: AnalysisState(isComplete: true))
         #expect(recorder.retries.isEmpty)

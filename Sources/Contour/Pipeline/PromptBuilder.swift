@@ -563,15 +563,34 @@ struct PromptBuilder {
         to judge). Favor concerns about high-significance decisions. A consideration you anchor
         to a decision marks it as deserving attention, so don't anchor a minor question (e.g.
         about test coverage) to a low-significance decision unless it reveals a real
-        consequence the decision's significance missed. These are
-        what the reviewer sees first, and each must be understood in about five seconds:
-        - question: phrased as a question, at most ~12 words, no file paths, line numbers, class
-          or method names (e.g. "Should unsupported effort be silently ignored?").
-        - detail: ONE short sentence (at most ~20 words) saying why it matters.
+        consequence the decision's significance missed.
+
+        These are what the reviewer sees first, before opening the diff. The reviewer should
+        understand from them alone what you noticed, why it could matter, and what they are being
+        asked to decide. Write category, headline, impact and decision for an experienced
+        software engineer who has NOT read this diff and does not know this codebase: describe
+        what the system or product does, not how the code does it. Keep method, class, type and
+        variable names, file paths, line numbers and control-flow jargon (e.g. "Optional",
+        "throws past", "gather()") out of those four fields unless the name itself is what must
+        be decided. That detail belongs in evidence.
+        - category: exactly one of "error-handling", "test-coverage", "compatibility",
+          "reliability", "scaling", "security", "architecture", "product-behavior".
+        - headline: a plain statement of what you noticed, at most ~12 words, not a question
+          (e.g. "Token failures behave differently from other GitHub read failures", not
+          "Should a failed token mint surface as an exception or a failed read?").
+        - impact: ONE plain-language sentence (at most ~30 words) saying what could happen to
+          users, operators or the system because of it (e.g. "If GitHub check data is
+          unavailable, the operation normally continues without it; an authentication failure
+          instead fails the whole operation.").
+        - decision: the judgment you need from the reviewer, as a question ending in "?", at
+          most ~15 words (e.g. "Should authentication failures fail the operation, or be
+          treated like other unavailable GitHub data?"). For an open question, what the reviewer
+          should confirm or find out.
         - kind: "concern" for a judgment call or risk; "question" for something you could not
           establish from the repo.
-        - explanation: the longer reasoning, evidence summary, and possible fixes — this is only
-          shown when the reviewer drills in, so detail belongs here, not in question/detail.
+        - evidence: the technical reasoning and evidence behind the finding, and possible fixes,
+          shown only when the reviewer drills in. Here exact methods, classes, types and path:line
+          locations are expected.
         - relatedIds: the decision/component/flow ids it concerns, the single most relevant
           decision FIRST — the reviewer's "Review →" opens that decision and records their
           judgment there. When the concern lives on a relationship between two architecture parts
@@ -583,12 +602,12 @@ struct PromptBuilder {
           which the concern arises (e.g. the stage that inspects piped data, for a question about
           chunking). Only anchor where it genuinely applies; [] if it isn't about a flow.
         If the behavior change's humanQuestion is still the most important question, include it
-        (condensed to the budget) as the first consideration. Merge overlapping items rather than
-        listing near-duplicates.
+        as the first consideration, rewritten into headline, impact and decision. Merge
+        overlapping items rather than listing near-duplicates.
 
         Respond with ONLY this JSON object:
         {
-          "considerations": [{"id": "short-slug", "question": "...?", "detail": "...", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "explanation": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
+          "considerations": [{"id": "short-slug", "category": "error-handling|test-coverage|compatibility|reliability|scaling|security|architecture|product-behavior", "headline": "...", "impact": "...", "decision": "...?", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "evidence": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
           "needsJudgment": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "uncertainties": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "questions": [{"id": "short-slug", "text": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],

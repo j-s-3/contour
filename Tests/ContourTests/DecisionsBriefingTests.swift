@@ -38,7 +38,7 @@ struct DecisionsBriefingTests {
     }
 
     private func concern(_ id: String, on decisionId: String) -> Consideration {
-        Consideration(id: id, question: "Is \(decisionId) safe?", detail: "", relatedIds: [decisionId])
+        Consideration(id: id, headline: "Is \(decisionId) safe?", impact: "", relatedIds: [decisionId])
     }
 
     @Test func capturedRunPromotesTheDecisionsWithSubstantialTradeoffs() throws {
@@ -46,8 +46,13 @@ struct DecisionsBriefingTests {
         #expect(graph.decisionsToReview.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
         #expect(graph.otherDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
         let fallback = try #require(graph.decision("fallback-to-longer-first-line"))
-        #expect(graph.significance(of: fallback) == .medium)
-        #expect(graph.attentionReason(for: fallback).contains("Overview asks"))
+        #expect(graph.significance(of: fallback) == .low)
+        #expect(!graph.attentionReason(for: fallback).contains("Overview asks"))
+
+        var asked = graph
+        asked.pr.considerations?.append(concern("asks-fallback", on: fallback.id))
+        #expect(asked.significance(of: fallback) == .medium)
+        #expect(asked.attentionReason(for: fallback).contains("Overview asks"))
     }
 
     @Test func levelNeverDecidesVisibility() {
@@ -284,7 +289,7 @@ struct DecisionsBriefingTests {
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
         let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
-        #expect(onBlocking == ["short-first-read-gap"])
+        #expect(onBlocking == ["short-first-chunk-misses-binary"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(
@@ -311,7 +316,7 @@ struct DecisionsBriefingTests {
         #expect(resolved.detail.contains("Read until 1 KB"))
         #expect(
             resolved.detail.contains(
-                "Overview question reviewed on this decision: Can binary data still slip through when the first read is short?"
+                "Overview question reviewed on this decision: Binary detection on pipes only checks the first chunk of data"
             ))
         #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
         #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))

@@ -95,8 +95,8 @@ struct ContextualChatTests {
         var withQuestion = graph
         withQuestion.pr.considerations = [
             Consideration(
-                id: "burst-handling", question: "Can the queue absorb a burst of publishes?",
-                detail: "No load test covers this.", relatedIds: ["index-queue", "publish-queues"]
+                id: "burst-handling", headline: "Can the queue absorb a burst of publishes?",
+                impact: "No load test covers this.", relatedIds: ["index-queue", "publish-queues"]
             )
         ]
 

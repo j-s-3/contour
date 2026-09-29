@@ -314,7 +314,7 @@ struct ContentView: View {
                         .font(.callout)
                     }
                 }
-                .help("Things to think about you've resolved: \(p.reviewed) of \(p.total)")
+                .help("Areas needing your judgment you've resolved: \(p.reviewed) of \(p.total)")
             }
             Section("Code") {
                 sidebarRow(

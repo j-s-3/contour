@@ -26,18 +26,21 @@ extension PRGraph {
 
     static func condense(_ statement: Statement, id: String, kind: ConsiderationKind) -> Consideration {
         let sentences = splitSentences(stripCodeLocations(statement.text))
-        let questionIndex = sentences.firstIndex { $0.hasSuffix("?") }
-        let headlineIndex = questionIndex ?? 0
-        let headline = sentences.indices.contains(headlineIndex) ? sentences[headlineIndex] : statement.text
-        let rest = sentences.enumerated().filter { $0.offset != headlineIndex }.map(\.element)
+        let question = sentences.first { $0.hasSuffix("?") }
+        let observations = sentences.filter { !$0.hasSuffix("?") }
+        let headline = observations.first ?? question ?? statement.text
+        let impact = observations.dropFirst().first ?? ""
+        let decision = observations.isEmpty ? nil : question
+        let condensedAway = observations.count > 2
         return Consideration(
             id: id,
-            question: headline,
-            detail: rest.first ?? "",
+            headline: headline,
+            impact: impact,
+            decision: decision,
             kind: kind,
             provenance: statement.provenance,
             confidence: statement.confidence,
-            explanation: rest.count > 1 ? statement.text : nil
+            evidence: condensedAway ? statement.text : nil
         )
     }
 

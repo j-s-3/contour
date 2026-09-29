@@ -38,8 +38,8 @@ struct ReviewSummaryTests {
             ],
             considerations: [
                 Consideration(
-                    id: "q1", question: "Can a burst of publishes starve the queue?", detail: "", relatedIds: ["b"]),
-                Consideration(id: "q2", question: "Is reindex idempotent?", detail: "", relatedIds: ["a"]),
+                    id: "q1", headline: "Can a burst of publishes starve the queue?", impact: "", relatedIds: ["b"]),
+                Consideration(id: "q2", headline: "Is reindex idempotent?", impact: "", relatedIds: ["a"]),
             ])
 
         #expect(
