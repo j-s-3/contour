@@ -106,39 +106,61 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: swift build -c release
 
-  coverage-badge:
-    name: Publish coverage badge
-    # Main only: the README badge reads coverage.json from the `badges` branch through
-    # shields.io's endpoint badge. A separate job so only this small step gets write access.
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  badges:
+    name: Publish badges
+    # Main only: the README's Build and Coverage badges read build.json and coverage.json
+    # from the `badges` branch through shields.io's endpoint badge. `!cancelled()` runs this
+    # after build and analysis finish either way, but not when the run itself was cancelled
+    # (the concurrency group cancels a main run superseded by a newer push), so the badge
+    # keeps the last real pass or fail instead of the "failing" GitHub's own badge shows for
+    # a cancelled run. One job writes both files so two pushes to the branch never race, and
+    # only this small job gets write access.
+    needs: [build, analysis]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
+        if: needs.build.result == 'success'
         with:
           name: coverage-report
 
-      - name: Push coverage.json to the badges branch
+      - name: Push build.json and coverage.json to the badges branch
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          ANALYSIS_RESULT: ${{ needs.analysis.result }}
         run: |
-          # Line coverage is the 10th column of llvm-cov's TOTAL row, the same figure the
-          # job summary shows.
-          PERCENT="$(awk '$1 == "TOTAL" { sub(/%/, "", $10); print $10 }' coverage-summary.txt)"
-          if [ -z "$PERCENT" ]; then
-            echo "::error::No TOTAL row in coverage-summary.txt"
-            cat coverage-summary.txt
-            exit 1
+          if [ "$BUILD_RESULT" = success ] && [ "$ANALYSIS_RESULT" = success ]; then
+            BUILD_MESSAGE=passing
+            BUILD_COLOR=brightgreen
+          else
+            BUILD_MESSAGE=failing
+            BUILD_COLOR=red
           fi
-          # Colors step toward the 90% target set in CLAUDE.md.
-          COLOR="$(awk -v p="$PERCENT" 'BEGIN {
-            if (p >= 90) print "brightgreen"; else if (p >= 80) print "green";
-            else if (p >= 70) print "yellowgreen"; else if (p >= 60) print "yellow";
-            else if (p >= 50) print "orange"; else print "red" }')"
-          echo "Line coverage: ${PERCENT}% (${COLOR})"
+          echo "Build: ${BUILD_MESSAGE} (build ${BUILD_RESULT}, analysis ${ANALYSIS_RESULT})"
+
+          # Coverage exists only when the build job got far enough to upload it; otherwise
+          # coverage.json keeps the last published figure.
+          PERCENT=""
+          if [ -f coverage-summary.txt ]; then
+            # Line coverage is the 10th column of llvm-cov's TOTAL row, the same figure the
+            # job summary shows.
+            PERCENT="$(awk '$1 == "TOTAL" { sub(/%/, "", $10); print $10 }' coverage-summary.txt)"
+            if [ -z "$PERCENT" ]; then
+              echo "::error::No TOTAL row in coverage-summary.txt"
+              cat coverage-summary.txt
+              exit 1
+            fi
+            # Colors step toward the 90% target set in CLAUDE.md.
+            COLOR="$(awk -v p="$PERCENT" 'BEGIN {
+              if (p >= 90) print "brightgreen"; else if (p >= 80) print "green";
+              else if (p >= 70) print "yellowgreen"; else if (p >= 60) print "yellow";
+              else if (p >= 50) print "orange"; else print "red" }')"
+            echo "Line coverage: ${PERCENT}% (${COLOR})"
+          fi
 
           git init -q badges
           cd badges
@@ -153,14 +175,19 @@ jobs:
             git checkout -q --orphan badges
           fi
 
-          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
-            "$PERCENT" "$COLOR" > coverage.json
-          git add coverage.json
+          printf '{"schemaVersion":1,"label":"build","message":"%s","color":"%s"}\n' \
+            "$BUILD_MESSAGE" "$BUILD_COLOR" > build.json
+          git add build.json
+          if [ -n "$PERCENT" ]; then
+            printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
+              "$PERCENT" "$COLOR" > coverage.json
+            git add coverage.json
+          fi
           if git diff --cached --quiet; then
-            echo "Coverage unchanged; nothing to push."
+            echo "Badges unchanged; nothing to push."
             exit 0
           fi
-          git commit -q -m "Coverage ${PERCENT}% at ${GITHUB_SHA::7}"
+          git commit -q -m "Build ${BUILD_MESSAGE}${PERCENT:+, coverage ${PERCENT}%} at ${GITHUB_SHA::7}"
           git push -q origin badges
 
   analysis:
