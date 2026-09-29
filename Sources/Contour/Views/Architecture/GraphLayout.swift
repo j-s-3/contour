@@ -96,7 +96,7 @@ enum GraphLayoutEngine {
         var backEdges = Set<String>()
         func visit(_ id: String) {
             state[id] = 1
-            for next in outgoing[id] ?? [] {
+            for next in outgoing[id, default: []] {
                 if state[next] == 1 { backEdges.insert("\(id)→\(next)") } else if state[next] == nil { visit(next) }
             }
             state[id] = 2
