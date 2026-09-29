@@ -5,8 +5,8 @@ import Testing
 
 struct DiagramModeControlTests {
     private func binding(_ mode: DiagramMode) -> (Binding<DiagramMode>, () -> DiagramMode) {
-        var current = mode
-        return (Binding(get: { current }, set: { current = $0 }), { current })
+        let current = ModeBox(mode)
+        return (Binding(get: { current.value }, set: { current.value = $0 }), { current.value })
     }
 
     @Test func handlesEachModesOwnKeyCaseInsensitively() {
@@ -45,5 +45,15 @@ struct DiagramModeControlTests {
         #expect(DiagramModeControl.isAccented(.delta))
         #expect(!DiagramModeControl.isAccented(.before))
         #expect(!DiagramModeControl.isAccented(.after))
+    }
+}
+
+private final class ModeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: DiagramMode
+    init(_ mode: DiagramMode) { stored = mode }
+    var value: DiagramMode {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }
