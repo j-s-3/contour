@@ -10,11 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             if let icon = AppDelegate.appIcon { NSApp.applicationIconImage = icon }
             Preferences.shared.applyModelOverrides()
+            #if DEBUG
+            MainThreadWatchdog.start()
+            #endif
         }
         NSApp.activate(ignoringOtherApps: true)
-        #if DEBUG
-        MainThreadWatchdog.start()
-        #endif
     }
 }
 

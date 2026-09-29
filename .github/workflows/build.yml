@@ -50,17 +50,12 @@ jobs:
         # and the test-output.log that the steps below consume. Integration tests are gated
         # behind RUN_CONTOUR_INTEGRATION. BenchTests and BenchmarkTests run in the step above.
         #
-        # --no-parallel: works around a `swiftpm-testing-helper` crash (signal 5) that only
-        # reproduces under the default parallel scheduler, at a different point in the run
-        # each time — consistent with a real concurrency race rather than one bad test.
-        # TODO(#swift6-migration): re-enable once the race is root-caused.
-        #
         # A hard gate: a failing test or a reported data race fails the job. The benchmark
         # suites are skipped: they time large inputs, and under the sanitizer's slowdown
         # they would only stretch the job.
         run: |
           set -o pipefail
-          swift test --sanitize=thread --enable-code-coverage --no-parallel \
+          swift test --sanitize=thread --enable-code-coverage \
             --skip BenchmarkTests --skip BenchTests 2>&1 | tee test-output.log
 
       - name: No main-actor isolation warnings (issue #185)
