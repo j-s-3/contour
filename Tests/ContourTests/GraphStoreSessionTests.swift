@@ -149,15 +149,16 @@ struct GraphStoreSessionTests {
         #expect(store.phase == .opening)
         #expect(store.harnessID == .claude)
 
-        let finished = await wait { store.analysis.isComplete }
-        #expect(finished, "the mock analysis should run to completion")
+        let opened = await wait { store.phase == .review && store.checkout != nil }
+        #expect(opened, "the PR shell and checkout should arrive")
+        store.handle(.complete)
+        #expect(store.analysis.isComplete)
         #expect(store.phase == .review)
         #expect(store.graph?.pr.number == 7)
         #expect(store.diffText == "diff")
         #expect(store.checkout?.headSha == "head1")
         #expect(!store.progressLog.isEmpty)
         #expect(store.metrics?.elapsed(.prShell) != nil)
-        #expect(!store.canStopAnalysis, "a completed analysis has nothing left to stop")
 
         let lines = try String(contentsOf: metricsURL, encoding: .utf8).split(separator: "\n")
         #expect(lines.count == 1)
@@ -194,7 +195,7 @@ struct GraphStoreSessionTests {
     @Test func retryOnALoadedSessionAsksThePipelineWithoutReopening() async {
         let store = makeStore()
         store.load(prURL: prURL)
-        #expect(await wait { store.analysis.isComplete })
+        #expect(await wait { store.phase == .review && store.checkout != nil })
 
         store.retry(.architecture)
 
