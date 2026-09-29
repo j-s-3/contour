@@ -1,11 +1,5 @@
 # Contour — design doc
 
-> Contour is a fork of Aperture. Aperture assumed exactly one of everything: `pi` as the
-> AI backend, `gh` as the only route to GitHub, and Jira as the only issue tracker. This
-> document has been updated so §8, §10, and §16 describe the pluggable design that
-> replaced those assumptions; see
-> `docs/superpowers/specs/2026-09-25-contour-design.md` for the change itself.
-
 A macOS-native pull request review application for GitHub, built around how humans
 should review software when most of the code is AI-generated.
 
