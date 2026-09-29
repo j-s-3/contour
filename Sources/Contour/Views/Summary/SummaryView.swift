@@ -45,6 +45,11 @@ struct SummaryView: View {
                     EmptyView()
                 }
 
+                if let implications = SummaryViewLogic.visibleImplications(graph.pr.implications) {
+                    whatThisMeans(implications)
+                        .padding(.top, 26)
+                }
+
                 let considerations = graph.thingsToThinkAbout(during: analysis)
                 switch SummaryViewLogic.thingsToThinkAboutBranch(
                     items: considerations, judgmentStopped: judgmentStatus == .stopped)
@@ -285,6 +290,27 @@ struct SummaryView: View {
         }
     }
 
+    private func whatThisMeans(_ implications: [Statement]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel(SummaryViewLogic.implicationsLabel)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(implications) { statement in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(statement.text)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ProvenanceMark(
+                            provenance: statement.provenance, confidence: statement.confidence,
+                            source: statement.source)
+                    }
+                    .contentShape(Rectangle())
+                    .reviewContextMenu(.pullRequest)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
     private func briefLine(_ label: String, _ statement: Statement, subject: ReviewSubject) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18) {
             briefRow(label, statement, subject: subject)
@@ -478,9 +504,11 @@ struct ConsiderationRow: View {
 
     @Environment(\.reviewActions) private var actions
     @State private var hovered = false
+    @State private var showsMoreContext = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let blocks = SummaryViewLogic.considerationBlocks(item)
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 badge
                 VStack(alignment: .leading, spacing: 3) {
@@ -494,12 +522,27 @@ struct ConsiderationRow: View {
                         .font(.body.weight(.semibold))
                         .lineLimit(isExpanded ? nil : 2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !item.impact.isEmpty {
-                        Text(item.impact)
+                    if let context = blocks.context {
+                        Text(context)
                             .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(isExpanded ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+                    if let label = blocks.whyItMattersLabel {
+                        Text(verbatim: label.uppercased())
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 5)
+                    }
+                    if let impact = blocks.impact {
+                        secondaryText(impact)
+                    }
+                    if let tradeoff = blocks.tradeoff {
+                        secondaryText(tradeoff)
+                    }
+                    if let moreContext = blocks.moreContext {
+                        moreContextToggle(moreContext)
                     }
                     if let judgment = item.judgment {
                         judgmentLine(judgment)
@@ -533,6 +576,26 @@ struct ConsiderationRow: View {
         .background(hovered ? Color.secondary.opacity(0.06) : Color.clear)
         .onHover { hovered = $0 }
         .reviewContextMenu(.consideration(item.id))
+    }
+
+    private func secondaryText(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func moreContextToggle(_ moreContext: String) -> some View {
+        Button(SummaryViewLogic.moreContextTitle(isShowing: showsMoreContext)) {
+            withAnimation(.easeInOut(duration: 0.18)) { showsMoreContext.toggle() }
+        }
+        .buttonStyle(.link)
+        .font(.caption)
+        if showsMoreContext {
+            secondaryText(moreContext)
+                .transition(.opacity)
+        }
     }
 
     private func judgmentLine(_ judgment: String) -> some View {
@@ -590,6 +653,9 @@ struct ConsiderationRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
+            if !item.assumptions.isEmpty {
+                assumptionsList
+            }
             let related = relatedLinks
             if !related.isEmpty {
                 FlowLayout(spacing: 8) {
@@ -616,6 +682,21 @@ struct ConsiderationRow: View {
                     Label("Ask about this", systemImage: "sparkles").font(.caption)
                 }
                 .buttonStyle(.link)
+            }
+        }
+    }
+
+    private var assumptionsList: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(verbatim: SummaryViewLogic.assumptionsLabel.uppercased())
+                .font(.caption2.weight(.semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+            ForEach(Array(item.assumptions.enumerated()), id: \.offset) { _, assumption in
+                Text(verbatim: "\u{2022} \(assumption)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -783,6 +864,39 @@ enum SummaryViewLogic {
     }
 
     static let judgmentSymbol = "scalemass"
+
+    static let implicationsLabel = "What this means"
+    static let whyItMattersLabel = "Why this matters"
+    static let assumptionsLabel = "Assumptions"
+
+    static func visibleImplications(_ implications: [Statement]?) -> [Statement]? {
+        guard let implications, !implications.isEmpty else { return nil }
+        return implications
+    }
+
+    struct ConsiderationBlocks: Equatable {
+        var context: String?
+        var whyItMattersLabel: String?
+        var impact: String?
+        var tradeoff: String?
+        var moreContext: String?
+    }
+
+    static func considerationBlocks(_ item: Consideration) -> ConsiderationBlocks {
+        let impact = item.impact.isEmpty ? nil : item.impact
+        let explainsWhy = item.context != nil && (impact != nil || item.tradeoff != nil)
+        return ConsiderationBlocks(
+            context: item.context,
+            whyItMattersLabel: explainsWhy ? whyItMattersLabel : nil,
+            impact: impact,
+            tradeoff: item.tradeoff,
+            moreContext: item.moreContext
+        )
+    }
+
+    static func moreContextTitle(isShowing: Bool) -> String {
+        isShowing ? "Less context" : "More context"
+    }
 
     static func judgmentLabel(kind: ConsiderationKind) -> String {
         kind == .question ? "To confirm" : "Your judgment"

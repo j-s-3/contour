@@ -121,6 +121,63 @@ struct ContextualChatTests {
         #expect(step.detailTarget == .flowDetail("publish-index-flow"))
     }
 
+    @Test func aConsiderationDescribesTheWholeBriefInReadingOrder() throws {
+        var briefed = graph
+        briefed.pr.considerations = [
+            Consideration(
+                id: "creds", category: .security, headline: "Reads use write credentials",
+                context: "One path serves reads and writes.", impact: "A leak exposes more.",
+                tradeoff: "A second path is more to maintain.", moreContext: "Deeper background.",
+                judgment: "Should reads get their own credential?", evidence: "client() at a.swift:1",
+                assumptions: ["Permissions are set elsewhere.", "Usage unconfirmed."])
+        ]
+        let resolved = try #require(briefed.resolve(.consideration("creds")))
+        #expect(
+            resolved.summary.prefix(5) == [
+                "Reads use write credentials", "One path serves reads and writes.", "A leak exposes more.",
+                "A second path is more to maintain.", "Your judgment: Should reads get their own credential?",
+            ])
+        let order = [
+            "Observation: Reads use write credentials", "Context: One path serves reads and writes.",
+            "Why it matters: A leak exposes more.", "Tradeoff: A second path is more to maintain.",
+            "More context: Deeper background.",
+            "Judgment asked of the reviewer: Should reads get their own credential?",
+            "Technical evidence: client() at a.swift:1",
+            "Assumptions the analysis made: Permissions are set elsewhere.; Usage unconfirmed.",
+            "What this change means",
+        ]
+        let positions = try order.map { try #require(resolved.detail.range(of: $0), "missing \($0)").lowerBound }
+        #expect(positions == positions.sorted())
+    }
+
+    @Test func aLegacyConsiderationDescribesOnlyWhatItHas() throws {
+        var legacy = graph
+        legacy.pr.considerations = [Consideration(id: "old", headline: "Is it safe?", impact: "Maybe not.")]
+        legacy.pr.implications = nil
+        let resolved = try #require(legacy.resolve(.consideration("old")))
+        #expect(!resolved.detail.contains("Context:"))
+        #expect(!resolved.detail.contains("Tradeoff:"))
+        #expect(!resolved.detail.contains("Assumptions"))
+        #expect(!resolved.detail.contains("What this change means"))
+        #expect(resolved.detail.contains("Why it matters: Maybe not."))
+    }
+
+    @Test func thePullRequestAndTheWholePROutlineCarryTheImplications() throws {
+        let pr = try #require(graph.resolve(.pullRequest))
+        #expect(pr.detail.contains("What this change means"))
+        #expect(pr.detail.contains("- Search freshness now depends on the index queue"))
+        let doc = ChatContextBuilder.document(
+            graph: graph, resolved: pr, expansions: [.entirePR], pinnedRefs: [], excerpts: [])
+        #expect(doc.contains("### What this means\n- Search freshness now depends"))
+        var bare = graph
+        bare.pr.implications = []
+        let bareDoc = ChatContextBuilder.document(
+            graph: bare, resolved: try #require(bare.resolve(.pullRequest)), expansions: [.entirePR], pinnedRefs: [],
+            excerpts: [])
+        #expect(!bareDoc.contains("What this means"))
+        #expect(!bareDoc.contains("What this change means"))
+    }
+
     @Test func describeDecisionAndBehaviorChangeCoverEveryOptionalField() {
         let decision = DecisionNode(
             id: "d", title: "Use a queue", decision: Statement(text: "Queued.", provenance: .fact),

@@ -154,8 +154,13 @@ struct DecisionCard: View {
                                 .foregroundStyle(.orange)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .help(item.judgment == nil ? item.impact : "\(item.headline). \(item.impact)")
+                                .help(DecisionsViewLogic.overviewAskHelp(item))
                                 .reviewContextMenu(.consideration(item.id))
+                            if let verification = DecisionsViewLogic.arrivalVerification(
+                                for: item, arrivedFromConsiderationId: arrivedFromConsiderationId)
+                            {
+                                arrivalVerification(verification)
+                            }
                         }
                     }
                 }
@@ -179,6 +184,26 @@ struct DecisionCard: View {
                 }
             }
         }
+    }
+
+    private func arrivalVerification(_ verification: DecisionsViewLogic.ArrivalVerification) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let evidence = verification.evidence {
+                Text(evidence)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            ForEach(Array(verification.assumptions.enumerated()), id: \.offset) { _, assumption in
+                Text(verbatim: "Assumption: \(assumption)")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.leading, 8)
+        .padding(.bottom, 2)
     }
 
     private func rowLabel(_ text: String) -> some View {
@@ -266,6 +291,7 @@ struct OtherDecisionRow: View {
                             .foregroundStyle(.orange)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
+                            .help(DecisionsViewLogic.overviewAskHelp(question))
                             .reviewContextMenu(.consideration(question.id))
                     }
                 }

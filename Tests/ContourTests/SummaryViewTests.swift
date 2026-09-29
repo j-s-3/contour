@@ -362,4 +362,61 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.reviewAction(hasDecision: true) == .navigate)
         #expect(SummaryViewLogic.reviewAction(hasDecision: false) == .ask)
     }
+
+    @Test func aFullBriefShowsContextThenWhyItMattersWithImpactAndTradeoff() {
+        let item = Consideration(
+            id: "a", headline: "H", context: "What happens.", impact: "Why it matters.", tradeoff: "Both sides.",
+            judgment: "J?")
+        let blocks = SummaryViewLogic.considerationBlocks(item)
+        #expect(
+            blocks
+                == SummaryViewLogic.ConsiderationBlocks(
+                    context: "What happens.", whyItMattersLabel: "Why this matters", impact: "Why it matters.",
+                    tradeoff: "Both sides.", moreContext: nil))
+    }
+
+    @Test func aBriefWithoutATradeoffShowsNoTradeoffBlock() {
+        let item = Consideration(id: "a", headline: "H", context: "What happens.", impact: "Why it matters.")
+        let blocks = SummaryViewLogic.considerationBlocks(item)
+        #expect(blocks.whyItMattersLabel == "Why this matters")
+        #expect(blocks.impact == "Why it matters.")
+        #expect(blocks.tradeoff == nil)
+    }
+
+    @Test func aLegacyItemWithoutContextKeepsItsImpactButNoWhyItMattersLabel() {
+        let item = Consideration(id: "a", headline: "H", impact: "Impact.", judgment: "J?")
+        let blocks = SummaryViewLogic.considerationBlocks(item)
+        #expect(blocks.context == nil)
+        #expect(blocks.whyItMattersLabel == nil)
+        #expect(blocks.impact == "Impact.")
+    }
+
+    @Test func contextWithNothingBelowItHasNoWhyItMattersLabel() {
+        let blocks = SummaryViewLogic.considerationBlocks(
+            Consideration(id: "a", headline: "H", context: "C", impact: ""))
+        #expect(blocks.context == "C")
+        #expect(blocks.whyItMattersLabel == nil)
+        #expect(blocks.impact == nil)
+        let tradeoffOnly = SummaryViewLogic.considerationBlocks(
+            Consideration(id: "b", headline: "H", context: "C", impact: "", tradeoff: "T"))
+        #expect(tradeoffOnly.whyItMattersLabel == "Why this matters")
+    }
+
+    @Test func moreContextIsOfferedOnlyWhenTheItemHasIt() {
+        let plain = Consideration(id: "a", headline: "H", context: "C", impact: "I")
+        #expect(SummaryViewLogic.considerationBlocks(plain).moreContext == nil)
+        let deep = Consideration(id: "b", headline: "H", context: "C", impact: "I", moreContext: "Deeper.")
+        #expect(SummaryViewLogic.considerationBlocks(deep).moreContext == "Deeper.")
+        #expect(SummaryViewLogic.moreContextTitle(isShowing: false) == "More context")
+        #expect(SummaryViewLogic.moreContextTitle(isShowing: true) == "Less context")
+    }
+
+    @Test func whatThisMeansAppearsOnlyWhenThereAreImplications() {
+        #expect(SummaryViewLogic.visibleImplications(nil) == nil)
+        #expect(SummaryViewLogic.visibleImplications([]) == nil)
+        let implications = [Statement(text: "Search now tracks publishing.", provenance: .interpretation)]
+        #expect(SummaryViewLogic.visibleImplications(implications) == implications)
+        #expect(SummaryViewLogic.implicationsLabel == "What this means")
+        #expect(SummaryViewLogic.assumptionsLabel == "Assumptions")
+    }
 }

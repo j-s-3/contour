@@ -54,6 +54,7 @@ extension PRGraph {
             flows = r.flows
             entryPoints = r.entryPoints
         case .judgment(let r):
+            pr.implications = r.implications
             pr.considerations = r.considerations
             pr.needsJudgment = r.needsJudgment
             pr.uncertainties = r.uncertainties
@@ -86,6 +87,7 @@ extension PRGraph {
             flows = []
             entryPoints = []
         case .judgment:
+            pr.implications = nil
             pr.considerations = nil
             pr.needsJudgment = []
             pr.uncertainties = []

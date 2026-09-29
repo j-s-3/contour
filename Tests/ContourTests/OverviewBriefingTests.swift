@@ -13,7 +13,8 @@ struct OverviewBriefingTests {
     }
 
     @Test func olderGraphsAreCondensedInOrder() {
-        let graph = ContourSampleData.publishTriggeredReindex
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.considerations = nil
         let items = graph.thingsToThinkAbout
         #expect(items.map(\.kind) == [.concern, .concern, .question])
         #expect(items.first?.headline == "Can the index queue absorb a burst of publishes without falling behind?")
@@ -158,6 +159,108 @@ struct OverviewBriefingTests {
         #expect(bare.briefing == "Is this safe?")
     }
 
+    @Test func briefingReadsInDecisionBriefOrder() {
+        let item = Consideration(
+            id: "a", headline: "Reads use write credentials", context: "One credential path serves reads and writes",
+            impact: "A leak exposes more than reads need.", tradeoff: "A second path is more to maintain.",
+            moreContext: "Deeper background.", judgment: "Should reads get their own credential?",
+            assumptions: ["Permissions are configured elsewhere."])
+        #expect(
+            item.briefing
+                == "Reads use write credentials. One credential path serves reads and writes. A leak exposes more than reads need. A second path is more to maintain. Your judgment: Should reads get their own credential?"
+        )
+    }
+
+    @Test func decisionBriefFieldsDecodeInTheirOwnKeys() throws {
+        let json =
+            #"{"headline": "H", "context": "What the system does.", "impact": "Why it matters.", "tradeoff": "One side, other side.", "moreContext": "Deeper.", "judgment": "J?", "assumptions": ["Inferred a thing.", "  ", "Could not confirm `x`."]}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.context == "What the system does.")
+        #expect(item.impact == "Why it matters.")
+        #expect(item.tradeoff == "One side, other side.")
+        #expect(item.moreContext == "Deeper.")
+        #expect(item.assumptions == ["Inferred a thing.", "Could not confirm x."])
+    }
+
+    @Test func missingDecisionBriefFieldsDecodeAsAbsent() throws {
+        let item = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "impact": "I", "tradeoff": null}"#.utf8))
+        #expect(item.context == nil)
+        #expect(item.tradeoff == nil)
+        #expect(item.moreContext == nil)
+        #expect(item.assumptions == [])
+    }
+
+    @Test func blankDecisionBriefProseDecodesAsAbsent() throws {
+        let json = #"{"headline": "H", "context": "  ", "tradeoff": "", "moreContext": "\n"}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.context == nil)
+        #expect(item.tradeoff == nil)
+        #expect(item.moreContext == nil)
+    }
+
+    @Test func decisionBriefProseDropsMarkdownBackticks() throws {
+        let json =
+            #"{"headline": "H", "context": "Calls `reindex()` once.", "tradeoff": "Keep `-A`, or not.", "moreContext": "See `queue`."}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.context == "Calls reindex() once.")
+        #expect(item.tradeoff == "Keep -A, or not.")
+        #expect(item.moreContext == "See queue.")
+    }
+
+    @Test func whyItMattersIsAnAliasForImpactThatImpactOverrides() throws {
+        let alias = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "whyItMatters": "Aliased."}"#.utf8))
+        #expect(alias.impact == "Aliased.")
+        let both = try JSONDecoder().decode(
+            Consideration.self,
+            from: Data(#"{"headline": "H", "impact": "Primary.", "whyItMatters": "Aliased.", "detail": "Old."}"#.utf8))
+        #expect(both.impact == "Primary.")
+        let legacy = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "whyItMatters": "Aliased.", "detail": "Old."}"#.utf8))
+        #expect(legacy.impact == "Aliased.")
+    }
+
+    @Test func aDecisionBriefRoundTripsThroughTheCacheEncoding() throws {
+        let item = Consideration(
+            id: "a", headline: "H", context: "C", impact: "I", tradeoff: "T", moreContext: "M", judgment: "J?",
+            assumptions: ["A"])
+        let decoded = try JSONDecoder().decode(Consideration.self, from: JSONEncoder().encode(item))
+        #expect(decoded == item)
+    }
+
+    @Test func judgmentStageDecodesImplicationsAsPlainStatements() throws {
+        let raw: [String: Any] = [
+            "implications": [
+                ["text": "Reads now need `write` access.", "provenance": "fact"],
+                ["text": "Bursts may lag.", "provenance": "interpretation", "confidence": "medium"],
+            ],
+            "considerations": [],
+        ]
+        let result = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: raw)
+        #expect(result.implications.map(\.text) == ["Reads now need write access.", "Bursts may lag."])
+        #expect(result.implications.map(\.provenance) == [.fact, .interpretation])
+        #expect(result.implications.last?.confidence == .medium)
+    }
+
+    @Test func judgmentStageWithoutImplicationsDecodesToNone() throws {
+        let result = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: ["considerations": []])
+        #expect(result.implications.isEmpty)
+    }
+
+    @Test func implicationsAreAppliedAndClearedWithTheJudgmentStage() throws {
+        var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.implications = nil
+        let result = try StageDecoding.decode(
+            StageDecoding.JudgmentResult.self,
+            from: ["implications": [["text": "Search now tracks publishing.", "provenance": "interpretation"]]])
+        graph.apply(.judgment(result))
+        #expect(graph.pr.implications?.map(\.text) == ["Search now tracks publishing."])
+        graph.clear(.judgment)
+        #expect(graph.pr.implications == nil)
+        #expect(graph.pr.considerations == nil)
+    }
+
     @Test(arguments: [
         ("potential_problem", JudgmentType.potentialProblem), ("bug", .potentialProblem),
         ("CONFIRM INTENT", .confirmIntent), ("intentional", .confirmIntent),
@@ -269,6 +372,7 @@ struct OverviewBriefingTests {
             StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment)
         )
         var graph = ContourSampleData.publishTriggeredReindex
+        graph.pr.considerations = nil
         graph.behaviorChanges = behavior.behaviorChanges
         graph.pr.needsJudgment = judgment.needsJudgment
         graph.pr.uncertainties = judgment.uncertainties

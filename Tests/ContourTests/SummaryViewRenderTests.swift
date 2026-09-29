@@ -92,6 +92,19 @@ struct SummaryViewRenderTests {
                 #expect(render(row) != nil)
             }
         }
+        let brief = Consideration(
+            id: "e", category: .security, judgmentType: .securityDecision, headline: "Reads use write credentials",
+            context: "One credential path serves reads and writes.", impact: "A leak exposes more than reads need.",
+            tradeoff: "A second path is more to maintain.", moreContext: "Deeper background.",
+            judgment: "Should reads get their own credential?", evidence: "Because.",
+            assumptions: ["Permissions are configured elsewhere.", "Could not confirm usage."])
+        for expanded in [true, false] {
+            #expect(
+                render(
+                    ConsiderationRow(
+                        number: 3, item: brief, graph: graph, isResolved: false, isExpanded: expanded,
+                        onToggle: {}, onReview: {}, navigate: { _ in })) != nil)
+        }
         let bare = Consideration(id: "d", headline: "Q?", impact: "")
         #expect(
             render(

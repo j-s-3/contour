@@ -557,6 +557,17 @@ struct PromptBuilder {
         architectureImpact and intent statements you were given, unchanged, for the final summary
         object if you have them; otherwise omit those two fields.
 
+        Then write "implications": what this change MEANS. Having understood what changed, what
+        should the reviewer now understand about the system? Give two to four behavioral,
+        architectural, operational or product consequences, one plain sentence each (at most ~25
+        words). Not a restatement of what changed, not a generic summary, and not a repeat of the
+        behavior change's consequence you were given. Each should help the reviewer understand a
+        consideration below or matter in its own right. Examples of the register: "This adds
+        write capabilities to a previously read-only integration." "Failure evidence is now
+        collected asynchronously and may stay incomplete when it cannot be read." Mark what you
+        observed directly as "fact" and inferred consequences as "interpretation" with a
+        confidence. No code identifiers.
+
         Finally, distill everything above into "considerations": the places where the reviewer's
         judgment is worth more than yours, most important first, at most five. There is no quota:
         two genuinely useful items beat five padded ones, so return only as many as clear the
@@ -572,18 +583,27 @@ struct PromptBuilder {
         tradeoff, a compatibility constraint, an operational risk, a security boundary, an
         unclear requirement, or a dependency on another product or team.
 
+        Each item is a short DECISION BRIEF, one expert engineer briefing another: context → why
+        it matters → tradeoff (if any) → the judgment → evidence. You have already read the code
+        and traced the behavior; the reviewer should not have to repeat that work to understand
+        the question. For each issue that genuinely needs human judgment, FIRST work out what a
+        knowledgeable engineer who has not read the diff would need to know to make that
+        judgment. Then write the context that supplies it, then why it matters, then the
+        tradeoff if a real one exists, and only then the judgment question, so the question
+        follows from everything above it. Write the fields in that order.
+
         Each item is ONE coherent concern → ONE understandable consequence → ONE human judgment,
         written one level of abstraction ABOVE the code: system behavior → concrete consequence
         → the judgment needed. Not implementation detail → technical consequence →
-        implementation choice. The reviewer sees category, judgmentType, headline, impact and
-        judgment without having read the diff and without knowing this codebase. Keep method,
-        class, type and variable names, file paths, line numbers, control flow and mechanism
-        jargon out of those fields ("token minting", "Optional", "throws past gather()",
-        "process-local limiter") unless the name itself is what must be decided. Name the
-        behavior the mechanism produces instead ("a temporary GitHub authentication problem",
+        implementation choice. The reviewer reads category, judgmentType, headline, context,
+        impact, tradeoff and judgment without having read the diff and without knowing this
+        codebase. Keep method, class, type and variable names, file paths, line numbers, control
+        flow and mechanism jargon out of those fields ("token minting", "Optional", "throws past
+        gather()", "process-local limiter") unless the name itself is what must be decided. Name
+        the behavior the mechanism produces instead ("a temporary GitHub authentication problem",
         "each service replica"). All of that precision belongs in evidence.
 
-        Every consideration must follow five rules:
+        Every consideration must follow six rules:
         - ONE JUDGMENT RULE: each item asks for exactly one judgment. If two concerns would lead
           the reviewer to different decisions, they are separate items. Test: can you state the
           concern in one sentence without "and" joining two unrelated risks? If not, split it.
@@ -592,18 +612,20 @@ struct PromptBuilder {
           broader write credentials and merge safety. GOOD: separate items for the on-prem
           contract, the credentials a read needs, and merge safety, each kept only if it clears
           the other rules. If splitting yields more than five, keep the strongest five.
-        - COHERENCE RULE: headline, impact and judgment are about the SAME underlying issue. The
-          judgment must be answerable from the headline and impact alone; never raise in the
-          judgment a concern the headline and impact didn't describe.
+        - COHERENCE RULE: headline, context, impact, tradeoff and judgment are about the SAME
+          underlying issue, and the judgment is downstream of the explanation: it must be
+          answerable from the headline, context, impact and tradeoff alone. Never raise in the
+          judgment a concern the fields above it didn't describe. If a reader would ask "why?"
+          right after reading the judgment, the item has failed: supply what is missing.
         - HUMAN-VALUE RULE: include an item only where a human's judgment is meaningfully
           useful: a behavior, risk, contract or tradeoff someone must own. An unusual
           implementation detail with nothing to decide is not an item.
-        - NEUTRALITY RULE: state the tradeoff without choosing the answer. The judgment must not
-          make one answer sound obviously irresponsible, safer or more correct. Avoid "Is X
-          acceptable?", "Is X safe enough?", "Is X really sufficient?" and "Is X acceptable in
-          exchange for Y?". Prefer "Should X happen?", "Should the system do X or Y?", "What
-          should happen when X?", "Is the intended behavior X?", "Should this contract require
-          X?". The risk itself belongs in the impact, stated plainly.
+        - NEUTRALITY RULE: state the tradeoff without choosing the answer. Neither the tradeoff
+          nor the judgment may make one answer sound obviously irresponsible, safer or more
+          correct. Avoid "Is X acceptable?", "Is X safe enough?", "Is X really sufficient?" and
+          "Is X acceptable in exchange for Y?". Prefer "Should X happen?", "Should the system do X
+          or Y?", "What should happen when X?", "Is the intended behavior X?", "Should this
+          contract require X?". The risk itself belongs in the impact, stated plainly.
           BAD: "Is an indefinitely open pull request acceptable in exchange for never closing
           one wrongly?" GOOD: "When failure evidence stays unreadable, should the pull request
           remain open indefinitely, or should the system eventually make a terminal decision?"
@@ -611,9 +633,9 @@ struct PromptBuilder {
           reading failure evidence require write access to the repository?"
           BAD: "Is silent degradation acceptable?" GOOD: "What should happen on an on-prem host
           that has not yet implemented the new interface?"
-        - ABSTRACTION RULE: headline, impact and judgment explain behavior and consequences; the
-          judgment asks WHAT the system should do, never HOW to implement it. Implementation
-          mechanics and alternatives belong in evidence.
+        - ABSTRACTION RULE: headline, context, impact, tradeoff and judgment explain behavior and
+          consequences; the judgment asks WHAT the system should do, never HOW to implement it.
+          Implementation mechanics and alternatives belong in evidence.
           BAD: "Should failure listing only include each check's latest run, or filter to the
           requested attempt?" GOOD: "Should failures from superseded build attempts ever be
           included?" BAD: "Is the on-prem implementation planned and sequenced, or should these
@@ -621,35 +643,80 @@ struct PromptBuilder {
           coordinated on-prem update?" BAD: "Should the failed stale-branch reset be logged at a
           higher level?" GOOD: "Should a failed branch reset be visible as its own
           customer-facing failure?"
+        - CERTAINTY RULE: do not manufacture certainty. Distinguish what you observed in the
+          code from what you inferred, assumed or could not confirm. Where context is inferred,
+          say so in the prose ("appears to", "based on the implementation, …"), and list what you
+          inferred or could not confirm in assumptions. Never invent missing context to make a
+          judgment easier; a gap you are honest about is more useful than a confident guess.
 
-        And pass four tests:
+        And pass these tests:
         - Headline test (what is happening?): an experienced engineer understands the observable
           system behavior without reading the code. BAD: "A token or rate-limit failure crashes
           the evidence read instead of reporting it incomplete". GOOD: "A temporary GitHub
           authentication problem can fail the entire evidence request".
-        - Impact test (why might it matter?): the reviewer can picture a concrete scenario, what
-          could actually happen if this merges, told as cause → consequence in plain language.
-          BAD: "The rate limiter is process-local and therefore doesn't provide
-          installation-level guarantees." GOOD: "With three service replicas, each can request
-          tokens for the same GitHub installation independently, so the installation can see
-          about three times the requests the configured limit suggests."
+        - Context test (what is the system doing?): it answers the obvious follow-up questions:
+          what the system is trying to do, what normally happens, what happens in the relevant
+          case, why that case can persist, and what outcome the system produces today. BAD: "A
+          third-party check with unreadable annotations makes every retry return read-failed."
+          GOOD: "The adapter treats a check as failed when its logs or annotations cannot be
+          read, and returns the same retryable result each time. For a check whose evidence will
+          never become readable, repeated attempts therefore never reach a final state."
+        - Impact test (why does it matter?): the consequence for users, operators, other teams
+          or the system, in plain language. The mechanism belongs in context, not here. BAD:
+          "The rate limiter is process-local, so each replica requests tokens independently."
+          GOOD: "With three service replicas, one GitHub installation can receive about three
+          times the configured request rate and be throttled by GitHub."
+        - Tradeoff test: both sides of a real tradeoff, stated neutrally, or null. Do not
+          manufacture one; a likely defect usually has none. BAD: "Keeping the current behavior
+          avoids change, while changing it would change behavior."
         - Judgment test (what am I asked to judge?): one specific, neutral question about the
           desired behavior, risk, contract, architectural intent, compatibility expectation,
           security boundary, operational expectation or product semantics, answerable without
           designing the implementation.
         - Evidence test: evidence shows exactly why you raised it — the methods, classes,
-          changed lines, call paths and tests involved, with path:line locations — so the
-          reviewer's drill-down deepens understanding rather than supplying it.
+          changed lines, call paths and tests involved, with path:line locations, and any
+          counterevidence — so the reviewer's drill-down verifies the card rather than
+          explaining it.
+        - Quality test, applied to every card before you return it: imagine an experienced
+          engineer who has NOT read the diff and has only read this card. Can they answer: 1.
+          What is the system doing? 2. What happens in the relevant edge case? 3. Why does this
+          matter? 4. What are the meaningful alternatives or tradeoffs? 5. What exactly are they
+          being asked to judge? If not, improve the card before returning it. A strong card
+          leaves them thinking "I understand the issue, I know why it matters, I can judge it",
+          not "I need to open the code to find out what this even means".
 
-        A complete example:
+        A complete example with a tradeoff:
+          category "security", judgmentType "security-decision",
+          headline "Reading failure evidence uses write-capable credentials",
+          context "The new adapter uses one GitHub App credential path both for reading check
+          failures and for operations that modify the repository. A caller that only wants
+          failure evidence therefore receives a credential that can also change the
+          repository.",
+          impact "The feature only needs read access here, so a leak or misuse of this path
+          exposes more than the operation requires.",
+          tradeoff "A separate read-only credential would enforce least privilege, but adds a
+          second credential and configuration path to provision and maintain.",
+          moreContext null,
+          judgment "Should reading failure evidence have its own read-only credential path?",
+          evidence "fetchFailureEvidence() obtains its client from installationClient()
+          (src/scm/evidence.ts:22), the same factory mergeBranch() uses (src/scm/merge.ts:15);
+          ...",
+          assumptions ["The app's installed permissions are configured outside this
+          repository, so it is assumed they include write access."]
+        A complete example with no real tradeoff:
           category "reliability", judgmentType "operational-risk",
           headline "Disconnect can move an existing customer branch",
-          impact "Disconnect resets a removal branch before deleting it. If that branch has moved
-          since the last operation, the service can modify a branch holding newer customer
-          work.",
+          context "When a repository is disconnected, the service resets its removal branch to
+          a known commit and then deletes it. It does not check whether anyone has pushed to
+          that branch since the service last touched it.",
+          impact "Newer customer work on that branch can be discarded during disconnect, with
+          nothing reporting that it happened.",
+          tradeoff null,
           judgment "Should disconnect be allowed to move an existing customer branch?",
-          evidence "disconnect() force-resets the branch via resetBranch() (src/scm/disconnect.ts:41)
-          before deleteBranch() (src/scm/disconnect.ts:58), with no check of its current head; ..."
+          evidence "disconnect() force-resets the branch via resetBranch()
+          (src/scm/disconnect.ts:41) before deleteBranch() (src/scm/disconnect.ts:58), with no
+          check of its current head; ...",
+          assumptions []
 
         Fields:
         - category: exactly one of "error-handling", "test-coverage", "compatibility",
@@ -660,18 +727,26 @@ struct PromptBuilder {
           "operational-risk", "security-decision", "unclear-requirement" (the intended
           behavior isn't established), "external-dependency" (relies on another product,
           service or team).
-        - headline, impact and judgment are plain prose shown as-is: no Markdown, no backticks.
+        - headline, context, impact, tradeoff, moreContext and judgment are plain prose shown
+          as-is: no Markdown, no backticks.
         - headline: what is happening, as a plain statement (not a question), at most ~12 words.
-        - impact: ONE or TWO plain-language sentences (at most ~40 words) giving the concrete
-          scenario and its consequence.
+        - context: two to four plain sentences (at most ~60 words) answering the Context test.
+        - impact: why this matters, ONE or TWO sentences (at most ~40 words).
+        - tradeoff: one or two sentences giving both sides of a genuine tradeoff, or null.
+        - moreContext: null for most items. Only for a genuinely complex concern, a short
+          paragraph of deeper conceptual explanation (still no code identifiers) the reviewer
+          can open when the card is not enough.
         - judgment: the one neutral question the reviewer must answer, ending in "?", at most
           ~20 words, about desired behavior rather than implementation. For an open question,
           what the reviewer should confirm.
         - kind: "concern" for a judgment call or risk; "question" for something you could not
           establish from the repo.
-        - evidence: the precise technical evidence and reasoning behind the finding, and
-          possible fixes, shown only when the reviewer drills in: methods, classes, changed
-          lines, call paths, tests and path:line locations. Do not lose precision here.
+        - evidence: the precise technical evidence and reasoning behind the finding, including
+          counterevidence, and possible fixes, shown only when the reviewer drills in: methods,
+          classes, changed lines, call paths, tests and path:line locations. Do not lose
+          precision here.
+        - assumptions: short plain statements of what you inferred or could not confirm; []
+          when everything on the card was observed directly.
         - relatedIds: the decision/component/flow ids it concerns, the single most relevant
           decision FIRST — the reviewer's "Review →" opens that decision and records their
           judgment there. When the concern lives on a relationship between two architecture parts
@@ -679,16 +754,18 @@ struct PromptBuilder {
           its id, so the Architecture lens can mark the question on that arrow. refs: supporting
           CodeRefs.
         - flowAnchors: the exact point(s) in the flows' behavior diagrams where this matters, as
-          {"flowId", "nodeId"} using the flow ids and behavior node ids above — the stage after
+          {"flowId", "nodeId"} using the flow ids above and their behavior node ids (or step ids,
+          for a flow with no behavior diagram), never behavior-change stage ids — the stage after
           which the concern arises (e.g. the stage that inspects piped data, for a question about
           chunking). Only anchor where it genuinely applies; [] if it isn't about a flow.
         If the behavior change's humanQuestion is still the most important question, include it
-        as the first consideration, rewritten into headline, impact and judgment. Merge items
-        that would ask the reviewer the same judgment rather than listing near-duplicates.
+        as the first consideration, rewritten as a full brief. Merge items that would ask the
+        reviewer the same judgment rather than listing near-duplicates.
 
         Respond with ONLY this JSON object:
         {
-          "considerations": [{"id": "short-slug", "category": "error-handling|test-coverage|compatibility|reliability|scaling|security|architecture|product-behavior", "judgmentType": "potential-problem|confirm-intent|design-decision|compatibility-decision|operational-risk|security-decision|unclear-requirement|external-dependency", "headline": "...", "impact": "...", "judgment": "...?", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "evidence": "...", "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
+          "implications": [{"text": "...", "provenance": "fact|interpretation", "confidence": "low|medium|high", "source": null}],
+          "considerations": [{"id": "short-slug", "category": "error-handling|test-coverage|compatibility|reliability|scaling|security|architecture|product-behavior", "judgmentType": "potential-problem|confirm-intent|design-decision|compatibility-decision|operational-risk|security-decision|unclear-requirement|external-dependency", "headline": "...", "context": "...", "impact": "...", "tradeoff": "..."|null, "moreContext": "..."|null, "judgment": "...?", "kind": "concern|question", "provenance": "interpretation|claim|fact", "confidence": "low|medium|high", "evidence": "...", "assumptions": ["..."], "relatedIds": ["decision-or-component-id"], "refs": [], "flowAnchors": [{"flowId": "flow-id", "nodeId": "behavior-node-id"}]}],
           "needsJudgment": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "uncertainties": [{"text": "...", "provenance": "interpretation", "confidence": "low|medium|high", "source": null}],
           "questions": [{"id": "short-slug", "text": "...", "relatedIds": ["decision-or-component-id"], "refs": []}],

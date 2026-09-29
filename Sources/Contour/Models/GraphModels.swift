@@ -911,43 +911,51 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     var category: ConsiderationCategory?
     var judgmentType: JudgmentType?
     var headline: String
+    var context: String?
     var impact: String
+    var tradeoff: String?
+    var moreContext: String?
     var judgment: String?
     var kind: ConsiderationKind = .concern
     var provenance: Provenance = .interpretation
     var confidence: Confidence?
     var evidence: String?
+    var assumptions: [String] = []
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
     var flowAnchors: [FlowAnchor] = []
 
     init(
         id: String, category: ConsiderationCategory? = nil, judgmentType: JudgmentType? = nil, headline: String,
-        impact: String,
+        context: String? = nil, impact: String, tradeoff: String? = nil, moreContext: String? = nil,
         judgment: String? = nil, kind: ConsiderationKind = .concern,
         provenance: Provenance = .interpretation, confidence: Confidence? = nil,
-        evidence: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
+        evidence: String? = nil, assumptions: [String] = [], relatedIds: [String] = [], refs: [CodeRef] = [],
         flowAnchors: [FlowAnchor] = []
     ) {
         self.id = id
         self.category = category
         self.judgmentType = judgmentType
         self.headline = headline
+        self.context = context
         self.impact = impact
+        self.tradeoff = tradeoff
+        self.moreContext = moreContext
         self.judgment = judgment
         self.kind = kind
         self.provenance = provenance
         self.confidence = confidence
         self.evidence = evidence
+        self.assumptions = assumptions
         self.relatedIds = relatedIds
         self.refs = refs
         self.flowAnchors = flowAnchors
     }
     enum CodingKeys: String, CodingKey {
-        case id, category, judgmentType, headline, impact, judgment, kind, provenance, confidence, evidence, relatedIds,
-            refs, flowAnchors
+        case id, category, judgmentType, headline, context, impact, tradeoff, moreContext, judgment, kind, provenance,
+            confidence, evidence, assumptions, relatedIds, refs, flowAnchors
     }
-    private enum LegacyKeys: String, CodingKey { case question, detail, explanation, decision }
+    private enum LegacyKeys: String, CodingKey { case question, detail, explanation, decision, whyItMatters }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let legacy = try decoder.container(keyedBy: LegacyKeys.self)
@@ -959,9 +967,13 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         } else {
             headline = Self.plainProse(try legacy.decode(String.self, forKey: .question))
         }
+        context = Self.nonEmpty(try c.decodeIfPresent(String.self, forKey: .context).map(Self.plainProse))
         impact = Self.plainProse(
             try c.decodeIfPresent(String.self, forKey: .impact)
+                ?? legacy.decodeIfPresent(String.self, forKey: .whyItMatters)
                 ?? legacy.decodeIfPresent(String.self, forKey: .detail) ?? "")
+        tradeoff = Self.nonEmpty(try c.decodeIfPresent(String.self, forKey: .tradeoff).map(Self.plainProse))
+        moreContext = Self.nonEmpty(try c.decodeIfPresent(String.self, forKey: .moreContext).map(Self.plainProse))
         judgment = Self.nonEmpty(
             (try c.decodeIfPresent(String.self, forKey: .judgment)
                 ?? legacy.decodeIfPresent(String.self, forKey: .decision)).map(Self.plainProse))
@@ -971,6 +983,9 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         evidence =
             try c.decodeIfPresent(String.self, forKey: .evidence)
             ?? legacy.decodeIfPresent(String.self, forKey: .explanation)
+        assumptions = (try c.decodeIfPresent([String].self, forKey: .assumptions) ?? []).compactMap {
+            Self.nonEmpty(Self.plainProse($0))
+        }
         relatedIds = try c.decodeIfPresent([String].self, forKey: .relatedIds) ?? []
         refs = try c.decodeIfPresent([CodeRef].self, forKey: .refs) ?? []
         flowAnchors =
@@ -994,7 +1009,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     }
 
     var briefing: String {
-        [headline, impact, judgment.map { "Your judgment: \($0)" }]
+        [headline, context, impact, tradeoff, judgment.map { "Your judgment: \($0)" }]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .map { $0.hasSuffix(".") || $0.hasSuffix("?") ? $0 : $0 + "." }
@@ -1041,6 +1056,7 @@ struct PRSummary: Codable, Hashable, Sendable {
     var problemToBeSolved: Statement?
     var howItWasSolved: Statement?
     var considerations: [Consideration]?
+    var implications: [Statement]?
     var glance: PRGlance?
 }
 
