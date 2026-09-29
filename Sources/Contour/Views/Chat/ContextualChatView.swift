@@ -91,26 +91,29 @@ struct ContextualChatView: View {
         .padding(.vertical, 12)
     }
 
-    private var conversationsMenu: some View {
-        Menu {
-            Section("Conversations") {
-                ForEach(conversations.conversations) { c in
-                    Button {
-                        conversations.activeId = c.id
-                    } label: {
-                        let title = ChatViewLogic.menuTitle(for: c, in: graph)
-                        if c.id == conversations.activeId {
-                            Label(title, systemImage: "checkmark")
-                        } else {
-                            Text(title)
-                        }
+    @ViewBuilder
+    var conversationMenuContent: some View {
+        Section("Conversations") {
+            ForEach(conversations.conversations) { c in
+                Button { conversations.activeId = c.id } label: {
+                    let title = ChatViewLogic.menuTitle(for: c, in: graph)
+                    if c.id == conversations.activeId {
+                        Label(title, systemImage: "checkmark")
+                    } else {
+                        Text(title)
                     }
                 }
             }
-            if let active = conversations.active {
-                Divider()
-                Button("Close This Conversation", role: .destructive) { conversations.remove(active) }
-            }
+        }
+        if let active = conversations.active {
+            Divider()
+            Button("Close This Conversation", role: .destructive) { conversations.remove(active) }
+        }
+    }
+
+    private var conversationsMenu: some View {
+        Menu {
+            conversationMenuContent
         } label: {
             Image(systemName: "bubble.left.and.bubble.right")
         }
@@ -147,16 +150,12 @@ struct ContextualChatView: View {
             if ChatViewLogic.showsContextChips(expansions: expansions, pinnedRefs: conversation.pinnedRefs) {
                 FlowLayout(spacing: 6) {
                     ForEach(conversation.pinnedRefs) { ref in
-                        chip("\(ref.display)", symbol: "pin.fill", on: true) {
-                            ChatViewLogic.unpin(ref, in: conversation)
-                        }
+                        chip("\(ref.display)", symbol: "pin.fill", on: true) { ChatViewLogic.unpin(ref, in: conversation) }
                         .help("Included in this conversation — click to remove")
                     }
                     ForEach(expansions) { expansion in
                         let on = conversation.expansions.contains(expansion)
-                        chip(expansion.label, symbol: ChatViewLogic.expansionSymbol(on: on), on: on) {
-                            ChatViewLogic.toggle(expansion, in: conversation)
-                        }
+                        chip(expansion.label, symbol: ChatViewLogic.expansionSymbol(on: on), on: on) { ChatViewLogic.toggle(expansion, in: conversation) }
                         .help(ChatViewLogic.expansionHelp(expansion, on: on))
                     }
                 }
@@ -263,12 +262,8 @@ struct ContextualChatView: View {
                     .focused($composerFocused)
                     .onSubmit { store.send(conversation.draft, in: conversation) }
                 if conversation.isResponding {
-                    Button { conversations.cancel(conversation) } label: {
-                        Image(systemName: "stop.circle.fill").font(.title3)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("Stop")
+                    Button { conversations.cancel(conversation) } label: { Image(systemName: "stop.circle.fill").font(.title3) }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Stop")
                 } else {
                     Button { store.send(conversation.draft, in: conversation) } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title3)
@@ -294,7 +289,7 @@ struct ContextualChatView: View {
         ChatViewLogic.resolvePath(path, checkoutRoot: store.checkout?.rootDir, citedPaths: graph.citedPaths)
     }
 
-    private func handle(_ url: URL) -> OpenURLAction.Result {
+    func handle(_ url: URL) -> OpenURLAction.Result {
         ChatViewLogic.handle(url, store: store, graph: graph) == .handled ? .handled : .systemAction
     }
 }
