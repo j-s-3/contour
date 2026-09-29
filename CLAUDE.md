@@ -46,7 +46,9 @@ scripts/swiftlint-analyze.sh                  # unused imports etc.; slow (10+ m
 `treatAllWarnings(as: .error)`, so any compiler warning fails the build, and the app target
 enables the `ExistentialAny` and `MemberImportVisibility` upcoming features. Periphery can't
 be silenced per declaration without a comment, so fix what it reports (remove the code, or
-restructure so the use is visible) rather than adding a baseline.
+restructure so the use is visible). Its one known blind spot: a `@State` property used only
+through its `$` binding is reported as unused. If the state really is needed, add it to
+`.periphery-baseline.json` (`--write-baseline`) rather than to anything broader.
 
 ### Format before pushing
 
