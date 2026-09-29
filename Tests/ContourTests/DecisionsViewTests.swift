@@ -288,4 +288,99 @@ struct DecisionsViewTests {
     @Test func beforeAfterPartsOnALabelWithNoSeparatorIsTheWholeLabel() {
         #expect(DecisionsViewLogic.beforeAfterParts(from: "Single stage") == ["Single stage"])
     }
+
+    private func brief(options: [DecisionOption] = [], answer: String = "the answer") -> DecisionBrief {
+        DecisionBrief(question: "Q?", shape: nil, options: options, answer: answer, insteadOf: nil, why: nil, tradeoff: nil)
+    }
+
+    @Test func otherDecisionsOpenByDefaultOnlyWhenNothingIsToReview() {
+        #expect(DecisionsViewLogic.otherShown(showOther: false, toReviewIsEmpty: true))
+        #expect(DecisionsViewLogic.otherShown(showOther: true, toReviewIsEmpty: false))
+        #expect(!DecisionsViewLogic.otherShown(showOther: false, toReviewIsEmpty: false))
+    }
+
+    @Test func sequenceAppendsOtherDecisionsOnlyOnceShown() {
+        let review = [decision("r1"), decision("r2")], other = [decision("o1")]
+        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: false).map(\.id) == ["r1", "r2"])
+        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: true).map(\.id) == ["r1", "r2", "o1"])
+    }
+
+    @Test func otherToggleTitlePluralizesAndFlipsWhenShown() {
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: true, count: 3) == "Hide lower-impact decisions")
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: false, count: 1) == "Show 1 lower-impact decision")
+        #expect(DecisionsViewLogic.otherToggleTitle(showOther: false, count: 4) == "Show 4 lower-impact decisions")
+    }
+
+    @Test func oneAtATimeStepDisablesEndsAndOffersOthersAtTheEnd() {
+        let first = DecisionsViewLogic.oneAtATimeStep(index: 0, count: 3, otherCount: 2, otherShown: false)
+        #expect(first == .init(label: "1 of 3", canGoPrevious: false, canGoNext: true, offersOtherDecisions: false))
+        let last = DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: false)
+        #expect(last == .init(label: "3 of 3", canGoPrevious: true, canGoNext: false, offersOtherDecisions: true))
+        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: true).offersOtherDecisions)
+        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 0, otherShown: false).offersOtherDecisions)
+    }
+
+    @Test func whyLabelIsPlainWhenNothingAboveItDrewAChoice() {
+        #expect(DecisionsViewLogic.whyLabel(hasShape: false, hasTradeoff: false) == "Why")
+        #expect(DecisionsViewLogic.whyLabel(hasShape: true, hasTradeoff: false) == "Why this side?")
+        #expect(DecisionsViewLogic.whyLabel(hasShape: false, hasTradeoff: true) == "Why this side?")
+    }
+
+    @Test func noteFieldShowsWhenQuestionedOrWhenANoteExists() {
+        #expect(DecisionsViewLogic.showsNoteField(state: .questioned, note: ""))
+        #expect(DecisionsViewLogic.showsNoteField(state: .accepted, note: "hmm"))
+        #expect(!DecisionsViewLogic.showsNoteField(state: .accepted, note: ""))
+    }
+
+    @Test func chosenSummaryPrefersTheChosenOptionThenTheAnswer() {
+        let withDetail = brief(options: [DecisionOption(label: "A"), DecisionOption(label: "B", detail: "faster", chosen: true)])
+        #expect(DecisionsViewLogic.chosenSummary(withDetail) == "B — faster")
+        let noDetail = brief(options: [DecisionOption(label: "B", chosen: true)])
+        #expect(DecisionsViewLogic.chosenSummary(noDetail) == "B")
+        #expect(DecisionsViewLogic.chosenSummary(brief(options: [DecisionOption(label: "A")], answer: "Did X")) == "Did X")
+    }
+
+    @Test func reviewButtonHelpOffersClearingOnlyWhenOn() {
+        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: false, target: .accepted, title: "Looks good", shortcut: "A")
+                == "Looks good (A)")
+        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: true, target: .accepted, title: "Looks good", shortcut: "A")
+                == "\(ReviewerState.accepted.label) — click to clear (A)")
+    }
+
+    @Test func progressDotFillDistinguishesPendingDiscussedAndJudged() {
+        #expect(DecisionsViewLogic.progressDotFill(resolved: false, state: .accepted) == .pending)
+        #expect(DecisionsViewLogic.progressDotFill(resolved: true, state: .unreviewed) == .discussed)
+        #expect(DecisionsViewLogic.progressDotFill(resolved: true, state: .questioned) == .judged(.questioned))
+    }
+
+    @Test func drillDownTextHelpersFormatCountsEdgesAndFooter() {
+        #expect(DecisionsViewLogic.tradeoffsTitle(count: 1) == "What it traded")
+        #expect(DecisionsViewLogic.tradeoffsTitle(count: 3) == "What it traded (3)")
+        #expect(DecisionsViewLogic.edgeTitle(from: "A", to: "B") == "A → B")
+        #expect(DecisionsViewLogic.drillDownFooter(level: "Design", confidence: "High")
+                == "Design-level choice · analysis confidence high")
+    }
+
+    @Test func spectrumFavorsTheSecondDimensionFromTheMidpointUp() {
+        #expect(!DecisionsViewLogic.favorsSecondDimension(0.49))
+        #expect(DecisionsViewLogic.favorsSecondDimension(0.5))
+    }
+
+    @Test func knobOffsetSpansTheTrack() {
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 0) == 6)
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 1) == 134)
+        #expect(DecisionsViewLogic.knobOffset(trackWidth: 150, position: 0.5) == 70)
+    }
+
+    @Test func connectorHidesTheOuterHalvesOfTheFirstAndLastOption() {
+        #expect(DecisionsViewLogic.connectorOpacities(index: 0, count: 3) == (0, 0.3))
+        #expect(DecisionsViewLogic.connectorOpacities(index: 1, count: 3) == (0.3, 0.3))
+        #expect(DecisionsViewLogic.connectorOpacities(index: 2, count: 3) == (0.3, 0))
+    }
+
+    @Test func labelAlignmentRightAlignsOnlyTheSecondLeadingLabel() {
+        #expect(DecisionsViewLogic.labelAlignment(.leading, index: 1) == .trailing)
+        #expect(DecisionsViewLogic.labelAlignment(.leading, index: 0) == .leading)
+        #expect(DecisionsViewLogic.labelAlignment(.center, index: 1) == .center)
+    }
 }
