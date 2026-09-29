@@ -16,7 +16,6 @@ struct ChatMessage: Identifiable, Hashable, Sendable {
 final class Conversation: Identifiable {
     let id = UUID()
     let subject: ReviewSubject
-    let createdAt = Date()
     var expansions: Set<ContextExpansion> = []
     var pinnedRefs: [CodeRef] = []
     var messages: [ChatMessage] = []

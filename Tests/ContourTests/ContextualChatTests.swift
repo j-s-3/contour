@@ -748,7 +748,7 @@ struct ContextualChatTests {
         let lines = (1...20).map { "line \($0)" }
         try! lines.joined(separator: "\n").write(
             to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         return (checkout, CodeRef(path: "a.swift", startLine: 5, endLine: 6))
     }
 

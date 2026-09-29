@@ -73,7 +73,7 @@ actor EnvironmentProbe {
                 detail: "Not installed")
         }
 
-        let version = await self.version(of: tool, at: path)
+        let version = await self.version(at: path)
 
         switch tool {
         case .git, .pi, .claude:
@@ -101,7 +101,7 @@ actor EnvironmentProbe {
         }
     }
 
-    private func version(of tool: ExternalTool, at path: String) async -> String? {
+    private func version(at path: String) async -> String? {
         guard let raw = try? await operations.run(path, ["--version"]) else { return nil }
         return
             raw

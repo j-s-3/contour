@@ -76,7 +76,7 @@ struct CodeViewerViewTests {
         let contents = (1...10).map { "line \($0)" }.joined(separator: "\n")
         try contents.write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let ref = CodeRef(path: "a.swift", startLine: 5, endLine: 5)
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 1, service: RepoContextService()
@@ -95,7 +95,7 @@ struct CodeViewerViewTests {
         let baseSha = try await makeGitRepo(at: dir, path: "a.swift", contents: "committed\n")
         try "working tree now\n".write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: baseSha, symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: baseSha)
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 1, side: .base)
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 0, service: RepoContextService()
@@ -110,7 +110,7 @@ struct CodeViewerViewTests {
     @Test func loadExcerptReturnsFailedWhenTheFileDoesNotExist() async {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let ref = CodeRef(path: "missing.swift", startLine: 1, endLine: 1)
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 0, service: RepoContextService()
@@ -136,7 +136,7 @@ struct CodeViewerViewTests {
         try "whole file contents\nsecond line".write(
             to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let outcome = await CodeViewerLogic.loadWholeFile(
             checkout: checkout, path: "a.swift", service: RepoContextService())
         guard case .loaded(let content) = outcome else {
@@ -149,7 +149,7 @@ struct CodeViewerViewTests {
     @Test func loadWholeFileReturnsFailedWhenTheFileDoesNotExist() async {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let outcome = await CodeViewerLogic.loadWholeFile(
             checkout: checkout, path: "missing.swift", service: RepoContextService())
         guard case .failed(let message) = outcome else {

@@ -122,17 +122,6 @@ struct StatementView: View {
     }
 }
 
-struct ChangeKindBadge: View {
-    let kind: ChangeKind
-    var body: some View {
-        Text(kind.label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(kind.color)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(kind.color.opacity(0.15), in: Capsule())
-    }
-}
-
 struct CodeRefChip: View {
     let ref: CodeRef
     var action: () -> Void

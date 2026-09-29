@@ -61,8 +61,8 @@ enum BehaviorDiagramLayoutEngine {
         let nodes = behavior.nodes
         guard !nodes.isEmpty else { return BehaviorDiagramLayout() }
         let index = Dictionary(nodes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let forward = forwardEdges(behavior, index: index)
-        let layer = layers(nodes, forward: forward, index: index)
+        let forward = forwardEdges(behavior)
+        let layer = layers(nodes, forward: forward)
         let layerCount = (layer.values.max() ?? 0) + 1
 
         var rows: [[String]] = Array(repeating: [], count: layerCount)
@@ -205,7 +205,7 @@ enum BehaviorDiagramLayoutEngine {
         return out
     }
 
-    private static func forwardEdges(_ behavior: FlowBehavior, index: [String: Int]) -> [FlowBehaviorEdge] {
+    private static func forwardEdges(_ behavior: FlowBehavior) -> [FlowBehaviorEdge] {
         var state: [String: Int] = [:]
         var back: Set<String> = []
         func visit(_ id: String) {
@@ -225,7 +225,7 @@ enum BehaviorDiagramLayoutEngine {
         return behavior.edges.filter { !back.contains($0.id) }
     }
 
-    private static func layers(_ nodes: [FlowBehaviorNode], forward: [FlowBehaviorEdge], index: [String: Int])
+    private static func layers(_ nodes: [FlowBehaviorNode], forward: [FlowBehaviorEdge])
         -> [String: Int]
     {
         var layer: [String: Int] = [:]

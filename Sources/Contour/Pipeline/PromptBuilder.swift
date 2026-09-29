@@ -421,7 +421,7 @@ struct PromptBuilder {
         """
     }
 
-    static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
+    static func flowsPrompt(components: [ComponentNode]) -> String {
         let componentList = componentOutline(components)
         return """
             Known components (for linking):

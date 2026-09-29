@@ -2,7 +2,6 @@ import Foundation
 import os
 
 struct AnalysisProgress: Sendable {
-    var stageName: String
     var detail: String
 }
 
@@ -92,7 +91,7 @@ struct AnalysisService {
                 prompt: prompt, cwd: cwd, tier: tier, stage: stage,
                 streaming: streaming, onElement: onElement, onProgress: onProgress)
         } catch AnalysisServiceError.notJSON {
-            onProgress(AnalysisProgress(stageName: "", detail: "model returned malformed JSON, retrying once"))
+            onProgress(AnalysisProgress(detail: "model returned malformed JSON, retrying once"))
             return try await runStageOnce(
                 prompt: prompt, cwd: cwd, tier: tier, stage: stage,
                 streaming: streaming, onElement: onElement, onProgress: onProgress)
@@ -109,7 +108,7 @@ struct AnalysisService {
         onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         if let mock = mockOverride ?? MockOptions.fromEnvironment {
-            onProgress(AnalysisProgress(stageName: "", detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
+            onProgress(AnalysisProgress(detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
             let response = MockAnalysisFixtures.response(for: stage)
             try await Self.simulateLatency(
                 of: stage, scale: mock.latencyScale, response: response,
@@ -140,7 +139,7 @@ struct AnalysisService {
             for try await line in Shell.stream(harness.executable, args, cwd: cwd) {
                 switch harness.interpret(line) {
                 case .progress(let detail):
-                    onProgress(AnalysisProgress(stageName: "", detail: detail))
+                    onProgress(AnalysisProgress(detail: detail))
                 case .finalText(let text):
                     finalText = text
                 case .textDelta(let text):

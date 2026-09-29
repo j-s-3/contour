@@ -50,7 +50,7 @@ struct PipelineConcurrencyTests {
                         isDirectory: true)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return RepoCheckout(
-                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
+                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha)
             },
             previousRevisionOverride: previousRevision,
             mockOverride: mock
@@ -201,7 +201,7 @@ struct PipelineConcurrencyTests {
                         "contour-checkout-\(fetchedCtx.number)-\(UUID().uuidString)", isDirectory: true)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return RepoCheckout(
-                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha, symbolIndexPath: nil)
+                    rootDir: dir, headSha: fetchedCtx.headSha, baseSha: fetchedCtx.baseSha)
             },
             mockOverride: AnalysisService.MockOptions()
         )

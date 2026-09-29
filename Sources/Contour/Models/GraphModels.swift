@@ -781,12 +781,6 @@ struct QuestionNode: Codable, Hashable, Sendable, Identifiable {
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
 
-    init(id: String, text: String, relatedIds: [String] = [], refs: [CodeRef] = []) {
-        self.id = id
-        self.text = text
-        self.relatedIds = relatedIds
-        self.refs = refs
-    }
     enum CodingKeys: String, CodingKey { case id, text, relatedIds, refs }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
