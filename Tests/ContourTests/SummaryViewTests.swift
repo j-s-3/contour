@@ -304,4 +304,15 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.whySectionMode(hasDominantChange: false, hasWhyOrConsequence: false, awaitingBehavior: false)
                 == .none)
     }
+
+    @Test func toggledOpensSwitchesAndCloses() {
+        #expect(SummaryViewLogic.toggled(nil, "a") == "a")
+        #expect(SummaryViewLogic.toggled("b", "a") == "a")
+        #expect(SummaryViewLogic.toggled("a", "a") == nil)
+    }
+
+    @Test func reviewActionNavigatesWithADecisionAndAsksWithout() {
+        #expect(SummaryViewLogic.reviewAction(hasDecision: true) == .navigate)
+        #expect(SummaryViewLogic.reviewAction(hasDecision: false) == .ask)
+    }
 }

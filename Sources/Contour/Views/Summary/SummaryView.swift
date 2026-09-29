@@ -318,7 +318,7 @@ struct SummaryView: View {
                     isExpanded: expandedConsideration == item.id,
                     onToggle: {
                         withAnimation(.easeInOut(duration: 0.18)) {
-                            expandedConsideration = expandedConsideration == item.id ? nil : item.id
+                            expandedConsideration = SummaryViewLogic.toggled(expandedConsideration, item.id)
                         }
                     },
                     onReview: { review(item) },
@@ -360,10 +360,9 @@ struct SummaryView: View {
     }
 
     private func review(_ item: Consideration) {
-        if graph.reviewDecisionId(for: item) != nil {
-            navigate(.consideration(item.id))
-        } else {
-            actions.ask(.consideration(item.id))
+        switch SummaryViewLogic.reviewAction(hasDecision: graph.reviewDecisionId(for: item) != nil) {
+        case .navigate: navigate(.consideration(item.id))
+        case .ask: actions.ask(.consideration(item.id))
         }
     }
 
@@ -375,7 +374,7 @@ struct SummaryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Button {
                             withAnimation(.easeInOut(duration: 0.18)) {
-                                expandedOtherChange = expandedOtherChange == change.id ? nil : change.id
+                                expandedOtherChange = SummaryViewLogic.toggled(expandedOtherChange, change.id)
                             }
                         } label: {
                             HStack(spacing: 10) {
@@ -446,7 +445,7 @@ struct SummaryView: View {
     }
 }
 
-private struct ConsiderationRow: View {
+struct ConsiderationRow: View {
     let number: Int
     let item: Consideration
     let graph: PRGraph
@@ -572,7 +571,7 @@ private struct ConsiderationRow: View {
     }
 }
 
-private struct ExploreTile: View {
+struct ExploreTile: View {
     let title: String
     let detail: String
     let symbol: String
@@ -610,6 +609,16 @@ private struct ExploreTile: View {
 }
 
 enum SummaryViewLogic {
+    static func toggled(_ current: String?, _ id: String) -> String? {
+        current == id ? nil : id
+    }
+
+    enum ReviewAction: Equatable { case navigate, ask }
+
+    static func reviewAction(hasDecision: Bool) -> ReviewAction {
+        hasDecision ? .navigate : .ask
+    }
+
     static func factTint(_ tone: GlanceFact.Tone) -> Color? {
         switch tone {
         case .plain: return nil
