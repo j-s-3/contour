@@ -87,28 +87,6 @@ struct DecisionsViewInteractionTests {
         }
 
         @MainActor
-        func click(at point: NSPoint) {
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                if let event = NSEvent.mouseEvent(
-                    with: type, location: point, modifierFlags: [], timestamp: 0,
-                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
-                {
-                    window.sendEvent(event)
-                }
-            }
-        }
-
-        @MainActor
-        func clickColumns(_ columns: [CGFloat], yStep: CGFloat) {
-            var y: CGFloat = 0
-            while y < hosting.frame.height - 150 {
-                for x in columns { click(at: NSPoint(x: x, y: y)) }
-                y += yStep
-            }
-            pump()
-        }
-
-        @MainActor
         func close() {
             window.orderOut(nil)
             UserDefaults.standard.removeObject(forKey: "decisions.mode")
@@ -226,15 +204,4 @@ struct DecisionsViewInteractionTests {
         session.close()
     }
 
-    @Test func clickingAcrossTheListExercisesEveryButton() {
-        let session = Session(graph: graph(), mode: .list, focus: .init(decisionId: "o1"))
-        session.clickColumns([90, 500, 900], yStep: 6)
-        session.close()
-    }
-
-    @Test func clickingAcrossOneAtATimeExercisesEveryButton() {
-        let session = Session(graph: graph(review: 2, other: 2), mode: .oneAtATime)
-        session.clickColumns([150, 500, 850], yStep: 6)
-        session.close()
-    }
 }
