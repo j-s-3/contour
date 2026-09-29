@@ -37,7 +37,7 @@ struct AnalysisPipelineTests {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("contour-pipeline-checkout-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return RepoCheckout(rootDir: dir, headSha: ctx.headSha, baseSha: ctx.baseSha, symbolIndexPath: nil)
+        return RepoCheckout(rootDir: dir, headSha: ctx.headSha, baseSha: ctx.baseSha)
     }
 
     private func pipeline(

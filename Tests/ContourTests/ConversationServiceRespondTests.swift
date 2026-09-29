@@ -37,7 +37,7 @@ struct ConversationServiceRespondTests {
     private func service(_ harness: ScriptedHarness, root: URL) -> ConversationService {
         ConversationService(
             harness: harness,
-            checkout: RepoCheckout(rootDir: root, headSha: "h", baseSha: "b", symbolIndexPath: nil))
+            checkout: RepoCheckout(rootDir: root, headSha: "h", baseSha: "b"))
     }
 
     private func collect(_ stream: AsyncThrowingStream<ConversationEvent, Error>) async throws -> [ConversationEvent] {

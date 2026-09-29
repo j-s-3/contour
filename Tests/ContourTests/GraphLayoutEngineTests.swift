@@ -24,12 +24,6 @@ struct GraphLayoutEngineTests {
         #expect(layout.size == .zero)
     }
 
-    @Test func nodeLookupFindsPlacedNodesById() {
-        let layout = GraphLayoutEngine.layout(nodes: [node("a"), node("b")], edges: [], groups: [])
-        #expect(layout.node("a")?.id == "a")
-        #expect(layout.node("missing") == nil)
-    }
-
     @Test func singleNodeSitsAtTheMargin() {
         let layout = GraphLayoutEngine.layout(nodes: [node("solo")], edges: [], groups: [])
         let frame = frames(layout)["solo"]!

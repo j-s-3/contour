@@ -165,7 +165,6 @@ struct RepoContextServiceTests {
             checkout.rootDir
                 == root.appendingPathComponent("cache").appendingPathComponent("octo-widgets", isDirectory: true))
         #expect(checkout.headSha == fixture.headSha && checkout.baseSha == fixture.baseSha)
-        #expect(checkout.symbolIndexPath == nil)
         #expect(try await headOf(checkout.rootDir) == fixture.headSha)
         #expect(try await service.readWholeFile(in: checkout, path: "a.txt") == "head\n")
     }
