@@ -62,7 +62,7 @@ enum ChatViewLogic {
     }
 
     /// Flips an expansion chip on or off for the next answer.
-    static func toggle(_ expansion: ContextExpansion, in conversation: Conversation) {
+    @MainActor static func toggle(_ expansion: ContextExpansion, in conversation: Conversation) {
         if conversation.expansions.contains(expansion) {
             conversation.expansions.remove(expansion)
         } else {
@@ -71,7 +71,7 @@ enum ChatViewLogic {
     }
 
     /// Removes a pinned code reference from the conversation.
-    static func unpin(_ ref: CodeRef, in conversation: Conversation) {
+    @MainActor static func unpin(_ ref: CodeRef, in conversation: Conversation) {
         conversation.pinnedRefs.removeAll { $0 == ref }
     }
 
