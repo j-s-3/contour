@@ -248,7 +248,59 @@ enum ContourSampleData {
             howItWasSolved: Statement(
                 text:
                     "The publish handler now enqueues an immediate reindex instead of relying on the nightly rebuild.",
-                provenance: .interpretation, confidence: .high)
+                provenance: .interpretation, confidence: .high),
+            considerations: [
+                Consideration(
+                    id: "publish-burst", category: .scaling, judgmentType: .operationalRisk,
+                    headline: "A burst of publishes queues one reindex job per page",
+                    context:
+                        "Each publish now adds a reindex job to the index queue instead of waiting for the nightly rebuild. The queue drains at its configured concurrency, so a bulk import that publishes thousands of pages queues thousands of jobs at once.",
+                    impact:
+                        "During a burst, search can fall further behind than the nightly rebuild ever did, and the search service takes the whole burst as live traffic.",
+                    tradeoff:
+                        "Coalescing bursts into batches would bound the load, but a single edited page could stay stale until its batch runs.",
+                    judgment: "Should bulk publishes be indexed as promptly as single publishes?",
+                    provenance: .interpretation, confidence: .medium,
+                    evidence:
+                        "PagePublisher.publish() enqueues one job per page (src/main/java/publishing/PagePublisher.java:40-96) with no batching or rate limit.",
+                    assumptions: [
+                        "The queue's concurrency is set in deployment configuration outside this repository, so its drain rate is estimated."
+                    ],
+                    relatedIds: ["index-on-publish", "index-queue"],
+                    refs: [CodeRef(path: "src/main/java/publishing/PagePublisher.java", startLine: 40, endLine: 96)]
+                ),
+                Consideration(
+                    id: "reindex-timeout", category: .reliability, judgmentType: .potentialProblem,
+                    headline: "An unresponsive search service can stall indexing",
+                    context:
+                        "Queued reindex jobs call the search service without a timeout. If the service stops responding, the worker handling that job appears to wait until the connection drops, and jobs behind it wait too.",
+                    impact: "One unresponsive search call can delay indexing for every page published after it.",
+                    moreContext:
+                        "Before this change indexing ran once a night, so a stalled call delayed one batch nobody was waiting on. The queue now sits behind the publish path, where authors expect their page in search within seconds.",
+                    judgment: "Should an unresponsive search service be able to hold up indexing for later pages?",
+                    provenance: .interpretation, confidence: .medium,
+                    evidence: "The reindex() call has no timeout once it's queued.",
+                    relatedIds: ["search-service"]
+                ),
+                Consideration(
+                    id: "queue-concurrency", headline: "The index queue's concurrency limit could not be found",
+                    context:
+                        "The number of workers draining the index queue is read from deployment configuration that is not in this repository.",
+                    impact: "Without it, how quickly a burst of publishes drains cannot be estimated.",
+                    judgment: "What concurrency is the index queue deployed with?", kind: .question,
+                    provenance: .interpretation, confidence: .low
+                ),
+            ],
+            implications: [
+                Statement(
+                    text:
+                        "Search freshness now depends on the index queue keeping up with publishing, not on a nightly job.",
+                    provenance: .interpretation, confidence: .high),
+                Statement(
+                    text:
+                        "The search service now receives indexing traffic throughout the day, in step with editorial activity.",
+                    provenance: .interpretation, confidence: .medium),
+            ]
         )
 
         return PRGraph(

@@ -7,6 +7,30 @@ enum DecisionsViewLogic {
         return [item] + all.filter { $0.id != lead }
     }
 
+    nonisolated static func overviewAskHelp(_ item: Consideration) -> String {
+        let parts = item.judgment == nil ? [item.context, item.impact] : [item.headline, item.context, item.impact]
+        return
+            parts
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .map { $0.hasSuffix(".") || $0.hasSuffix("?") ? $0 : $0 + "." }
+            .joined(separator: " ")
+    }
+
+    struct ArrivalVerification: Equatable {
+        var evidence: String?
+        var assumptions: [String]
+    }
+
+    nonisolated static func arrivalVerification(for item: Consideration, arrivedFromConsiderationId: String?)
+        -> ArrivalVerification?
+    {
+        guard item.id == arrivedFromConsiderationId else { return nil }
+        let evidence = item.evidence.flatMap { $0.isEmpty ? nil : $0 }
+        guard evidence != nil || !item.assumptions.isEmpty else { return nil }
+        return ArrivalVerification(evidence: evidence, assumptions: item.assumptions)
+    }
+
     nonisolated static func provenanceNote(_ s: Statement) -> String {
         switch s.provenance {
         case .claim: return "Author rationale"

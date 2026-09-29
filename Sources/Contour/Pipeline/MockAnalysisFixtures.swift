@@ -1471,33 +1471,39 @@ enum MockAnalysisFixtures {
 
     private static let judgmentJSON = #"""
         {
+          "architectureImpact": {
+            "confidence": "high",
+            "provenance": "interpretation",
+            "text": "The Input → Content Inspection → Printer pipeline keeps the same parts and connections. Content Inspection now receives up to 1 KB of already-buffered input instead of only the first line. The first line still goes on to the Printer unchanged."
+          },
           "changeMap": [
             {
               "filesChanged": 1,
-              "name": "Input Reading"
+              "name": "Input Reading / Content Inspection"
             },
             {
               "filesChanged": 1,
-              "name": "Content Inspection"
+              "name": "Integration tests"
+            },
+            {
+              "filesChanged": 1,
+              "name": "Changelog"
             },
             {
               "filesChanged": 0,
               "name": "Printer"
-            },
-            {
-              "filesChanged": 0,
-              "name": "Terminal"
-            },
-            {
-              "filesChanged": 1,
-              "name": "InputReader::try_new"
             }
           ],
           "considerations": [
             {
-              "category": "reliability",
+              "assumptions": [
+                "How much data a pipe delivers in its first read depends on the operating system and the producing program; this was not measured.",
+                "It is assumed the standard buffered reader's default capacity exceeds 1024 bytes, so ordinary files supply a full sample."
+              ],
+              "category": "product-behavior",
               "confidence": "medium",
-              "evidence": "try_new copies `reader.fill_buf()?` truncated to CONTENT_INSPECTION_LIMIT (src/input.rs:272-275). Nothing tops the buffer up to 1024 bytes. The only fallback replaces the sample with the first line when that line is longer (src/input.rs:282-288), so bytes past the first line and past the first chunk are never inspected. Stdin is passed as the StdinLock directly (src/input.rs:212). Its fill_buf performs one read(2), which on a pipe returns whatever the writer has flushed so far. Ordinary files are wrapped in BufReader (src/input.rs:241), and the first fill of a regular file normally returns the full 8 KiB, so file inputs are effectively complete. LESSOPEN piped output is buffered completely in a Cursor (src/lessopen.rs:235), so that path is also complete. The new unit test input_detection_does_not_read_twice (src/input.rs:456-479) deliberately enforces a single read, so this looks intended rather than an oversight. No test covers cross-line detection through stdin or a chunked reader. The PR author says the approach is chosen so it 'does not add a post-line blocking read'. Possible middle ground: keep reading until 1024 bytes or EOF only for regular files, or only while the first line is still incomplete. For pipes, the tradeoff is that bat would wait longer before its first output.",
+              "context": "bat decides once, before printing anything, whether an input is binary. It now examines up to the first kilobyte, but only the part that arrived in the first delivery of data. Files normally supply the full kilobyte at once. A pipe or custom stream may supply less, and later bytes are never examined.",
+              "evidence": "InputReader::try_new takes the sample from a single reader.fill_buf() call, truncated to CONTENT_INSPECTION_LIMIT (src/input.rs:272-275), and never tops it up. The only fallback replaces the sample with the first line when that line is longer than the snapshot (src/input.rs:282-288), so bytes after the first newline are again unseen in that case. Stdin is passed as a StdinLock straight into try_new (src/controller.rs:115-116, src/input.rs:208-213); custom readers are wrapped in BufReader (src/input.rs:244-249), so a Read that returns small chunks yields a short sample. content_type is fixed at construction (src/input.rs:290, 298-303) and copied once into the printer (src/printer.rs:339); nothing re-inspects later lines. Counterevidence: ordinary files go through BufReader::new(file) (src/input.rs:241), and LESSOPEN piped output is a Cursor over already collected bytes (src/lessopen.rs:235), so both expose a full sample. Tests: input_detection_does_not_read_twice pins the single-read property with a reader that returns WouldBlock on a second read (src/input.rs:456-479), which would fail if a top-up loop were added unconditionally. No test covers a short first chunk followed by a NUL inside the first 1024 bytes; the new integration test uses a file (tests/integration_tests.rs:2267-2285) and filename_stdin_binary puts the NUL in the first byte (tests/integration_tests.rs:2465-2476). Possible alternatives: read ahead until 1024 bytes or EOF only for non-interactive inputs, or keep the current behavior and document it.",
               "flowAnchors": [
                 {
                   "flowId": "flow-cli-stdin-binary-detection",
@@ -1508,19 +1514,20 @@ enum MockAnalysisFixtures {
                   "nodeId": "snapshot-buffered-prefix"
                 }
               ],
-              "headline": "Binary detection over piped input covers only the first chunk that arrives",
-              "id": "piped-input-short-first-read",
-              "impact": "If a producer such as a decryption command or a network stream sends a small first chunk, a null byte that arrives in a later chunk is missed. The garbled output from issue #3554 can then still reach the terminal, even though the same bytes read from a file are caught.",
-              "judgment": "Should binary detection give the same answer for the same bytes whether they come from a file or a pipe?",
+              "headline": "Piped binary input can still display as text when data arrives slowly",
+              "id": "short-first-delivery-misses-binary",
+              "impact": "The same content can be hidden as binary when opened as a file yet printed raw to the terminal when piped, and the outcome can vary between runs with the producer's timing.",
+              "judgment": "Should bat wait for more input before classifying a stream, or classify on whatever arrives first?",
               "judgmentType": "design-decision",
               "kind": "concern",
+              "moreContext": null,
               "provenance": "interpretation",
               "refs": [
                 {
-                  "endLine": 288,
+                  "endLine": 290,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 272
+                  "startLine": 267
                 },
                 {
                   "endLine": 213,
@@ -1529,10 +1536,10 @@ enum MockAnalysisFixtures {
                   "startLine": 208
                 },
                 {
-                  "endLine": 241,
+                  "endLine": 249,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 241
+                  "startLine": 244
                 },
                 {
                   "endLine": 479,
@@ -1541,23 +1548,31 @@ enum MockAnalysisFixtures {
                   "startLine": 456
                 },
                 {
-                  "endLine": 235,
-                  "path": "src/lessopen.rs",
+                  "endLine": 116,
+                  "path": "src/controller.rs",
                   "side": "head",
-                  "startLine": 234
+                  "startLine": 115
                 }
               ],
               "relatedIds": [
                 "use-already-buffered-bytes",
-                "binary-detection-beyond-first-line",
+                "fallback-to-longer-first-line",
+                "content-inspection",
+                "input-reading",
                 "edge-input-inspection",
-                "content-inspection"
-              ]
+                "flow-cli-stdin-binary-detection"
+              ],
+              "tradeoff": "Waiting for a full kilobyte or end of input would make classification consistent, but would delay first output for slow or interactive streams. Using only what has arrived keeps streaming immediate but ties detection to delivery size."
             },
             {
-              "category": "product-behavior",
+              "assumptions": [
+                "How common mostly-text files with a null byte in their first kilobyte are among bat users is unknown.",
+                "That any null byte inside the inspected window yields a binary classification is inferred from the boundary test, not from the inspection library's source, which is outside this checkout."
+              ],
+              "category": "compatibility",
               "confidence": "medium",
-              "evidence": "The content type now comes from inspection_prefix, which can hold up to 1024 bytes spanning many lines (src/input.rs:290). Previously it came from first_line only. When the type is BINARY, the header shows '   <BINARY>' (src/printer.rs:515-516), or the '[bat warning]: Binary content ... will not be printed' message when there is no header (src/printer.rs:496-508). In both cases print_line returns without writing any line unless --binary=as-text is set (src/printer.rs:664-669), so the whole file is suppressed, not just the offending bytes. show_nonprintable (-A) and --binary=as-text still bypass the suppression, and piped output is unaffected according to the warning text (src/printer.rs:503-505). The boundary test pins the new cutoff exactly: a NUL at byte 1023 gives BINARY and a NUL at byte 1024 gives UTF_8 (src/input.rs:434-454). This is the intended fix for encrypted data. The widened classification also affects legitimate text with embedded NULs, and there is no CHANGELOG note about that side effect (CHANGELOG.md bugfix entry only mentions encrypted files).",
+              "context": "When bat classifies an input as binary, terminal output shows only a header marker or a warning and none of the content. Previously only a null byte in the first line triggered this. Now a null byte anywhere in the first kilobyte does, including in otherwise readable text such as logs or null-separated records.",
+              "evidence": "The sample passed to inspect_content_type is now inspection_prefix (up to 1024 buffered bytes) instead of first_line (src/input.rs:272-290). The unit test binary_detection_scans_beyond_first_line_and_preserves_input asserts BINARY for a NUL at index 1023 on a later line and UTF_8 for a NUL at index 1024 (src/input.rs:434-454). The integration test classifies the readable content packet-header, newline, payload NUL bytes as BINARY (tests/integration_tests.rs:2267-2285), which is exactly a text-like file with one NUL on line 2. Once BINARY, InteractivePrinter::print_line returns without writing any line (src/printer.rs:664-669), the header shows the BINARY marker (src/printer.rs:515-521), or a warning is printed when the header is disabled (src/printer.rs:496-508), and syntax matching is skipped (src/printer.rs:271-281). Counterevidence and escape hatches: --binary=as-text and show_nonprintable (-A) bypass suppression (src/printer.rs:497-499, 656-667; src/bin/bat/app.rs:438-441), and pass-through output via SimplePrinter ignores content type entirely (src/printer.rs:136-184), selected when output is not interactive and color/decorations are not forced (src/bin/bat/app.rs:477-483). The changelog entry sits under Bugfixes and only mentions encrypted files (CHANGELOG.md:28).",
               "flowAnchors": [
                 {
                   "flowId": "flow-cli-file-binary-detection",
@@ -1568,19 +1583,20 @@ enum MockAnalysisFixtures {
                   "nodeId": "print-header-and-lines"
                 }
               ],
-              "headline": "Text files with a stray null byte early on now display nothing",
-              "id": "mostly-text-files-now-hidden",
-              "impact": "A log or config file that has a null byte anywhere in its first kilobyte, for example padding left by a crash, used to display normally when only its first line was clean. It now shows a binary marker and none of its lines appear in the terminal.",
-              "judgment": "Should a single null byte in the first kilobyte hide an otherwise readable text file from interactive viewing?",
-              "judgmentType": "confirm-intent",
+              "headline": "Text files with an early null byte are now hidden entirely",
+              "id": "text-with-early-null-now-hidden",
+              "impact": "Users who could read such files before will see no content until they pass an option to show binary data. The changelog lists this as a bug fix and does not mention the effect.",
+              "judgment": "Should a mostly-text file with a null byte after its first line be hidden as binary by default?",
+              "judgmentType": "compatibility-decision",
               "kind": "concern",
+              "moreContext": null,
               "provenance": "interpretation",
               "refs": [
                 {
                   "endLine": 290,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 290
+                  "startLine": 272
                 },
                 {
                   "endLine": 454,
@@ -1599,55 +1615,162 @@ enum MockAnalysisFixtures {
                   "path": "src/printer.rs",
                   "side": "head",
                   "startLine": 664
+                },
+                {
+                  "endLine": 2285,
+                  "path": "tests/integration_tests.rs",
+                  "side": "head",
+                  "startLine": 2267
+                },
+                {
+                  "endLine": 28,
+                  "path": "CHANGELOG.md",
+                  "side": "head",
+                  "startLine": 28
                 }
               ],
               "relatedIds": [
                 "inspect-multi-line-prefix",
-                "binary-detection-beyond-first-line",
+                "content-inspection",
+                "printer",
                 "edge-inspection-printer",
-                "printer"
-              ]
+                "flow-cli-file-binary-detection"
+              ],
+              "tradeoff": "Treating any early null byte as binary keeps encrypted or random data off the terminal. It also hides mostly-text files that happen to contain one, which users could previously read without extra options."
+            },
+            {
+              "assumptions": [
+                "The retry behavior of the standard library's line read and the lack of retry in its buffered fill were taken from standard library documentation, not verified in this checkout.",
+                "Whether interrupted reads actually reach bat on supported platforms was not tested."
+              ],
+              "category": "error-handling",
+              "confidence": "low",
+              "context": "Opening an input now performs one up-front read to take the detection sample. Based on standard library behavior, the earlier first-line read silently retried when a signal interrupted it, while the new read appears to report the interruption as an error. bat treats an initial read error as a failure to open that input.",
+              "evidence": "The snapshot is taken with reader.fill_buf()? (src/input.rs:273), which propagates every io::Error, including ErrorKind::Interrupted. Before this PR the only initial read was reader.read_until (now src/input.rs:279), which the standard library documents as ignoring ErrorKind::Interrupted and retrying. Errors from try_new propagate out of Input::open (src/input.rs:212, 241, 248), and the existing test input_open_returns_initial_read_errors confirms initial read errors surface as open failures (src/input.rs:481-500); the controller then reports them per input (src/controller.rs:121-135). Counterevidence: a search of src and Cargo.toml found no signal-handler installation in bat itself, so the CLI is unlikely to see interrupted reads in practice; and read_line_unbuffered already calls fill_buf without a retry (src/input.rs:327-341), so there is precedent, though only in unbuffered mode. No test exercises an Interrupted error on the first read. Possible fix: retry the snapshot read while the error kind is Interrupted.",
+              "flowAnchors": [
+                {
+                  "flowId": "flow-cli-file-binary-detection",
+                  "nodeId": "snapshot-buffered-prefix"
+                }
+              ],
+              "headline": "An interrupted first read may now fail the input instead of retrying",
+              "id": "interrupted-initial-read-not-retried",
+              "impact": "If an interruption lands during that first read, the input would be skipped with an error rather than displayed. This appears most likely for programs that embed bat as a library and install their own signal handlers.",
+              "judgment": "Should an interrupted initial read be retried rather than reported as a failure for that input?",
+              "judgmentType": "potential-problem",
+              "kind": "concern",
+              "moreContext": null,
+              "provenance": "interpretation",
+              "refs": [
+                {
+                  "endLine": 280,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 272
+                },
+                {
+                  "endLine": 500,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 481
+                },
+                {
+                  "endLine": 341,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 327
+                }
+              ],
+              "relatedIds": [
+                "use-already-buffered-bytes",
+                "impl-try-new",
+                "input-reading"
+              ],
+              "tradeoff": null
             }
           ],
+          "implications": [
+            {
+              "confidence": "medium",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "The same bytes can now be classified differently depending on whether they come from a file or arrive in small pieces through a pipe."
+            },
+            {
+              "confidence": "high",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "Text files that embed a null byte after their first line, previously displayed in full, are now hidden unless the user opts into showing binary content."
+            },
+            {
+              "confidence": "high",
+              "provenance": "fact",
+              "source": null,
+              "text": "Piped or redirected output is unaffected, because the binary classification only influences decorated terminal output, not pass-through output."
+            },
+            {
+              "confidence": "medium",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "Detection still appears to depend on a null byte showing up early, so a small share of encrypted files may still display as text."
+            }
+          ],
+          "intent": {
+            "provenance": "claim",
+            "source": "Title: 'Detect binary content beyond the first line'. Description: 'inspect up to the first 1024 already-buffered bytes before splitting out the first line'; 'preserve the reader's bytes, line boundaries, UTF-16 handling, and streaming behavior'; Root cause: 'content_inspector checks up to 1024 bytes for a NUL byte, but bat passed only the first line. Random or encrypted data can contain a newline before its first NUL byte, so the shortened sample was classified as UTF-8 and binary bytes were sent to the terminal.' Also: 'it does not add a post-line blocking read'; 'BOM detection still takes precedence... ZIP signature detection is also unchanged.' 'Fixes #3554.'",
+            "text": "Make bat detect binary content that appears after the first line. Before this change, bat passed only the first line to content_inspector, so random or encrypted data with a newline before its first NUL byte was classified as UTF-8 and printed to the terminal. The PR instead inspects up to the first 1024 bytes that are already buffered, taken before the first line is split out. It aims to keep the reader's bytes and line boundaries, UTF-16/BOM handling, ZIP detection and streaming behavior unchanged, and to add no extra blocking read. Fixes #3554."
+          },
           "needsJudgment": [
             {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "The fix fully covers ordinary files and LESSOPEN piped output, which is buffered in full. For stdin and custom readers, how much gets inspected depends on the size of the first read. The reviewer should decide whether the #3554 scenario (gpg output) is expected to arrive as a file or through a pipe."
+              "text": "Whether stream input should be classified from only the first delivery of data, which appears to leave piped binary content past the first line undetected when that delivery is short."
             },
             {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "The classification now covers up to 1 KB of text, so files with an embedded NUL past line one change from displayed to fully suppressed on the terminal. The CHANGELOG entry only describes the encrypted-file improvement."
+              "text": "Whether hiding mostly-text files that contain a null byte after the first line is the intended default, given the change is described only as a bug fix."
+            },
+            {
+              "confidence": "low",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "Whether the new up-front read should tolerate interruption the way the earlier first-line read appears to have done."
             }
           ],
           "questions": [
             {
-              "id": "pr-3763-interaction",
+              "id": "content-inspector-criteria",
               "refs": [
                 {
-                  "endLine": 288,
+                  "endLine": 52,
+                  "path": "Cargo.toml",
+                  "side": "head",
+                  "startLine": 52
+                },
+                {
+                  "endLine": 355,
                   "path": "src/input.rs",
                   "side": "head",
-                  "startLine": 272
+                  "startLine": 344
                 }
               ],
               "relatedIds": [
-                "fallback-to-longer-first-line",
-                "impl-try-new"
+                "inspect-multi-line-prefix",
+                "content-inspection"
               ],
-              "text": "The PR description says PR #3763 changes the same try_new path to bound reads on newline-free binary files. Has it merged, and will its bounded read keep the new fill_buf snapshot and the fallback to a longer first line (src/input.rs:272-288)?"
+              "text": "Could not read the content_inspector 0.2.4 source from this checkout (only the dependency declaration at Cargo.toml:52). Does it flag anything other than byte-order marks and null bytes, and is its scan window exactly 1024 bytes as the author states?"
             },
             {
-              "id": "stdin-cross-line-test",
+              "id": "issue-3554-fully-resolved",
               "refs": [
                 {
-                  "endLine": 213,
-                  "path": "src/input.rs",
+                  "endLine": 28,
+                  "path": "CHANGELOG.md",
                   "side": "head",
-                  "startLine": 208
+                  "startLine": 28
                 },
                 {
                   "endLine": 2285,
@@ -1657,10 +1780,47 @@ enum MockAnalysisFixtures {
                 }
               ],
               "relatedIds": [
+                "inspect-multi-line-prefix"
+              ],
+              "text": "The changelog says this closes #3554, but the reporter's reproduction used real gpg output and no such sample is in the repo. Could not determine whether encrypted files lacking a null byte in the first kilobyte still display as text."
+            },
+            {
+              "id": "pr-3763-interaction",
+              "refs": [
+                {
+                  "endLine": 280,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 277
+                }
+              ],
+              "relatedIds": [
+                "impl-try-new",
+                "input-reading"
+              ],
+              "text": "The author says PR #3763 changes the same initialization path to bound reads for newline-free binary files. Could not determine its status from this checkout; the first-line read here is still unbounded (src/input.rs:279). How will the two changes combine?"
+            },
+            {
+              "id": "pipe-first-chunk-size",
+              "refs": [
+                {
+                  "endLine": 213,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 208
+                },
+                {
+                  "endLine": 275,
+                  "path": "src/input.rs",
+                  "side": "head",
+                  "startLine": 272
+                }
+              ],
+              "relatedIds": [
                 "use-already-buffered-bytes",
                 "flow-cli-stdin-binary-detection"
               ],
-              "text": "No test exercises cross-line detection through stdin or through a reader that delivers data in several small chunks. Is the file-only integration test (tests/integration_tests.rs:2267-2285) considered enough for the stdin path?"
+              "text": "Could not determine from the repo how large the first delivery of piped stdin typically is on supported platforms, and so how often cross-line detection is incomplete for pipes in practice."
             }
           ],
           "uncertainties": [
@@ -1668,13 +1828,25 @@ enum MockAnalysisFixtures {
               "confidence": "medium",
               "provenance": "interpretation",
               "source": null,
-              "text": "I could not verify whether content_inspector uses signals other than NUL bytes and BOMs (e.g. magic numbers) that would also classify more files differently now that the sample is longer. The crate source is not in this checkout."
+              "text": "The inspection library's source is outside this checkout, so its 1024-byte scan window and the exact signals it treats as binary could not be read directly; the boundary test at src/input.rs:434-454 suggests the window is 1024 bytes."
             },
             {
               "confidence": "low",
               "provenance": "interpretation",
               "source": null,
-              "text": "The PR description says PR #3763 (bounding reads for newline-free binary files) touches the same initialization path. In this checkout the first-line read_until at src/input.rs:279 is still unbounded, which suggests #3763 has not merged. I could not determine how the two will interact once it does."
+              "text": "If detection relies only on a null byte, roughly 2 percent of uniformly random one-kilobyte samples would contain none, so some encrypted files would appear to remain undetected; this estimate was not verified against real encrypted files."
+            },
+            {
+              "confidence": "medium",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "No test covers the fallback where the first line is longer than the buffered snapshot, or a short first chunk followed by a null byte, so behavior on small-buffer readers appears unpinned."
+            },
+            {
+              "confidence": "high",
+              "provenance": "interpretation",
+              "source": null,
+              "text": "The author's reported validation results (455 tests passed, clippy and fmt clean) were not re-run here."
             }
           ]
         }

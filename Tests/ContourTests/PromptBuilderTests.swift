@@ -82,4 +82,37 @@ struct PromptBuilderTests {
         #expect(text.contains(#""judgment": "...?""#))
         #expect(!text.contains(#""decision": "...?""#))
     }
+
+    @Test func judgmentPromptAsksForADecisionBriefWithContextBeforeTheQuestion() {
+        let text = PromptBuilder.judgmentPrompt(graphSoFar: "{}").split(whereSeparator: \.isWhitespace).joined(
+            separator: " ")
+        for phrase in [
+            "DECISION BRIEF",
+            "FIRST work out what a knowledgeable engineer who has not read the diff would need to know",
+            "and only then the judgment question",
+            "answerable from the headline, context, impact and tradeoff alone",
+            "CERTAINTY RULE: do not manufacture certainty",
+            "list what you inferred or could not confirm in assumptions",
+            "Do not manufacture one",
+            "Quality test, applied to every card before you return it",
+            "engineer who has NOT read the diff and has only read this card",
+            "1. What is the system doing? 2. What happens in the relevant edge case? 3. Why does this matter? "
+                + "4. What are the meaningful alternatives or tradeoffs? 5. What exactly are they being asked to judge?",
+            "If not, improve the card before returning it",
+        ] {
+            #expect(text.contains(phrase), "missing: \(phrase)")
+        }
+    }
+
+    @Test func judgmentPromptTemplateOrdersTheBriefFieldsBeforeTheJudgment() throws {
+        let text = PromptBuilder.judgmentPrompt(graphSoFar: "{}")
+        let fields = [
+            #""headline": "...""#, #""context": "...""#, #""impact": "...""#, #""tradeoff": "..."|null"#,
+            #""moreContext": "..."|null"#, #""judgment": "...?""#, #""evidence": "...""#, #""assumptions": ["..."]"#,
+        ]
+        let positions = try fields.map { try #require(text.range(of: $0)).lowerBound }
+        #expect(positions == positions.sorted())
+        let implications = try #require(text.range(of: #""implications": [{"text""#)).lowerBound
+        #expect(implications < positions[0])
+    }
 }

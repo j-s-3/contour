@@ -153,46 +153,81 @@ Keep the mark rare. It appears in these places, not as decoration on empty state
 
 ### 4.2 Overview (landing page)
 
-A thirty-second briefing from a staff engineer, not a dashboard: one centered column
-(max ~1240pt) that reads top to bottom — title and metadata, with one quiet facts line
-(`12 files · +148 −37 · CI passing · 2 approvals · 3 unresolved threads · opened 2 days
-ago`, `PRGlance`) that omits whatever the source couldn't tell; **What changed**, the
-before/after stage diagram as the hero (3–6 short stages per side, green for a step this PR
-adds, dashed for a step that no longer happens, an optional success/failure outcome on the
-last stage); **Why** and **Consequence** at one or two lines each; **Things to think
-about**, headed "n areas needing your judgment": at most five items that merge what used to
-be separate needs-judgment and uncertainty lists, distinguished only by a subtle badge.
-There is no quota: the model returns only the items where a human's judgment genuinely
-adds value, so two strong items beat five padded ones. Each item is one coherent concern,
-one consequence and one judgment, and reads top to bottom as headline, impact, judgment: a
-quiet caption pairing the category (error handling, test coverage, compatibility,
-reliability, scaling, security, architecture, product behavior) with why judgment is needed
-(potential problem, confirm intent, design decision, compatibility decision, operational
-risk, security decision, unclear requirement, external dependency), with the category
-dropped from the type when it would repeat ("Compatibility · Decision", not "Compatibility
-· Compatibility decision"); a headline stating what is happening; a concrete scenario of
-what could happen if it merges; and, after "Your judgment" ("To confirm" for an open
-question), the one question asked of the reviewer. The items are a handoff of judgment,
-not a list of defects, so the section avoids warning styling: a neutral scales symbol,
-neutral number badges, and orange only on the judgment line. The judgment prompt holds the
-model to five rules. One judgment: concerns that would lead to different decisions are
-separate items. Coherence: headline, impact and judgment are about the same issue.
-Human value: no item for an unusual detail with nothing to decide. Neutrality: the
-question states the tradeoff without steering the answer ("Should reading failure
-evidence require write access?", never "Is requiring write access acceptable?").
-Abstraction: the question asks what the system should do, not how to implement it.
-Everything is written one level above the code for an engineer who has not read the diff.
-Mechanism, symbols and lines live in the technical evidence, shown only on drill-down;
-**Other behavior changes**, one line each, expanding inline; and **Explore the change**,
-three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
-with a tooltip rather than a colored badge. The things to think about are the review
-checklist: there is one measure of review progress, "n of m resolved", and the list's
-header, its checked-off badges, the Decisions tile, the Decisions header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An item is
-resolved by judging the decision it's reviewed on; when it has no decision to be judged on
-(none, or one outside Decisions to Review), by talking it through in a conversation. Longer
-reasoning, evidence, and file locations are drill-down only — an expansion, a click, or
-right-click → Ask about this…. The judgment stage writes `considerations` to these budgets;
-older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
+A thirty-second briefing from a staff engineer, not a dashboard. It moves the reviewer
+through three levels: **understand** what changed, **reason** about what it means and what
+needs their judgment, and **verify** the analysis against the evidence only when they want
+to. One centered column (max ~1240pt) reads top to bottom — title and metadata, with one
+quiet facts line (`12 files · +148 −37 · CI passing · 2 approvals · 3 unresolved threads ·
+opened 2 days ago`, `PRGlance`) that omits whatever the source couldn't tell; **What
+changed**, the before/after stage diagram as the hero (3–6 short stages per side, green for
+a step this PR adds, dashed for a step that no longer happens, an optional success/failure
+outcome on the last stage); **Why** and **Consequence** at one or two lines each; **What
+this means**, two to four one-line implications of the change (behavioral, architectural,
+operational or product consequences: "Detection still appears to depend on a null byte
+showing up early"), each with its provenance glyph. They are not a restatement of what
+changed or of the Consequence line; they are what the reviewer should now understand about
+the system, and most of them set up a judgment below. The section is absent on graphs
+without implications (older cache entries, a judgment stage that hasn't landed or failed).
+Then **Things to think about**, headed "n areas needing your judgment": at most five items
+that merge what used to be separate needs-judgment and uncertainty lists, distinguished
+only by a subtle badge. There is no quota: the model returns only the items where a
+human's judgment genuinely adds value, so two strong items beat five padded ones.
+
+Each item is a small **decision brief**: one coherent concern, one consequence and one
+judgment, prepared so the reviewer can make the call without first investigating what the
+question means. It reads top to bottom as a quiet caption pairing the category (error
+handling, test coverage, compatibility, reliability, scaling, security, architecture,
+product behavior) with why judgment is needed (potential problem, confirm intent, design
+decision, compatibility decision, operational risk, security decision, unclear
+requirement, external dependency), with the category dropped from the type when it would
+repeat ("Compatibility · Decision", not "Compatibility · Compatibility decision"); a
+headline stating what is happening; the **context**, in primary text: what the system is
+doing, what normally happens, what happens in the relevant case, why that case can persist
+and what the system produces today; under a quiet "Why this matters" label, the **impact**
+(the consequence for users, operators, other teams or the system) and, only when there is a
+real one, the **tradeoff**, both sides stated neutrally, in secondary text; and, after "Your
+judgment" ("To confirm" for an open question), the one question asked of the reviewer. None
+of these is line-limited, since truncated context defeats the purpose; the prompt's word
+budgets keep the card compact. A complex concern may carry a **More context** link that
+opens a further conceptual paragraph in place, without navigating and independently of
+the evidence drill-down. Items from older graphs have no context and render as before:
+headline, impact, judgment, with no "Why this matters" label.
+
+The items are a handoff of judgment, not a list of defects, so the section avoids warning
+styling: a neutral scales symbol, neutral number badges, and orange only on the judgment
+line. The judgment prompt asks the model, for each concern, to first work out what a
+knowledgeable engineer who has not read the diff would need to know, and to write context,
+impact and tradeoff before the question, so the question is downstream of the explanation.
+It holds the model to six rules. One judgment: concerns that would lead to different
+decisions are separate items. Coherence: headline, context, impact, tradeoff and judgment
+are about the same issue, and the judgment is answerable from the card alone; if the
+reader would ask "why?" after reading it, the item has failed. Human value: no item for an
+unusual detail with nothing to decide. Neutrality: neither the tradeoff nor the question
+steers the answer ("Should reading failure evidence require write access?", never "Is
+requiring write access acceptable?"). Abstraction: the question asks what the system
+should do, not how to implement it. Certainty: observed behavior is kept apart from
+inference ("appears to", "based on the implementation"), what the model inferred or could
+not confirm is listed as `assumptions`, and missing context is never invented to make a
+judgment easier. Before returning, the model checks each card against a quality test: could
+an experienced engineer who has read only the card say what the system is doing, what
+happens in the edge case, why it matters, what the alternatives are and what exactly they
+are asked to judge? Everything is written one level above the code.
+
+Verification is the third level. Mechanism, symbols, lines, counterevidence and the
+model's assumptions live in the technical evidence, shown on tap-to-expand under the card
+(evidence, then assumptions, related links, code references, provenance and Ask about
+this) and again on the decision "Review →" lands on, beneath its "Overview asks" line. The
+card is for comprehension; Review is for checking the analysis, not for finding out what
+the question means. After the list come **Other behavior changes**, one line each,
+expanding inline; and **Explore the change**, three navigation tiles (Architecture, Flows,
+Decisions). Provenance is a tertiary glyph with a tooltip rather than a colored badge. The
+things to think about are the review checklist: there is one measure of review progress,
+"n of m resolved", and the list's header, its checked-off badges, the Decisions tile, the
+Decisions header and the sidebar all show that same n of m (`PRGraph.reviewProgress`). An
+item is resolved by judging the decision it's reviewed on; when it has no decision to be
+judged on (none, or one outside Decisions to Review), by talking it through in a
+conversation. The judgment stage writes `implications` and `considerations` to these
+budgets; older graphs are condensed by `PRGraph.thingsToThinkAbout`. See
 `Views/Summary/SummaryView.swift`.
 
 ### 4.3 Architecture
@@ -586,7 +621,12 @@ checkout ─┬─ issue lookup ──► Understanding          tier 1: what ch
    question to a stage (`flowAnchors`).
 6. **Judgment + questions** (high effort) — final synthesis pass that sees the assembled
    graph so far and is asked specifically for what a senior engineer would want to judge,
-   plus honest open questions.
+   plus honest open questions. It writes, in this order, `implications` (two to four
+   `Statement`s: what the change means) and `considerations`, each a decision brief whose
+   fields the model fills in reading order: `headline`, `context`, `impact`, `tradeoff`
+   (or null), `moreContext` (usually null), `judgment`, then `evidence` and
+   `assumptions`. `whyItMatters` is accepted as an alias for `impact`, and older
+   `question` / `detail` / `decision` keys still decode.
 
 Only Architecture → Flows (a flow's stages are attributed to architecture parts) and
 everything → Judgment are real dependencies. Decisions used to wait for Architecture and
@@ -652,9 +692,14 @@ FlowBehaviorNode { id, label, kind, detail?, change, before?, after?, substeps[]
 EntryPointNode { id, title, kind, changeKind, refs, flowId? }
 QuestionNode   { id, text, relatedIds[], refs }
 
+Consideration { id, category?, judgmentType?, headline, context?, impact, tradeoff?,
+                moreContext?, judgment?, kind: concern|question, provenance, confidence?,
+                evidence?, assumptions[], relatedIds[], refs, flowAnchors[] }
+
 PRSummary { repo, number, title, author, state, branch, baseBranch, headSha, baseSha,
             intent, filesChanged, additions, deletions, changeMap[],
-            architectureImpact?, needsJudgment[], uncertainties[] }
+            architectureImpact?, needsJudgment[], uncertainties[], considerations[]?,
+            implications[]? }
 
 PRGraph { pr, components[], decisions[], flows[], entryPoints[], questions[],
           behaviorChanges[], architectureEdges[], boundaries[], architecture? }

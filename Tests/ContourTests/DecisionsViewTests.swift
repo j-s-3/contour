@@ -441,4 +441,40 @@ struct DecisionsViewTests {
         #expect(DecisionsViewLogic.labelAlignment(.leading, index: 0) == .leading)
         #expect(DecisionsViewLogic.labelAlignment(.center, index: 1) == .center)
     }
+
+    @Test func overviewAskHelpReadsHeadlineContextAndImpactForAJudgment() {
+        let item = Consideration(
+            id: "a", headline: "Reads use write credentials", context: "One path serves both",
+            impact: "A leak exposes more.",
+            judgment: "Should reads get their own credential?")
+        #expect(
+            DecisionsViewLogic.overviewAskHelp(item)
+                == "Reads use write credentials. One path serves both. A leak exposes more.")
+    }
+
+    @Test func overviewAskHelpSkipsTheHeadlineShownAsTheAskAndAnyMissingContext() {
+        let legacy = Consideration(id: "a", headline: "Is it safe?", impact: "It may not be.")
+        #expect(DecisionsViewLogic.overviewAskHelp(legacy) == "It may not be.")
+        let judged = Consideration(id: "b", headline: "H", impact: "", judgment: "J?")
+        #expect(DecisionsViewLogic.overviewAskHelp(judged) == "H.")
+    }
+
+    @Test func arrivalVerificationShowsEvidenceAndAssumptionsOnlyForTheArrivedFromItem() {
+        let item = Consideration(
+            id: "a", headline: "H", impact: "I", evidence: "reads x (a.swift:1)", assumptions: ["Could not confirm y."])
+        #expect(DecisionsViewLogic.arrivalVerification(for: item, arrivedFromConsiderationId: nil) == nil)
+        #expect(DecisionsViewLogic.arrivalVerification(for: item, arrivedFromConsiderationId: "b") == nil)
+        #expect(
+            DecisionsViewLogic.arrivalVerification(for: item, arrivedFromConsiderationId: "a")
+                == .init(evidence: "reads x (a.swift:1)", assumptions: ["Could not confirm y."]))
+    }
+
+    @Test func arrivalVerificationIsAbsentWhenThereIsNothingToVerify() {
+        let bare = Consideration(id: "a", headline: "H", impact: "I", evidence: "")
+        #expect(DecisionsViewLogic.arrivalVerification(for: bare, arrivedFromConsiderationId: "a") == nil)
+        let assumptionsOnly = Consideration(id: "b", headline: "H", impact: "I", assumptions: ["Guessed."])
+        #expect(
+            DecisionsViewLogic.arrivalVerification(for: assumptionsOnly, arrivedFromConsiderationId: "b")
+                == .init(evidence: nil, assumptions: ["Guessed."]))
+    }
 }

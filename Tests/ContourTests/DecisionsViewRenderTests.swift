@@ -70,7 +70,9 @@ struct DecisionsViewRenderTests {
             decision("plain", shape: nil, options: [], significance: .low, state: .discuss, rich: false),
         ]
         g.pr.considerations = [
-            Consideration(id: "q1", headline: "Is it safe?", impact: "detail", relatedIds: ["binary", "plain"])
+            Consideration(
+                id: "q1", headline: "Is it safe?", context: "What happens.", impact: "detail", judgment: "Should it?",
+                evidence: "reads x (a.swift:1)", assumptions: ["Could not confirm y."], relatedIds: ["binary", "plain"])
         ]
         return g
     }

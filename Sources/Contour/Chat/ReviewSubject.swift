@@ -84,7 +84,8 @@ extension PRGraph {
             return ResolvedSubject(
                 subject: subject, kind: .pullRequest, title: pr.title, lineage: [],
                 summary: [pr.intent.text].compactMap(Self.oneLine),
-                detail: "Pull request \(pr.repo) #\(pr.number): \(pr.title)\n\nIntent: \(pr.intent.text)",
+                detail: "Pull request \(pr.repo) #\(pr.number): \(pr.title)\n\nIntent: \(pr.intent.text)"
+                    + Self.describeImplications(pr.implications ?? []),
                 componentIds: components.filter { $0.level <= .system }.map(\.id),
                 decisionIds: decisions.map(\.id),
                 flowIds: flows.map(\.id),
@@ -171,17 +172,25 @@ extension PRGraph {
             let componentIds = item.relatedIds.filter { component($0) != nil }
             let flowIds = item.relatedIds.filter { flow($0) != nil }
             var summary =
-                [item.headline, item.impact] + [item.judgment.map { "Your judgment: \($0)" }].compactMap { $0 }
+                [item.headline, item.context, item.impact, item.tradeoff, item.judgment.map { "Your judgment: \($0)" }]
+                .compactMap { $0 }
             if let first = decisionIds.first.flatMap(decision) { summary.append("Related decision: \(first.title)") }
             var detail = """
                 Something the reviewer was asked to judge (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
                 Observation: \(item.headline)
-                Why it matters: \(item.impact)
-                Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
                 """
-            if let context = item.contextLabel { detail += "\nKind of judgment: \(context)" }
+            if let context = item.context { detail += "\nContext: \(context)" }
+            detail += "\nWhy it matters: \(item.impact)"
+            if let tradeoff = item.tradeoff { detail += "\nTradeoff: \(tradeoff)" }
+            if let more = item.moreContext { detail += "\nMore context: \(more)" }
+            detail += "\nProvenance: \(Self.provenanceLabel(item.provenance, item.confidence))"
+            if let label = item.contextLabel { detail += "\nKind of judgment: \(label)" }
             if let judgment = item.judgment { detail += "\nJudgment asked of the reviewer: \(judgment)" }
             if let evidence = item.evidence { detail += "\nTechnical evidence: \(evidence)" }
+            if !item.assumptions.isEmpty {
+                detail += "\nAssumptions the analysis made: " + item.assumptions.joined(separator: "; ")
+            }
+            detail += Self.describeImplications(pr.implications ?? [])
             return ResolvedSubject(
                 subject: subject, kind: .consideration, title: item.headline,
                 lineage: [prLine, "Areas needing judgment"],
@@ -684,6 +693,12 @@ extension PRGraph {
         var s = statement.text + " (" + provenanceLabel(statement.provenance, statement.confidence) + ")"
         if let source = statement.source, !source.isEmpty { s += " [source: \(source)]" }
         return s
+    }
+
+    static func describeImplications(_ implications: [Statement]) -> String {
+        guard !implications.isEmpty else { return "" }
+        return "\n\nWhat this change means (shown to the reviewer as \"What this means\"):\n"
+            + implications.map { "- " + describe($0) }.joined(separator: "\n")
     }
 
     static func provenanceLabel(_ p: Provenance, _ c: Confidence?) -> String {

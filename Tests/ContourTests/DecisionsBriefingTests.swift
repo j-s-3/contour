@@ -295,7 +295,7 @@ struct DecisionsBriefingTests {
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
         let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
-        #expect(onBlocking == ["piped-input-short-first-read"])
+        #expect(onBlocking == ["short-first-delivery-misses-binary", "interrupted-initial-read-not-retried"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(
@@ -322,7 +322,7 @@ struct DecisionsBriefingTests {
         #expect(resolved.detail.contains("Read until 1 KB"))
         #expect(
             resolved.detail.contains(
-                "Overview question reviewed on this decision: Binary detection over piped input covers only the first chunk that arrives"
+                "Overview question reviewed on this decision: Piped binary input can still display as text when data arrives slowly"
             ))
         #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
         #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))

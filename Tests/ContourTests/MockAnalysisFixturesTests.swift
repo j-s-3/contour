@@ -94,4 +94,17 @@ struct MockAnalysisFixturesTests {
             }
         }
     }
+
+    @Test func theJudgmentFixtureCarriesDecisionBriefsAndImplications() throws {
+        let judgment = try StageDecoding.decode(
+            StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
+        #expect(!judgment.considerations.isEmpty)
+        for item in judgment.considerations {
+            #expect(item.context?.isEmpty == false, "\(item.id) has no context")
+            #expect(!item.impact.isEmpty, "\(item.id) has no impact")
+            #expect(item.judgment?.hasSuffix("?") == true, "\(item.id) has no judgment question")
+        }
+        #expect((2...4).contains(judgment.implications.count))
+        #expect(judgment.implications.allSatisfy { !$0.text.isEmpty && !$0.text.contains("`") })
+    }
 }

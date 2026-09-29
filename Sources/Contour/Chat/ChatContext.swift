@@ -273,6 +273,10 @@ enum ChatContextBuilder {
         for d in graph.decisions { out += "- \(d.title): \(d.decision.text)\n" }
         out += "\n### Flows\n"
         for f in graph.flows { out += "- \(graph.flowOutline(f))\n" }
+        if let implications = graph.pr.implications, !implications.isEmpty {
+            out += "\n### What this means\n"
+            for s in implications { out += "- \(PRGraph.describe(s))\n" }
+        }
         out += "\n### Areas needing reviewer judgment\n"
         for c in graph.thingsToThinkAbout { out += "- \(c.briefing)\n" }
         out += "\n"
