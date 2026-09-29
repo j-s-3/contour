@@ -152,6 +152,19 @@ struct FlowBehaviorTests {
         )
     }
 
+    @Test func anchorsNamingNoRealFlowFallBackToTheQuestionsRelatedIds() throws {
+        var graph = try fixtureGraph()
+        let question = try pipeQuestion(graph)
+        let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: "not-a-flow", nodeId: "anything")]
+        #expect(
+            graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
+        #expect(
+            !graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
+    }
+
     @Test func anAnchoredQuestionSitsExactlyWhereTheJudgmentStagePutIt() throws {
         var graph = try fixtureGraph()
         let stdin = try stdinFlow(graph)

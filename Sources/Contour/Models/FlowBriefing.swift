@@ -178,8 +178,9 @@ extension PRGraph {
         let flowIds = Set(flows.map(\.id))
         for item in thingsToThinkAbout {
             let nodeId: String?
-            if !item.flowAnchors.isEmpty {
-                nodeId = item.flowAnchors.first { $0.flowId == flow.id && behavior.node($0.nodeId) != nil }?.nodeId
+            let anchors = item.flowAnchors.filter { flowIds.contains($0.flowId) }
+            if !anchors.isEmpty {
+                nodeId = anchors.first { $0.flowId == flow.id && behavior.node($0.nodeId) != nil }?.nodeId
             } else {
                 let namedFlows = item.relatedIds.filter { flowIds.contains($0) }
                 if !namedFlows.isEmpty && !namedFlows.contains(flow.id) {
