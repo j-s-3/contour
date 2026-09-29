@@ -109,4 +109,141 @@ struct RepoContextServiceTests {
             result.refStart == 10 && result.refEnd == 12, "the requested range is echoed back even when nothing matched"
         )
     }
+
+    private struct RemoteFixture {
+        var remote: URL
+        var baseSha: String
+        var headSha: String
+    }
+
+    private func makeRemote(at remote: URL) async throws -> RemoteFixture {
+        try FileManager.default.createDirectory(at: remote, withIntermediateDirectories: true)
+        _ = try await Shell.run("git", ["init", "-q", "-b", "main"], cwd: remote)
+        _ = try await Shell.run("git", ["config", "user.email", "test@example.com"], cwd: remote)
+        _ = try await Shell.run("git", ["config", "user.name", "Test"], cwd: remote)
+        try "base\n".write(to: remote.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        _ = try await Shell.run("git", ["add", "a.txt"], cwd: remote)
+        _ = try await Shell.run("git", ["commit", "-q", "-m", "base"], cwd: remote)
+        let baseSha = try await headOf(remote)
+        _ = try await Shell.run("git", ["checkout", "-q", "-b", "feature"], cwd: remote)
+        try "head\n".write(to: remote.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        _ = try await Shell.run("git", ["commit", "-q", "-am", "head"], cwd: remote)
+        let headSha = try await headOf(remote)
+        _ = try await Shell.run("git", ["update-ref", "refs/pull/7/head", headSha], cwd: remote)
+        _ = try await Shell.run("git", ["checkout", "-q", "main"], cwd: remote)
+        return RemoteFixture(remote: remote, baseSha: baseSha, headSha: headSha)
+    }
+
+    private func context(_ fixture: RemoteFixture, baseRefName: String = "main", baseSha: String? = nil) -> RawPRContext
+    {
+        RawPRContext(
+            url: "https://github.com/octo/widgets/pull/7", owner: "octo", repo: "widgets", number: 7,
+            title: "t", body: "", author: "a", state: "OPEN", headRefName: "feature", baseRefName: baseRefName,
+            headSha: fixture.headSha, baseSha: baseSha ?? fixture.baseSha, isCrossRepository: false,
+            headCloneURL: "", additions: 0, deletions: 0, changedFiles: 1, files: ["a.txt"], commits: [],
+            comments: [], reviews: [], diff: "")
+    }
+
+    private func headOf(_ dir: URL) async throws -> String {
+        try await Shell.run("git", ["rev-parse", "HEAD"], cwd: dir).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func service(cache root: URL, remote: URL) -> RepoContextService {
+        let remotePath = remote.path
+        return RepoContextService(cacheRoot: root.appendingPathComponent("cache"), remoteURL: { _ in remotePath })
+    }
+
+    @Test func checkoutClonesTheRepoAndChecksOutThePullRequestHead() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+
+        let checkout = try await service.checkout(context(fixture))
+
+        #expect(
+            checkout.rootDir
+                == root.appendingPathComponent("cache").appendingPathComponent("octo-widgets", isDirectory: true))
+        #expect(checkout.headSha == fixture.headSha && checkout.baseSha == fixture.baseSha)
+        #expect(checkout.symbolIndexPath == nil)
+        #expect(try await headOf(checkout.rootDir) == fixture.headSha)
+        #expect(try await service.readWholeFile(in: checkout, path: "a.txt") == "head\n")
+    }
+
+    @Test func checkoutOfAnAlreadyCurrentCloneDoesNotTouchTheRemote() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+        _ = try await service.checkout(context(fixture))
+
+        try FileManager.default.removeItem(at: fixture.remote)
+        let again = try await service.checkout(context(fixture))
+
+        #expect(try await headOf(again.rootDir) == fixture.headSha, "no clone or fetch was needed")
+    }
+
+    @Test func checkoutMovesAnExistingCloneToANewPullRequestHead() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+        let first = try await service.checkout(context(fixture))
+
+        let remote = fixture.remote
+        _ = try await Shell.run("git", ["checkout", "-q", "feature"], cwd: remote)
+        try "newer\n".write(to: remote.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        _ = try await Shell.run("git", ["commit", "-q", "-am", "newer"], cwd: remote)
+        let newerSha = try await headOf(remote)
+        _ = try await Shell.run("git", ["update-ref", "refs/pull/7/head", newerSha], cwd: remote)
+        var moved = context(fixture)
+        moved.headSha = newerSha
+
+        let second = try await service.checkout(moved)
+
+        #expect(second.rootDir == first.rootDir)
+        #expect(try await headOf(second.rootDir) == newerSha)
+        #expect(try await service.readWholeFile(in: second, path: "a.txt") == "newer\n")
+    }
+
+    @Test func checkoutToleratesABaseRefThatCannotBeFetchedWhenTheBaseCommitIsPresent() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+
+        let checkout = try await service.checkout(context(fixture, baseRefName: "deleted-branch"))
+
+        #expect(try await headOf(checkout.rootDir) == fixture.headSha)
+    }
+
+    @Test func checkoutToleratesABaseRefAndBaseCommitThatCannotBeFetched() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+        let missingBase = String(repeating: "0", count: 40)
+
+        let checkout = try await service.checkout(
+            context(fixture, baseRefName: "deleted-branch", baseSha: missingBase))
+
+        #expect(try await headOf(checkout.rootDir) == fixture.headSha)
+        #expect(checkout.baseSha == missingBase)
+    }
+
+    @Test func checkoutThrowsWhenTheCloneFails() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = RemoteFixture(remote: root, baseSha: "b", headSha: "h")
+        let service = service(cache: root, remote: root.appendingPathComponent("no-such-remote"))
+
+        await #expect(throws: (any Error).self) {
+            _ = try await service.checkout(context(fixture))
+        }
+    }
+
+    @Test func defaultCacheRootLivesUnderApplicationSupportContourRepos() {
+        let root = RepoContextService.defaultCacheRoot()
+        #expect(root.path.hasSuffix("Contour/repos"))
+    }
 }
