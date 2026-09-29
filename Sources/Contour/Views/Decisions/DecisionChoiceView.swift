@@ -1,10 +1,5 @@
 import SwiftUI
 
-// MARK: - The choice, drawn
-
-/// The options on the table and which one this PR took, drawn in the form that fits the
-/// choice: two approaches on a line, an ordered scale, or a list. Every option label can be
-/// right-clicked to ask about it.
 struct DecisionChoiceView: View {
     let decisionId: String
     let brief: DecisionBrief
@@ -19,7 +14,6 @@ struct DecisionChoiceView: View {
         }
     }
 
-    // A ○──────────● B
     private var binary: some View {
         let a = brief.options[0], b = brief.options[1]
         return VStack(spacing: 7) {
@@ -42,7 +36,6 @@ struct DecisionChoiceView: View {
         .frame(maxWidth: 640)
     }
 
-    // 1 line ── 256 B ── 1 KB ● ── 4 KB
     private var threshold: some View {
         return HStack(alignment: .top, spacing: 0) {
             ForEach(Array(brief.options.enumerated()), id: \.offset) { index, option in
@@ -66,7 +59,6 @@ struct DecisionChoiceView: View {
         .frame(maxWidth: 680)
     }
 
-    // ○ Read more  ● Inspect the buffer  ○ Disable for streams
     private var optionList: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(brief.options.enumerated()), id: \.offset) { index, option in
@@ -87,7 +79,6 @@ struct DecisionChoiceView: View {
         }
     }
 
-    // BEFORE  [Reader]→[Printer]      AFTER  [Reader]→[Inspector]→[Printer]
     private var beforeAfter: some View {
         let before = brief.options[0], after = brief.options[1]
         return VStack(alignment: .leading, spacing: 10) {
@@ -96,7 +87,6 @@ struct DecisionChoiceView: View {
         }
     }
 
-    /// One side of a before/after: its label drawn as a chain of tiny boxes.
     private func structure(_ option: DecisionOption, index: Int, title: String) -> some View {
         let parts = DecisionsViewLogic.beforeAfterParts(from: option.label)
         let tint = option.chosen ? Color.accentColor : Color.secondary
@@ -128,7 +118,6 @@ struct DecisionChoiceView: View {
         .reviewContextMenu(.decisionOption(decisionId: decisionId, index: index))
     }
 
-    // No options were extracted: the answer and the road not taken, one line each.
     private var answerLines: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 8) {
             GridRow {
@@ -193,7 +182,6 @@ struct DecisionChoiceView: View {
     }
 }
 
-/// Where the choice landed between the two things it traded — a line, not a paragraph.
 struct TradeoffSpectrum: View {
     let tradeoff: DecisionTradeoff
 

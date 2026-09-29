@@ -1,13 +1,5 @@
 import Foundation
 
-/// Turns the two kinds of reference an answer can make into clickable links:
-///
-/// - code, cited as `path/File.ext:12-30` → opens the code viewer at those lines
-/// - review-model objects, cited as [[decision:id]] → opens that object in its lens
-///
-/// Links use a private `contour:` URL scheme that the chat surface intercepts through
-/// SwiftUI's `openURL` environment, so they are real inline links inside rendered markdown
-/// rather than a separate list of chips below the answer.
 enum ChatLinks {
     static let scheme = "contour"
 
@@ -15,8 +7,6 @@ enum ChatLinks {
         case code(CodeRef)
         case node(ReviewSubject)
     }
-
-    // MARK: - URLs
 
     static func url(for ref: CodeRef) -> URL? {
         var c = URLComponents()
@@ -67,19 +57,11 @@ enum ChatLinks {
         }
     }
 
-    // MARK: - Linkifying markdown
-
-    /// A code citation: optional backticks, a path with an extension, a line, an optional
-    /// end line. Matches `src/a/B.java:353-378`, B.java:353, `x.rs:10–12`.
     private static let codePattern = try! NSRegularExpression(
         pattern: #"`?((?:[\w.\-]+/)*[\w\-]+(?:\.[\w\-]+)*\.[A-Za-z][A-Za-z0-9]{0,9}):(\d+)(?:\s*[-–]\s*L?(\d+))?`?"#
     )
     private static let nodePattern = try! NSRegularExpression(pattern: #"\[\[([a-zA-Z]+):([^\]\s]+)\]\]"#)
 
-    /// Rewrites one span of inline markdown so citations become markdown links. `resolve`
-    /// maps a cited path to a real repo path (models often cite a bare file name) and
-    /// returns nil for anything that isn't a file in the PR — so "example.com:8080" in prose
-    /// is left alone. `title` supplies the display name for a review-model link.
     static func linkify(
         _ text: String,
         resolve: (String) -> String?,
@@ -106,9 +88,6 @@ enum ChatLinks {
         s.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
     }
 
-    /// Regex replace where the transform may decline (nil keeps the original match).
-    /// Skips matches that already sit inside a markdown link target, so linkifying is
-    /// idempotent.
     private static func replace(_ regex: NSRegularExpression, in text: String, _ transform: ([String]) -> String?) -> String {
         let ns = text as NSString
         var result = ""
@@ -135,8 +114,6 @@ enum ChatLinks {
 }
 
 extension PRGraph {
-    /// Every file path the review model cites, for resolving a model's bare-file-name
-    /// citations ("Listener.java:353") to a real repo path.
     var citedPaths: [String] {
         var refs: [CodeRef] = []
         refs += components.flatMap { $0.refs }
@@ -147,7 +124,6 @@ extension PRGraph {
         return unique(refs.map { $0.path })
     }
 
-    /// A display name for a review-model link.
     func linkTitle(_ subject: ReviewSubject) -> String? {
         switch subject {
         case .relationship(let id):

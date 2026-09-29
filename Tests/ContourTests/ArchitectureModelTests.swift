@@ -2,14 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// Architecture is drawn one zoom level at a time from a graph whose parts and arrows can
-/// sit at any depth. These pin down the projection: what is a box at each level, where an
-/// arrow lands, and where decisions and review questions are marked.
 struct ArchitectureModelTests {
-
-    /// bat, drawn the way the redesigned stage should draw it: Input → Content Inspection →
-    /// Rendering inside the process, Terminal outside, with two parts inside Content
-    /// Inspection and one implementation node.
     private func batGraph() -> PRGraph {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = [
@@ -67,10 +60,7 @@ struct ArchitectureModelTests {
         #expect(level.primary.map(\.id) == ["input", "inspection", "rendering", "terminal"])
         #expect(level.context.isEmpty)
         let pairs = level.edges.map { "\($0.fromId)→\($0.toId)" }
-        // Two arrows from Input into parts of Content Inspection become one; the one inside
-        // Content Inspection disappears.
         #expect(pairs == ["input→inspection", "inspection→rendering", "rendering→terminal"])
-        // The changed arrow represents the pair, not the unchanged one.
         let into = level.edges.first { $0.toId == "inspection" }
         #expect(into?.edge.id == "input-sample")
         #expect(into?.mergedIds == ["input-encoding"])
@@ -87,7 +77,6 @@ struct ArchitectureModelTests {
         #expect(level.primary.map(\.id) == ["classification", "encoding"])
         #expect(Set(level.context.map(\.id)) == ["input", "rendering"])
         let pairs = Set(level.edges.map { "\($0.fromId)→\($0.toId)" })
-        // The arrow out of Content Inspection itself leaves from its last part.
         #expect(pairs == ["input→classification", "input→encoding", "classification→encoding", "encoding→rendering"])
         #expect(level.boundaries.map(\.componentIds) == [["classification", "encoding"]])
     }
@@ -114,9 +103,6 @@ struct ArchitectureModelTests {
         #expect(anchors.values.flatMap { $0 }.count == 1)
     }
 
-    /// A question about two connected parts is marked on the arrow between them; one that
-    /// names a relationship is marked on that relationship even when it was folded into
-    /// another arrow.
     @Test func questionsAreMarkedWhereTheConcernLives() {
         let graph = batGraph()
         let anchors = graph.questionAnchors(on: graph.architectureLevel(path: []))
@@ -127,8 +113,6 @@ struct ArchitectureModelTests {
         #expect(inside[.edge("input-encoding")]?.map(\.id) == ["explicit"])
     }
 
-    /// Graphs from before the redesign have no parents: every non-implementation part is a
-    /// top-level box, and implementation nodes linked the old way resolve to their owner.
     @Test func olderGraphsStillDraw() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = [
@@ -144,10 +128,6 @@ struct ArchitectureModelTests {
         #expect(graph.drawablePart(for: "impl")?.id == "a")
     }
 
-    // MARK: - Contextual chat
-
-    /// Asking about a part hands the harness where it sits, what this PR changed about it,
-    /// what's inside it and what implements it, and the review questions that concern it.
     @Test func askingAboutAPartCarriesItsArchitecturalContext() throws {
         var graph = batGraph()
         graph.architecture = ArchitectureAssessment(impact: .low, headline: "No structural change")

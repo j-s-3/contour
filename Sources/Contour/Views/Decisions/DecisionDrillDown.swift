@@ -1,10 +1,5 @@
 import SwiftUI
 
-// MARK: - More…
-
-/// Everything that isn't needed to judge the choice at a glance: how it's implemented, the
-/// full reasoning, what else was considered, what it constrains, where it reaches in the
-/// system, and the code behind it.
 struct DecisionDrillDown: View {
     let decision: DecisionNode
     let graph: PRGraph
@@ -52,8 +47,6 @@ struct DecisionDrillDown: View {
         }
     }
 
-    /// One tradeoff in full: the line, what it means, and the code that shows it. Secondary
-    /// tradeoffs only ever appear here.
     private func tradeoffDetail(_ tradeoff: DecisionTradeoff, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             TradeoffSpectrum(tradeoff: tradeoff)

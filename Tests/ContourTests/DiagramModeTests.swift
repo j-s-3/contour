@@ -1,10 +1,7 @@
 import Testing
 @testable import Contour
 
-/// The Before / After / What changed switch on Flows and Architecture: reviewer words, one
-/// key each, and a header sentence that says which view is on screen (issue #30).
 struct DiagramModeTests {
-
     @Test func readsInReviewerLanguage() {
         #expect(DiagramMode.allCases.map(\.label) == ["Before this PR", "After this PR", "What changed"])
         #expect(DiagramMode.allCases.allSatisfy { !$0.label.localizedCaseInsensitiveContains("delta") })
@@ -25,7 +22,7 @@ struct DiagramModeTests {
         #expect(DiagramMode.after.showing("architecture") == "Showing the architecture after this PR")
     }
 
-    @Test func defaultsToWhatChanged() {
+    @Test @MainActor func defaultsToWhatChanged() {
         #expect(GraphStore().diagramMode == .delta)
     }
 

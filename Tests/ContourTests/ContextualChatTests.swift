@@ -3,13 +3,9 @@ import Foundation
 import SwiftUI
 @testable import Contour
 
-/// The contract behind "the reviewer never has to explain what they are looking at":
-/// clicking a thing resolves to that thing plus its parents and neighbors, and the answer's
-/// citations come back as clickable links.
+@MainActor
 struct ContextualChatTests {
     let graph = ContourSampleData.publishTriggeredReindex
-
-    // MARK: - Hierarchical resolution
 
     @Test func relationshipCarriesBothEndpoints() throws {
         let resolved = try #require(graph.resolve(.relationship("publish-queues")))
@@ -17,7 +13,6 @@ struct ContextualChatTests {
         #expect(resolved.title == "Page Publishing → Index Queue")
         #expect(Set(resolved.componentIds) == ["page-publishing", "index-queue"])
         #expect(resolved.decisionIds == ["index-on-publish"])
-        // Both endpoints are described in full, not just named.
         #expect(resolved.detail.contains("Architecture part \"Page Publishing\""))
         #expect(resolved.detail.contains("Architecture part \"Index Queue\""))
         #expect(resolved.lineage.last == "Architecture")
@@ -31,7 +26,6 @@ struct ContextualChatTests {
         #expect(resolved.detailTarget == .componentDetail("index-queue"))
     }
 
-    /// A code range brings the concept it supports along with it.
     @Test func codeReferenceResolvesToTheConceptItSupports() throws {
         let ref = CodeRef(path: "src/main/java/publishing/PagePublisher.java", startLine: 50, endLine: 60)
         let resolved = try #require(graph.resolve(.codeRef(ref)))
@@ -46,11 +40,6 @@ struct ContextualChatTests {
         #expect(graph.resolve(.flowStep(flowId: "publish-index-flow", stepId: "nope")) == nil)
     }
 
-    /// Every `ReviewSubject` case that addresses a decision's option, a tradeoff, a
-    /// story-level flow step, a behavior-diagram node, or a behavior change's consequence
-    /// must resolve to the right kind and title — each is reachable from the UI (option
-    /// chips, story mode, the behavior diagram) but had no direct resolution test. An
-    /// out-of-range index or a dangling id must fail closed rather than crash.
     @Test func resolvesOptionsTradeoffsStoryStepsFlowNodesAndConsequences() throws {
         let option = try #require(graph.resolve(.decisionOption(decisionId: "index-on-publish", index: 1)))
         #expect(option.kind == .option)
@@ -78,9 +67,6 @@ struct ContextualChatTests {
         #expect(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "nope")) == nil)
     }
 
-    /// The small label/describe helpers are pure formatting functions the harness-facing
-    /// documents depend on throughout this file — pinned directly so a wording change is
-    /// visible in a diff instead of buried inside a large generated document.
     @Test func describeAndLabelHelpersFormatConsistently() {
         #expect(PRGraph.flowChangeLabel(.new) == "New in this PR")
         #expect(PRGraph.flowChangeLabel(.changed) == "Changed by this PR")
@@ -105,12 +91,6 @@ struct ContextualChatTests {
         #expect(PRGraph.describe(statement) == "Stale results were reported. (author's claim) [source: PR description]")
     }
 
-    /// `.consideration` and `.flowStep` were the only two `ReviewSubject` cases in
-    /// `resolve(_:)` with no direct success test — `.consideration` only appeared as a
-    /// dangling-id nil check, `.flowStep` only as a nil check on an unknown step id. Both
-    /// need a real match too, and a consideration whose `relatedIds` point at a component
-    /// and an edge must surface through `architectureQuestions(touching:edges:)` into those
-    /// subjects' own `detail`, not just get carried on the consideration's own summary.
     @Test func considerationAndFlowStepResolveAndConsiderationsReachArchitectureQuestions() throws {
         var withQuestion = graph
         withQuestion.pr.considerations = [
@@ -138,12 +118,6 @@ struct ContextualChatTests {
         #expect(step.detailTarget == .flowDetail("publish-index-flow"))
     }
 
-    /// `describe(DecisionNode)` and `describe(BehaviorChange)` build the harness-facing
-    /// detail for every decision and behavior change, but the sample graph's own decision and
-    /// change never set `significance`, `question`, `why`, a reviewed `reviewerState`, a
-    /// `reviewerNote`, or a behavior change's `humanQuestion` — so those branches went
-    /// unexercised even though the functions themselves are called constantly. Constructing
-    /// rich nodes directly (bypassing the sample graph) hits every optional branch.
     @Test func describeDecisionAndBehaviorChangeCoverEveryOptionalField() {
         let decision = DecisionNode(
             id: "d", title: "Use a queue", decision: Statement(text: "Queued.", provenance: .fact),
@@ -173,8 +147,6 @@ struct ContextualChatTests {
         )
         #expect(PRGraph.describe(change).contains("Open question: Is the queue durable across a restart?"))
     }
-
-    // MARK: - Context document
 
     @Test func documentIsFocusedByDefaultAndWidensOnRequest() throws {
         let resolved = try #require(graph.resolve(.component("index-queue")))
@@ -225,27 +197,17 @@ struct ContextualChatTests {
         #expect(prompt.hasSuffix("Reviewer's question: What other process?"))
     }
 
-    /// `ConversationError` messages are shown to the reviewer verbatim — pinning the exact
-    /// text catches an edit that made one vague or leaked an internal detail.
     @Test func conversationErrorMessagesAreReviewerFacing() {
         #expect(ConversationError.noCheckout.errorDescription
                 == "There's no local checkout for this PR, so there's nothing to ask about yet.")
         #expect(ConversationError.emptyResponse(harness: "pi").errorDescription == "pi finished without an answer.")
     }
 
-    /// The chat system prompt carries the same trust-boundary and linking rules every
-    /// harness invocation depends on. It's a `static let`, lazily initialized on first
-    /// access, so referencing it here is also what makes the property itself count as
-    /// exercised rather than dead code nothing ever touches.
     @Test func systemPromptCarriesTheUntrustedContentAndLinkingRules() {
         #expect(ConversationService.systemPrompt.contains("UNTRUSTED_PR_CONTENT"))
         #expect(ConversationService.systemPrompt.contains("[[kind:id]]"))
     }
 
-    /// Mock mode (`CONTOUR_MOCK_ANALYSIS=1`) streams a synthetic answer word by word so the
-    /// chat surface can be exercised without a model: activity first, then only deltas,
-    /// then the final answer — which must name the selected object and surface a code
-    /// citation straight from the context document.
     @Test func mockResponseStreamsActivityThenDeltasThenFinal() async throws {
         let doc = """
         ## Where the reviewer is
@@ -268,8 +230,6 @@ struct ContextualChatTests {
         #expect(final.contains("Why queued?"))
     }
 
-    // MARK: - Suggestions and link tokens across every subject kind
-
     private func stub(
         _ kind: SubjectKind, subject: ReviewSubject = .pullRequest,
         decisionIds: [String] = [], flowIds: [String] = [], refs: [CodeRef] = []
@@ -280,11 +240,6 @@ struct ContextualChatTests {
         )
     }
 
-    /// `suggestions(for:)` switches on every `SubjectKind` — a kind with no case in the
-    /// switch would fall through to nothing, silently leaving a lens without starting
-    /// prompts. Pinning one call per kind (both branches of the shared `.flowStep` case)
-    /// means a future kind added to the enum without a matching switch case fails to compile
-    /// rather than shipping empty suggestions.
     @Test func suggestionsCoverEveryKind() {
         #expect(ChatContextBuilder.suggestions(for: stub(.component)).first == "Why is this its own part?")
         #expect(ChatContextBuilder.suggestions(for: stub(.relationship)).first == "What crosses here, and why?")
@@ -305,9 +260,6 @@ struct ContextualChatTests {
         #expect(ChatContextBuilder.suggestions(for: stub(.pullRequest)).first == "Summarize this PR")
     }
 
-    /// `availableExpansions` gates each expansion on both the resolved kind and whether the
-    /// subject actually has anything to widen into — offering "Related decisions" on
-    /// something with no decisions, or on a decision itself, would be a dead button.
     @Test func availableExpansionsGateOnKindAndData() {
         let noData = stub(.component)
         #expect(ChatContextBuilder.availableExpansions(for: noData) == [.entirePR])
@@ -333,10 +285,6 @@ struct ContextualChatTests {
         #expect(!ChatContextBuilder.availableExpansions(for: pr).contains(.entirePR))
     }
 
-    /// `linkToken` is the only thing standing between a model writing `[[decision:x]]` and
-    /// the reviewer seeing a clickable link — every addressable subject that has a detail
-    /// page needs a token, and everything else (an entry point, a raw code ref, the PR
-    /// itself) must come back nil rather than a bogus token nothing resolves.
     @Test func linkTokenCoversEveryReviewSubjectCase() {
         #expect(ChatContextBuilder.linkToken(for: .component("c")) == "[[component:c]]")
         #expect(ChatContextBuilder.linkToken(for: .relationship("r")) == "[[relationship:r]]")
@@ -358,9 +306,6 @@ struct ContextualChatTests {
         #expect(ChatContextBuilder.linkToken(for: .codeRef(CodeRef(path: "a.swift", startLine: 1, endLine: 2))) == nil)
     }
 
-    /// The context document is built for flows, entry points and behavior-change subjects
-    /// too, not just components and decisions — each has its own lineage/detail shape in
-    /// `document`, and a regression there would only show up once a reviewer clicked one.
     @Test func documentBuildsForFlowsEntryPointsAndBehaviorChanges() throws {
         let flow = try #require(graph.resolve(.flow("publish-index-flow")))
         let flowDoc = ChatContextBuilder.document(graph: graph, resolved: flow, expansions: [], pinnedRefs: [], excerpts: [])
@@ -383,8 +328,6 @@ struct ContextualChatTests {
         let why = try #require(graph.resolve(.behaviorWhy(changeId: "immediate-reindex")))
         #expect(why.kind == .statement)
     }
-
-    // MARK: - Links
 
     private func linkify(_ text: String) -> String {
         ChatLinks.linkify(
@@ -415,7 +358,6 @@ struct ContextualChatTests {
         #expect(out.contains("[Trigger reindexing synchronously on publish](contour://node?"))
         let urlString = try #require(out.range(of: #"contour://node\?[^)]+"#, options: .regularExpression).map { String(out[$0]) })
         #expect(ChatLinks.target(for: try #require(URL(string: urlString))) == .node(.decision("index-on-publish")))
-        // An id that doesn't exist is left as written rather than linking nowhere.
         #expect(linkify("[[decision:ghost]]") == "[[decision:ghost]]")
     }
 
@@ -424,24 +366,17 @@ struct ContextualChatTests {
         #expect(linkify(once) == once)
     }
 
-    /// `url(for:)` round-trips every `CodeRef` field, including the base side — a link that
-    /// silently dropped `side` would send the reviewer to the wrong half of the diff.
     @Test func urlForCodeRefRoundTripsEveryField() throws {
         let ref = CodeRef(path: "a/B.java", startLine: 3, endLine: 9, side: .base)
         let url = try #require(ChatLinks.url(for: ref))
         #expect(ChatLinks.target(for: url) == .code(ref))
     }
 
-    /// `url(kind:id:)` is the other half of the node link round trip exercised through
-    /// `linkify` above — pinned directly so a change to its query-item names is caught here.
     @Test func urlForNodeRoundTripsKindAndId() throws {
         let url = try #require(ChatLinks.url(kind: "decision", id: "abc"))
         #expect(ChatLinks.target(for: url) == .node(.decision("abc")))
     }
 
-    /// `target(for:)` must decline rather than crash on a foreign scheme, an unknown host,
-    /// or a query missing the fields its case needs — each is a link the app didn't write
-    /// itself (a pasted URL, a future format) and must fail closed.
     @Test func targetDeclinesUnrecognizedOrIncompleteURLs() throws {
         #expect(ChatLinks.target(for: try #require(URL(string: "https://example.com"))) == nil)
         #expect(ChatLinks.target(for: try #require(URL(string: "contour://other"))) == nil)
@@ -449,9 +384,6 @@ struct ContextualChatTests {
         #expect(ChatLinks.target(for: try #require(URL(string: "contour://node?kind=bogus&id=x"))) == nil)
     }
 
-    /// `subject(kind:id:)` is the single mapping every link and every deep link into the
-    /// review model goes through — a kind string not covered here silently produces a dead
-    /// link instead of a compile-time signal.
     @Test func subjectMapsEveryKnownKindCaseInsensitivelyAndRejectsUnknown() {
         #expect(ChatLinks.subject(kind: "component", id: "c") == .component("c"))
         #expect(ChatLinks.subject(kind: "relationship", id: "r") == .relationship("r"))
@@ -464,9 +396,6 @@ struct ContextualChatTests {
         #expect(ChatLinks.subject(kind: "nonsense", id: "x") == nil)
     }
 
-    /// A review-model title can contain markdown-special characters (a decision's title
-    /// quoting brackets) — `linkify` must escape them so the link text doesn't break the
-    /// markdown structure around it.
     @Test func linkifyEscapesBracketsInTitles() {
         let out = ChatLinks.linkify(
             "See [[decision:x]].",
@@ -476,121 +405,141 @@ struct ContextualChatTests {
         #expect(out == "See [Use \\[fast path\\]](contour://node?kind=decision&id=x).")
     }
 
-    // MARK: - resolvePath
-
-    /// A path that exists in the checkout is accepted outright, before any cited-paths
-    /// fallback is even considered.
     @Test func resolvePathAcceptsARealFileInTheCheckout() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         try "content".write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
-        #expect(ContextualChatView.resolvePath("a.swift", checkoutRoot: dir, citedPaths: []) == "a.swift")
+        #expect(ChatViewLogic.resolvePath("a.swift", checkoutRoot: dir, citedPaths: []) == "a.swift")
     }
 
     @Test func resolvePathAcceptsAPathTheModelCitedDirectly() {
-        #expect(ContextualChatView.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
+        #expect(ChatViewLogic.resolvePath("src/a.swift", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == "src/a.swift")
     }
 
-    /// Models often cite just the bare filename (`Listener.java:353`); that resolves when
-    /// it uniquely suffix-matches one of the paths the review actually cited.
     @Test func resolvePathAcceptsABareNameThatUniquelySuffixMatchesACitedPath() {
         let cited = ["src/main/Listener.java"]
-        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
+        #expect(ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == "src/main/Listener.java")
     }
 
     @Test func resolvePathDeclinesAnAmbiguousSuffixMatch() {
         let cited = ["a/Listener.java", "b/Listener.java"]
-        #expect(ContextualChatView.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == nil)
+        #expect(ChatViewLogic.resolvePath("Listener.java", checkoutRoot: nil, citedPaths: cited) == nil)
     }
 
     @Test func resolvePathDeclinesAnUnknownPath() {
-        #expect(ContextualChatView.resolvePath("Nope.java", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == nil)
+        #expect(ChatViewLogic.resolvePath("Nope.java", checkoutRoot: nil, citedPaths: ["src/a.swift"]) == nil)
     }
 
-    // MARK: - handle
-
-    /// `OpenURLAction.Result` is an opaque type (no `Equatable`, no matchable cases), so these
-    /// pin `handle`'s actual logic — which URL navigates where — via its `store` side effect
-    /// rather than its return value; `targetDeclinesUnrecognizedOrIncompleteURLs` above already
-    /// covers which URLs `ChatLinks.target(for:)` itself accepts or declines.
     @Test @MainActor func handleNavigatesToTheCodeReferenceForACodeLink() throws {
         let store = GraphStore()
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
         let url = try #require(ChatLinks.url(for: ref))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .evidence(ref))
     }
 
     @Test @MainActor func handleNavigatesToADecisionsDetailTargetForANodeLink() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "index-on-publish"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .decisionDetail("index-on-publish"))
     }
 
-    /// A node link naming an id the graph doesn't have has nowhere to navigate.
     @Test @MainActor func handleDoesNotNavigateForADanglingNodeReference() throws {
         let store = GraphStore()
         let url = try #require(ChatLinks.url(kind: "decision", id: "does-not-exist"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .summary, "nothing to navigate to, so the path is unchanged")
     }
 
     @Test @MainActor func handleDoesNotNavigateForAnUnrecognizedURL() throws {
         let store = GraphStore()
         let url = try #require(URL(string: "https://example.com"))
-        _ = ContextualChatView.handle(url, store: store, graph: graph)
+        _ = ChatViewLogic.handle(url, store: store, graph: graph)
         #expect(store.current == .summary)
     }
 
-    // MARK: - Pure view logic pulled out of ContextualChatView's body
-
-    /// A code range has no title of its own, so both places `ContextualChatView` writes
-    /// "Ask about …" (the suggestions header and the composer placeholder) fall back to a
-    /// generic phrase for it instead of showing an empty or nonsensical string.
     @Test func subjectPhraseFallsBackForCodeAndUsesTheTitleOtherwise() {
-        #expect(ContextualChatView.subjectPhrase(for: stub(.code)) == "this code")
-        #expect(ContextualChatView.subjectPhrase(for: stub(.decision)) == "t")
+        #expect(ChatViewLogic.subjectPhrase(for: stub(.code)) == "this code")
+        #expect(ChatViewLogic.subjectPhrase(for: stub(.decision)) == "t")
     }
 
-    /// The send button (and its enabled state) both hinge on this: whitespace-only text is
-    /// not something the reviewer meant to submit. `canSend` trims with `.whitespaces`
-    /// (preserved unchanged from the original inline check), which strips spaces and tabs
-    /// but not newlines — so a draft of only newlines is, perhaps surprisingly, sendable.
     @Test func canSendRejectsWhitespaceOnlyDraftsAndAcceptsRealText() {
-        #expect(!ContextualChatView.canSend(""))
-        #expect(!ContextualChatView.canSend("   \t"))
-        #expect(ContextualChatView.canSend("Why?"))
-        #expect(ContextualChatView.canSend("  Why?  "))
+        #expect(!ChatViewLogic.canSend(""))
+        #expect(!ChatViewLogic.canSend("   \t"))
+        #expect(ChatViewLogic.canSend("Why?"))
+        #expect(ChatViewLogic.canSend("  Why?  "))
     }
 
-    /// `evidenceToOffer` gates the "Include the code you're viewing" button on three
-    /// things: the reviewer must actually be looking at a code reference, it must not
-    /// already be pinned to this thread, and it must not already be this thread's own
-    /// subject — each of those would make the button either meaningless or redundant.
     @Test func evidenceToOfferGatesOnLookingAtCodeNotAlreadyPinnedAndNotTheThreadsOwnSubject() {
         let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
-        #expect(ContextualChatView.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
-        #expect(ContextualChatView.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .decision("d")) == ref)
+        #expect(ChatViewLogic.evidenceToOffer(current: .summary, pinnedRefs: [], subject: .decision("d")) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [ref], subject: .decision("d")) == nil)
+        #expect(ChatViewLogic.evidenceToOffer(current: .evidence(ref), pinnedRefs: [], subject: .codeRef(ref)) == nil)
     }
 
-    /// The pinned/expansion chip row under "You are discussing" must not draw once there is
-    /// neither a pinned ref nor an available expansion to show — an empty `FlowLayout` would
-    /// otherwise still reserve its top padding for nothing.
     @Test func showsContextChipsIsFalseOnlyWhenBothExpansionsAndPinsAreEmpty() {
-        #expect(!ContextualChatView.showsContextChips(expansions: [], pinnedRefs: []))
-        #expect(ContextualChatView.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
-        #expect(ContextualChatView.showsContextChips(
+        #expect(!ChatViewLogic.showsContextChips(expansions: [], pinnedRefs: []))
+        #expect(ChatViewLogic.showsContextChips(expansions: [.entirePR], pinnedRefs: []))
+        #expect(ChatViewLogic.showsContextChips(
             expansions: [], pinnedRefs: [CodeRef(path: "a.swift", startLine: 1, endLine: 2)]
         ))
     }
 
-    /// `citedPaths` pools refs from every source the review model can cite from — a source
-    /// left out here means a model's bare-filename citation from that source can never
-    /// resolve to a real path.
+    @Test @MainActor func handleReportsHandledOnlyForContourLinks() throws {
+        let store = GraphStore()
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        #expect(ChatViewLogic.handle(try #require(ChatLinks.url(for: ref)), store: store, graph: graph) == .handled)
+        #expect(ChatViewLogic.handle(try #require(URL(string: "https://example.com")), store: store, graph: graph) == .system)
+    }
+
+    @Test func summaryLinesCapAtFourAndFlagOnlyTheFirstAsLead() {
+        var resolved = stub(.decision)
+        #expect(ChatViewLogic.summaryLines(for: resolved).isEmpty)
+        resolved = ResolvedSubject(
+            subject: .pullRequest, kind: .decision, title: "t", lineage: [], summary: ["a", "b", "c", "d", "e"],
+            detail: "d", decisionIds: [], flowIds: [], refs: []
+        )
+        let lines = ChatViewLogic.summaryLines(for: resolved)
+        #expect(lines.map(\.text) == ["a", "b", "c", "d"])
+        #expect(lines.map(\.isLead) == [true, false, false, false])
+    }
+
+    @Test @MainActor func menuTitleUsesTheSubjectTitleOrAGenericFallback() {
+        let known = Conversation(subject: .decision("index-on-publish"))
+        #expect(ChatViewLogic.menuTitle(for: known, in: graph) == graph.resolve(.decision("index-on-publish"))?.title)
+        #expect(ChatViewLogic.menuTitle(for: Conversation(subject: .decision("nope")), in: graph) == "Conversation")
+    }
+
+    @Test func activityTextDefaultsToThinking() {
+        #expect(ChatViewLogic.activityText(nil) == "thinking")
+        #expect(ChatViewLogic.activityText("Reading Foo.swift") == "Reading Foo.swift")
+    }
+
+    @Test @MainActor func togglingAnExpansionFlipsItAndTheChipCopyFollows() {
+        let conversation = Conversation(subject: .pullRequest)
+        ChatViewLogic.toggle(.entirePR, in: conversation)
+        #expect(conversation.expansions.contains(.entirePR))
+        ChatViewLogic.toggle(.entirePR, in: conversation)
+        #expect(conversation.expansions.isEmpty)
+        #expect(ChatViewLogic.expansionSymbol(on: true) == "checkmark")
+        #expect(ChatViewLogic.expansionSymbol(on: false) == "plus")
+        #expect(ChatViewLogic.expansionHelp(.entirePR, on: true) == "Included in the next answer")
+        #expect(ChatViewLogic.expansionHelp(.entirePR, on: false)
+            == "Include \(ContextExpansion.entirePR.label.lowercased()) in the next answer")
+    }
+
+    @Test @MainActor func unpinRemovesOnlyTheChosenRef() {
+        let a = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        let b = CodeRef(path: "b.swift", startLine: 3, endLine: 4)
+        let conversation = Conversation(subject: .pullRequest)
+        conversation.pinnedRefs = [a, b]
+        ChatViewLogic.unpin(a, in: conversation)
+        #expect(conversation.pinnedRefs == [b])
+    }
+
     @Test func citedPathsPoolsRefsFromEverySource() {
         let paths = graph.citedPaths
         #expect(paths.contains("src/main/java/publishing/PagePublisher.java"))
@@ -598,14 +547,10 @@ struct ContextualChatTests {
         #expect(paths.contains("src/main/java/rest/PageResource.java"))
     }
 
-    /// `linkTitle` special-cases relationships (naming both endpoints) rather than falling
-    /// through to `resolve(subject)?.title` — and must still return nil for a dangling id.
     @Test func linkTitleNamesBothEndpointsOfARelationship() {
         #expect(graph.linkTitle(.relationship("publish-queues")) == "Page Publishing → Index Queue")
         #expect(graph.linkTitle(.relationship("nope")) == nil)
     }
-
-    // MARK: - Markdown blocks
 
     @Test func markdownBlocksSplitAsExpected() {
         let blocks = ChatMarkdownView.blocks("""
@@ -634,15 +579,11 @@ struct ContextualChatTests {
         #expect(ChatMarkdownView.blocks("• dot") == [.bullet("dot")])
     }
 
-    /// Blank lines separate paragraphs; consecutive plain lines within one join with a
-    /// space rather than staying as separate lines.
     @Test func blankLinesSeparateParagraphsAndJoinLinesWithinOne() {
         let blocks = ChatMarkdownView.blocks("First line\nsecond line\n\nSecond paragraph")
         #expect(blocks == [.paragraph("First line second line"), .paragraph("Second paragraph")])
     }
 
-    /// An unterminated code fence at the end of the text still renders as code, per the
-    /// comment on `blocks(_:)` — it must not silently vanish.
     @Test func anUnterminatedCodeFenceAtTheEndStillRendersAsCode() {
         let blocks = ChatMarkdownView.blocks("Before\n```\nlet x = 1\nlet y = 2")
         #expect(blocks == [.paragraph("Before"), .code("let x = 1\nlet y = 2")])
@@ -653,8 +594,6 @@ struct ContextualChatTests {
         #expect(ChatMarkdownView.blocks("#No space") == [.heading("No space")])
     }
 
-    /// A numbered marker needs digits before the dot and a space after it — "1.5" or a
-    /// trailing dot with no following space isn't a list item.
     @Test func numberedMarkerRequiresDigitsThenDotThenSpace() {
         #expect(ChatMarkdownView.blocks("1. first") == [.numbered("1.", "first")])
         #expect(ChatMarkdownView.blocks("Version 1.5 shipped") == [.paragraph("Version 1.5 shipped")])
@@ -666,29 +605,16 @@ struct ContextualChatTests {
         #expect(ChatMarkdownView.blocks("   \n\n  ") == [])
     }
 
-    // MARK: - Inline attributed text
-    //
-    // `attributedText(for:linkify:)` is the pure logic behind `ChatMarkdownView.inline`
-    // (a private instance method the view's `body` calls, with no UI-testing infrastructure
-    // in this suite to host it) — extracted the same way `blocks(_:)` already is, so the
-    // markdown-parsing and linkify-then-parse-then-fallback behavior is directly testable
-    // without rendering SwiftUI.
-
     @Test func attributedTextRendersPlainTextUnchanged() {
         let result = ChatMarkdownView.attributedText(for: "hello world", linkify: { $0 })
         #expect(String(result.characters) == "hello world")
     }
 
-    /// The markers themselves must be consumed by the markdown parser, not left as literal
-    /// asterisks — this is what distinguishes a successful parse from the raw-text fallback.
     @Test func attributedTextParsesInlineMarkdownEmphasis() {
         let result = ChatMarkdownView.attributedText(for: "**bold** and *italic*", linkify: { $0 })
         #expect(String(result.characters) == "bold and italic")
     }
 
-    /// `linkify` runs before markdown parsing, so a span it rewrites into `[text](url)`
-    /// comes out as an actual link run — this is the whole reason `inline` calls `linkify`
-    /// first: it is what makes code citations and `[[kind:id]]` references clickable.
     @Test func attributedTextAppliesLinkifyBeforeParsingSoLinksBecomeClickable() {
         let result = ChatMarkdownView.attributedText(
             for: "see docs", linkify: { _ in "[see docs](https://example.com/x)" }
@@ -697,21 +623,6 @@ struct ContextualChatTests {
         #expect(result.runs.contains { $0.link == URL(string: "https://example.com/x") })
     }
 
-    // `attributedText`'s catch-and-fall-back-to-raw-text branch (`try?` degrading to
-    // `AttributedString(s)`) is intentionally left untested: `AttributedString(markdown:
-    // options:)`'s exact throwing conditions — which malformed inputs raise
-    // `MarkdownParsingError` versus degrade leniently to literal text — are a Foundation
-    // implementation detail that differs across toolchain versions and isn't documented
-    // precisely enough to pin without a real build. A candidate string assumed here to
-    // throw (`^[bad](notARealAttribute: 1)`, custom-attribute syntax with an unscoped
-    // parse) did not throw on the real `xcode-27` CI toolchain, so the fallback never
-    // triggered — this repo's convention is to document an untestable gap honestly rather
-    // than guess again at another "definitely malformed" string with no way to verify it.
-
-    // MARK: - Review progress
-
-    /// Only a thread the reviewer wrote in counts as talking a question through — opening
-    /// one, or asking about something that isn't an Overview question, doesn't.
     @Test func aQuestionIsDiscussedOnceTheReviewerAsksAboutIt() {
         let store = ConversationStore()
         store.open(.consideration("opened"))
@@ -722,11 +633,6 @@ struct ContextualChatTests {
         #expect(store.discussedConsiderationIds == ["asked"])
     }
 
-    // MARK: - ConversationStore lifecycle
-
-    /// `close`/`remove`/`reset` are the only ways a thread leaves the store — each must
-    /// leave `activeId`/`isPresented` consistent, since a dangling `activeId` would make
-    /// `active` resolve to nothing while the sheet still thinks something is showing.
     @Test func closeHidesTheSheetWithoutClearingThreads() {
         let store = ConversationStore()
         store.open(.decision("d1"))
@@ -759,8 +665,6 @@ struct ContextualChatTests {
         #expect(!store.isPresented)
     }
 
-    /// Pinning is idempotent — clicking "pin" on a line that's already pinned must not
-    /// duplicate it or keep stealing focus.
     @Test func pinningIsIdempotentAndBumpsFocusOnlyOnce() {
         let store = ConversationStore()
         let conversation = store.open(.decision("d1"))
@@ -773,8 +677,6 @@ struct ContextualChatTests {
         #expect(store.focusRequest == focusAfterFirstPin, "a no-op pin must not steal focus again")
     }
 
-    /// `cancel` on a thread with nothing in flight is a safe no-op — a reviewer can hit
-    /// "stop" on an idle thread without it crashing.
     @Test func cancelingAnIdleConversationIsANoOp() {
         let store = ConversationStore()
         let conversation = store.open(.decision("d1"))
@@ -782,9 +684,6 @@ struct ContextualChatTests {
         #expect(!conversation.isResponding)
     }
 
-    /// `send` never reaches the harness without a checkout, a chosen harness, and a subject
-    /// that still resolves against the graph — each failure records a reviewer-facing error
-    /// on the placeholder reply instead of silently doing nothing.
     @Test @MainActor func sendRecordsAnErrorWhenPrerequisitesAreMissing() {
         let store = ConversationStore()
         let checkout = RepoCheckout(rootDir: URL(fileURLWithPath: "/tmp"), headSha: "a", baseSha: "b")
@@ -805,8 +704,6 @@ struct ContextualChatTests {
         #expect(unresolvable.messages.last?.error == "No AI harness selected. Pick one in Settings (⌘,).")
     }
 
-    /// A blank question (whitespace only) is rejected before anything is appended — an
-    /// accidental empty submit must not leave a dangling user/assistant pair in the thread.
     @Test @MainActor func sendIgnoresABlankQuestion() {
         let store = ConversationStore()
         let conversation = store.open(.decision("index-on-publish"))
@@ -814,12 +711,6 @@ struct ContextualChatTests {
         #expect(conversation.messages.isEmpty)
     }
 
-    // MARK: - ConversationStore.excerpts
-
-    /// Real local files, exactly like `RepoContextServiceTests`'s checkout fixtures — no
-    /// `CONTOUR_MOCK_ANALYSIS` involved, since that's a process-global env var other tests
-    /// (`ProgressiveAnalysisTests`'s `AnalysisCache` suite) read concurrently under Swift
-    /// Testing's parallel execution, and mutating it here raced them in CI.
     private func excerptCheckout() -> (checkout: RepoCheckout, ref: CodeRef) {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

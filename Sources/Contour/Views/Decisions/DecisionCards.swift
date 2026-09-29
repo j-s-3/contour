@@ -1,16 +1,10 @@
 import SwiftUI
 
-// MARK: - A decision
-
-/// One decision's default surface — question, choice, tradeoff, why, judgment — plus its
-/// More… drill-down.
 struct DecisionCard: View {
     let decision: DecisionNode
     let brief: DecisionBrief
     let graph: PRGraph
-    /// Decisions to review are numbered.
     let number: Int?
-    /// Why this decision is highlighted, as quiet metadata under the question.
     let attentionReason: String
     var arrivedFromConsiderationId: String?
     var isSelected: Bool
@@ -25,7 +19,6 @@ struct DecisionCard: View {
 
     @Environment(\.reviewActions) private var actions
 
-    /// Overview questions reviewed here; the one the reviewer arrived from leads.
     private var questions: [Consideration] {
         DecisionsViewLogic.questions(from: graph.overviewQuestions(reviewedOn: decision.id),
                                      leadingWith: arrivedFromConsiderationId)
@@ -108,8 +101,6 @@ struct DecisionCard: View {
         .onTapGesture(perform: onSelect)
     }
 
-    /// Why this is highlighted — what it could affect and why it matters, in one quiet line.
-    /// Reasoning, never a score.
     private var whyHighlighted: some View {
         let impacts = DecisionsViewLogic.impactsSummary(decision.impacts)
         var line = Text("")
@@ -124,7 +115,6 @@ struct DecisionCard: View {
             .help("Why this is highlighted for review")
     }
 
-    // WHAT WE'RE TRADING / WHY THIS SIDE?, aligned on one label column.
     private var briefGrid: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
             if let tradeoff = brief.tradeoff, let index = decision.tradeoffs.firstIndex(of: tradeoff) {
@@ -149,8 +139,6 @@ struct DecisionCard: View {
                         .reviewContextMenu(.decision(decision.id))
                 }
             }
-            // The Overview's questions are the review checklist; judging this decision
-            // resolves them, so they're named here as one more line — not re-quoted.
             if !questions.isEmpty {
                 GridRow {
                     rowLabel("Overview asks")
@@ -171,8 +159,6 @@ struct DecisionCard: View {
             if !appearances.isEmpty {
                 GridRow {
                     rowLabel("Appears in")
-                    // Where this choice shows up in the runtime behavior — opens the flow with
-                    // that stage selected.
                     FlowLayout(spacing: 12) {
                         ForEach(appearances, id: \.flow.id) { flow, nodeId in
                             Button { actions.navigate(.flowNodeDetail(flowId: flow.id, nodeId: nodeId)) } label: {
@@ -217,11 +203,6 @@ struct DecisionCard: View {
     }
 }
 
-// MARK: - An other decision
-
-/// An other decision, compact: the question, what was chosen, and why it isn't among the
-/// decisions to review. Still fully usable — Show opens the drawn choice, reasoning and
-/// evidence; Ask… opens a conversation; Add to review promotes it to a full decision.
 struct OtherDecisionRow: View {
     let decision: DecisionNode
     let brief: DecisionBrief
@@ -329,13 +310,11 @@ struct OtherDecisionRow: View {
             .font(.caption2.weight(.bold))
             .tracking(0.5)
             .foregroundStyle(.secondary)
-            // Fixed, so the value column lines up across rows (each row is its own grid).
             .frame(width: 104, alignment: .leading)
             .gridColumnAlignment(.leading)
     }
 }
 
-/// The number in a circle, which becomes the verdict once there is one.
 struct DecisionBadge: View {
     let number: Int?
     let state: ReviewerState
@@ -366,7 +345,6 @@ struct DecisionBadge: View {
     private var tint: Color { DecisionsViewLogic.badgeTint(for: state) }
 }
 
-/// "✓ Reviewed" — obvious, never loud.
 struct ReviewedChip: View {
     let state: ReviewerState
 
@@ -383,8 +361,6 @@ struct ReviewedChip: View {
     }
 }
 
-/// One dot per thing to think about, filled once resolved — in its decision's judgment
-/// color, or green when it was talked through instead.
 struct ReviewProgressDots: View {
     let graph: PRGraph
     let discussed: Set<String>
@@ -411,10 +387,6 @@ struct ReviewProgressDots: View {
     }
 }
 
-// MARK: - Judgment
-
-/// Explicit, labeled review actions — this screen exists for human judgment, so they are
-/// words, not glyphs. Selecting the current state again clears it.
 struct ReviewButtons: View {
     let state: ReviewerState
     var onSet: (ReviewerState) -> Void

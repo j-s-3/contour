@@ -1,12 +1,5 @@
 import Foundation
 
-/// Reads public PRs straight from GitHub's REST API with no credentials at all, so
-/// Contour works on a machine that has nothing but `git` installed.
-///
-/// Anonymous requests are limited to 60/hour per IP; one PR costs about seven, two of
-/// them for the head commit's checks. A 404 or a
-/// non-rate-limit 403 means the repository isn't publicly readable, which is reported as
-/// "this is private, use gh" rather than as a bare HTTP error.
 struct AnonymousAPISource: PRSource {
     var describesItself: String { "GitHub REST API (anonymous)" }
 
@@ -42,14 +35,9 @@ struct AnonymousAPISource: PRSource {
         let author = ((pr["user"] as? [String: Any])?["login"] as? String) ?? "unknown"
         let body = (pr["body"] as? String) ?? ""
 
-        // The REST API's `state` is only "open" or "closed" — a merged PR reports
-        // "closed", with merged-ness in a separate field. `gh` collapses the two into
-        // OPEN/CLOSED/MERGED, so match that or the same PR reads differently depending on
-        // which source fetched it.
         let isMerged = (pr["merged"] as? Bool) ?? (pr["merged_at"] is String)
         let normalizedState = isMerged ? "MERGED" : state.uppercased()
 
-        // The head repo may be a fork, or may have been deleted after merge.
         let headRepoObj = head["repo"] as? [String: Any]
         let headOwner = ((headRepoObj?["owner"] as? [String: Any])?["login"] as? String) ?? owner
         let headRepoName = (headRepoObj?["name"] as? String) ?? repo
@@ -62,14 +50,11 @@ struct AnonymousAPISource: PRSource {
             .compactMap { c in
                 guard let sha = c["sha"] as? String else { return nil }
                 let message = ((c["commit"] as? [String: Any])?["message"] as? String) ?? ""
-                // `author` is null for commits whose email matches no GitHub account; the
-                // embedded commit author is the fallback.
                 let login = (c["author"] as? [String: Any])?["login"] as? String
                 let commitAuthor = ((c["commit"] as? [String: Any])?["author"] as? [String: Any])?["name"] as? String
                 return CommitInfo(sha: sha, message: message, author: login ?? commitAuthor ?? "unknown")
             }
 
-        // Issue-thread comments live under /issues/{n}/comments, not /pulls.
         let comments: [String] = try await getJSONArray(
             "/repos/\(owner)/\(repo)/issues/\(number)/comments", owner: owner, repo: repo, paginated: true
         ).compactMap { c in
@@ -95,8 +80,6 @@ struct AnonymousAPISource: PRSource {
             checks: await checks(owner: owner, repo: repo, sha: headSha),
             approvals: tally.approvals,
             changesRequested: tally.changesRequested,
-            // The REST API has no thread-resolution state; that takes GraphQL, which
-            // requires authentication. The facts line leaves it out.
             unresolvedThreads: nil,
             createdAt: PRGlance.date(iso8601: pr["created_at"] as? String)
         )
@@ -116,10 +99,6 @@ struct AnonymousAPISource: PRSource {
         )
     }
 
-    /// CI on the head commit. GitHub reports it two ways — check runs (Actions and most
-    /// modern CI) and commit statuses (older integrations) — and a PR's rollup is both.
-    /// Best effort: an error, including running out of quota, costs the facts line its CI
-    /// item rather than failing a fetch that otherwise succeeded.
     private func checks(owner: String, repo: String, sha: String) async -> PRGlance.Checks? {
         let commit = "/repos/\(owner)/\(repo)/commits/\(sha)"
         let runs = (try? await getJSONObject("\(commit)/check-runs?per_page=100", owner: owner, repo: repo))?["check_runs"]
@@ -146,13 +125,10 @@ struct AnonymousAPISource: PRSource {
         )
     }
 
-    // MARK: - Transport
-
     private func request(_ path: String, accept: String) -> URLRequest {
         var req = URLRequest(url: URL(string: path, relativeTo: Self.api)!)
         req.setValue(accept, forHTTPHeaderField: "Accept")
         req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        // GitHub rejects API requests without a User-Agent.
         req.setValue("Contour", forHTTPHeaderField: "User-Agent")
         return req
     }
@@ -166,9 +142,6 @@ struct AnonymousAPISource: PRSource {
         case 200...299:
             return (data, http)
         case 403, 429:
-            // 403 is both "rate limited" and "forbidden"; the remaining-quota header is
-            // what distinguishes them, and the difference matters because the fixes are
-            // completely different (wait vs. authenticate).
             if http.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0" {
                 let reset = http.value(forHTTPHeaderField: "X-RateLimit-Reset")
                     .flatMap(Double.init)
@@ -177,8 +150,6 @@ struct AnonymousAPISource: PRSource {
             }
             throw GitHubServiceError.privateRepository(owner: owner, repo: repo)
         case 404:
-            // Anonymous requests can't tell "private" from "doesn't exist" — GitHub
-            // deliberately returns 404 for both, so private is the useful guess.
             throw GitHubServiceError.privateRepository(owner: owner, repo: repo)
         default:
             throw GitHubServiceError.malformedResponse(
@@ -200,9 +171,6 @@ struct AnonymousAPISource: PRSource {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    /// Walks `?page=` until a short page comes back. Capped because a very large PR would
-    /// otherwise burn the whole anonymous hourly quota on one fetch; §14 covers large-PR
-    /// handling properly and this just keeps the failure mode boring.
     private func getJSONArray(_ path: String, owner: String, repo: String,
                               paginated: Bool = false) async throws -> [[String: Any]] {
         let perPage = 100

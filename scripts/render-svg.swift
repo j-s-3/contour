@@ -1,5 +1,3 @@
-// Rasterize an SVG to a square PNG with a transparent background.
-// usage: swift scripts/render-svg.swift in.svg out.png size
 import AppKit
 
 let args = CommandLine.arguments

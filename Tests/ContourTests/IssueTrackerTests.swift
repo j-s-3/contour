@@ -1,11 +1,7 @@
 import Testing
 @testable import Contour
 
-/// `IssueTracker.swift` was at 42.31% coverage (`GitHubIssueTrackerTests`/`TrackerAndCacheTests`
-/// already exercise `displayKey` for all three trackers). `TrackerID.displayName`, `NoTracker`,
-/// and `IssueTrackerFactory.make`'s dispatch were still untested.
 struct IssueTrackerTests {
-
     private struct UnusedSource: PRSource {
         var describesItself: String { "unused" }
         func fetchContext(prURL: String) async throws -> RawPRContext { fatalError("not used") }

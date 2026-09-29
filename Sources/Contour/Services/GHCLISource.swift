@@ -1,8 +1,5 @@
 import Foundation
 
-/// Reads PRs through an already-authenticated `gh`. No token handling and no GitHub SDK —
-/// every credential and rate limit is inherited from the user's own `gh` (§8, §16). This
-/// is the path that covers private repositories.
 struct GHCLISource: PRSource {
     var describesItself: String { "gh CLI" }
 
@@ -11,8 +8,6 @@ struct GHCLISource: PRSource {
                  "additions,deletions,changedFiles,files,commits,comments,reviews," +
                  "createdAt,statusCheckRollup"
 
-    /// What `parsePRView` pulls out before anything that needs the network (thread count,
-    /// diff) can start, so `fetchContext` can kick those off concurrently.
     struct ParsedPRView {
         var obj: [String: Any]
         var url: String
@@ -36,15 +31,12 @@ struct GHCLISource: PRSource {
         let json = try await Shell.run("gh", ["pr", "view", normalized, "--json", Self.prViewFields])
         let parsed = try Self.parsePRView(json: json)
 
-        // Thread resolution takes a separate query, so start it alongside the diff fetch.
         async let unresolved = unresolvedThreadCount(prURL: parsed.url, owner: parsed.owner, repo: parsed.repo, number: parsed.number)
         let diff = try await Shell.run("gh", ["pr", "diff", normalized])
 
         return Self.assembleContext(parsed: parsed, diff: diff, unresolvedThreads: await unresolved)
     }
 
-    /// Decodes `gh pr view`'s JSON and validates every field `RawPRContext` can't do
-    /// without, including deriving owner/repo from the canonical url (so it works for forks).
     static func parsePRView(json: String) throws -> ParsedPRView {
         guard let data = json.data(using: .utf8),
               let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -71,9 +63,6 @@ struct GHCLISource: PRSource {
         )
     }
 
-    /// Everything that doesn't need validation beyond `parsePRView`'s: optional fields with
-    /// defaults, list mapping, and the fork-aware clone URL. Pure once its inputs (the
-    /// parsed view, the diff, and the best-effort thread count) are in hand.
     static func assembleContext(parsed: ParsedPRView, diff: String, unresolvedThreads: Int?) -> RawPRContext {
         let obj = parsed.obj
         let body = (obj["body"] as? String) ?? ""
@@ -137,8 +126,6 @@ struct GHCLISource: PRSource {
         )
     }
 
-    /// The `gh api graphql` argv for the unresolved-thread-count query. A GitHub Enterprise
-    /// PR has to name its host; github.com is `gh`'s own default, so it's left off there.
     static func graphQLArgs(query: String, owner: String, repo: String, number: Int, prURL: String) -> [String] {
         var args = ["api", "graphql", "-f", "query=\(query)",
                     "-F", "owner=\(owner)", "-F", "repo=\(repo)", "-F", "number=\(number)"]
@@ -148,9 +135,6 @@ struct GHCLISource: PRSource {
         return args
     }
 
-    /// Decodes the thread-count query's response. Best effort: nil on anything unexpected,
-    /// never a thrown error, since a failure here should cost the facts line one item, not
-    /// the fetch.
     static func parseUnresolvedThreadCount(json: String) -> Int? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -160,9 +144,6 @@ struct GHCLISource: PRSource {
         return nodes.filter { ($0["isResolved"] as? Bool) == false }.count
     }
 
-    /// Thread resolution isn't among `gh pr view`'s fields, so it takes one GraphQL query.
-    /// Best effort: a failure costs the facts line one item, never the fetch. Counts the
-    /// first 100 threads, which is every thread on all but the most contested PRs.
     private func unresolvedThreadCount(prURL: String, owner: String, repo: String, number: Int) async -> Int? {
         let query = """
         query($owner: String!, $repo: String!, $number: Int!) {
@@ -176,8 +157,6 @@ struct GHCLISource: PRSource {
         return Self.parseUnresolvedThreadCount(json: json)
     }
 
-    /// Decodes `gh issue view`'s JSON. Best effort: nil rather than throwing, like every
-    /// tracker lookup.
     static func parseIssue(json: String, owner: String, repo: String, number: String) -> RawIssue? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

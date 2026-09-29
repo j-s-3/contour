@@ -1,66 +1,32 @@
 import XCTest
 @testable import Contour
 
-/// Nightly real-PR corpus run (issue #64): runs the full pipeline against a small corpus of
-/// real, long-merged public PRs (`Fixtures/corpus.json`) and records per-stage failure rate,
-/// malformed-JSON retries, unverifiable-citation counts, streamed-vs-final element counts and
-/// `AnalysisMetrics` latency milestones — a trend `IntegrationSmokeTests`'s single tiny PR
-/// can't show. Not run in CI; only the nightly workflow runs it, and it's gated the same way
-/// as `IntegrationSmokeTests` so a plain `swift test` never touches it:
-///
-///   RUN_CONTOUR_INTEGRATION=1 swift test --filter CorpusRunTests
-///
-/// One JSON line per PR is appended to `CONTOUR_CORPUS_RESULTS` as its run finishes (default:
-/// a file under the test's own temp directory, whose path is printed) — so a crash partway
-/// through the corpus still leaves every PR analyzed up to that point on disk. A PR that fails
-/// is a recorded result, never a stopped run: every entry in the corpus is always attempted,
-/// mirroring how a stage failing never stops the rest of the pipeline (§10).
-///
-/// `scripts/summarize-corpus.py` turns a results file into failure rates, retry rates and
-/// p50/p95 latencies; see `Fixtures/README.md` for running the corpus locally.
 final class CorpusRunTests: XCTestCase {
-
-    /// One entry of `Fixtures/corpus.json`.
     struct CorpusEntry: Decodable {
         var url: String
         var reason: String
     }
 
-    /// One stage's outcome for one PR — the pipeline's own vocabulary (§10, `StageStatus`),
-    /// not a pass/fail bit, since a "failed" stage is an expected, recorded outcome here.
     struct StageRecord: Codable {
         var stage: String
         var outcome: String
         var durationSeconds: Double?
         var failureMessage: String?
-        /// Times `AnalysisService.runStage` retried this stage after malformed JSON, counted
-        /// from the log line it emits on retry (there's no separate event for it).
         var malformedJSONRetries: Int
-        /// From `CodeRefVerifier`/`RefCheck`, surfaced on the graph as `refChecks[stage]`.
         var citationsChecked: Int
         var citationsUnverifiable: Int
-        /// Decisions/flows only: the running count seen in the "N found so far" status detail
-        /// while the stage streamed, versus the authoritative count once it landed. These can
-        /// legitimately differ (a streamed element can be dropped by CodeRefVerifier before it
-        /// lands), so this is a data point, not an inconsistency to flag on its own.
         var streamedElementCount: Int?
         var finalElementCount: Int?
     }
 
-    /// One PR's full record — one JSON line in the results file.
     struct PRRecord: Codable {
         var url: String
         var reason: String
         var startedAt: Date
         var totalDurationSeconds: Double
-        /// "completed" (every analysis stage settled, however it settled), "fatal" (fetch or
-        /// checkout failed — the only two fatal stages, §10), or "error" (something in this
-        /// test itself, e.g. an unparseable corpus URL, kept it from ever starting the pipeline).
         var outcome: String
         var fatalMessage: String?
         var stages: [StageRecord]
-        /// `LatencyMilestone.rawValue` → seconds, exactly what `AnalysisMetrics` records for a
-        /// real reviewer session (§13), computed the same way `GraphStore` does.
         var milestones: [String: Double]
         var decisionsCount: Int
         var componentsCount: Int
@@ -101,12 +67,6 @@ final class CorpusRunTests: XCTestCase {
         XCTAssertEqual(lineCount, corpus.count, "expected one result line per corpus entry")
     }
 
-    // MARK: - Running one PR
-
-    /// Runs the full pipeline against one corpus entry and records what happened, stage by
-    /// stage. Never throws: any failure — fatal pipeline error, a URL this test itself can't
-    /// parse, anything unexpected — becomes a recorded `PRRecord`, never an `XCTFail`, per the
-    /// "a failed PR is a recorded result" contract above.
     private static func run(_ entry: CorpusEntry, harness: HarnessID, access: GitHubAccessMode) async -> PRRecord {
         let started = Date()
 
@@ -135,8 +95,6 @@ final class CorpusRunTests: XCTestCase {
             var settled = false
             switch event {
             case .log(let logEntry):
-                // AnalysisService's only retry message; see its doc comment. There's no
-                // separate event for this, so the log line is the one observable signal.
                 if logEntry.detail.contains("malformed JSON"), let stage = PipelineStage(rawValue: logEntry.stage) {
                     malformedRetries[stage, default: 0] += 1
                 }
@@ -170,16 +128,11 @@ final class CorpusRunTests: XCTestCase {
                 fatalMessage = message
                 settled = true
             }
-            // Mirrors GraphStore.handle: recomputed after every event, including the last one,
-            // so `.fullAnalysis` and friends land the same way they would for a real reviewer.
             metrics.update(state: state, graph: graph, diffAvailable: diffAvailable)
             if settled { break }
         }
         await pipeline.cancel()
 
-        // Only fetching/checking out can be fatal (§10), and the one that failed never got an
-        // explicit failed status — the pipeline jumps straight to `.fatal` — so it's still
-        // `.running` here. That's how we tell the two apart without guessing.
         if let fatalMessage {
             for stage in [PipelineStage.fetching, .checkingOut] where state.status(stage).isRunning {
                 stageRecords[stage] = StageRecord(
@@ -190,8 +143,6 @@ final class CorpusRunTests: XCTestCase {
             }
         }
 
-        // Backfill what only the final graph can answer: verified-citation tallies, and the
-        // streamed stages' authoritative final counts.
         for stage in PipelineStage.analysis {
             guard var record = stageRecords[stage] else { continue }
             if let check = graph?.refChecks?[stage.rawValue] {
@@ -226,15 +177,11 @@ final class CorpusRunTests: XCTestCase {
         }
     }
 
-    /// Parses the "<N> found so far" running-status detail a streamed stage reports
-    /// (`AnalysisPipeline.appendStreamed`) back into `N`.
     private static let foundSoFarSuffix = " found so far"
     private static func streamedCount(in detail: String?) -> Int? {
         guard let detail, detail.hasSuffix(foundSoFarSuffix) else { return nil }
         return Int(detail.dropLast(foundSoFarSuffix.count))
     }
-
-    // MARK: - Results file
 
     private static func append(_ record: PRRecord, to url: URL) {
         let encoder = JSONEncoder()

@@ -3,19 +3,8 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// The Decisions lens's views (`DecisionsView`, `DecisionCards`, `DecisionChoiceView`,
-/// `DecisionDrillDown`) are SwiftUI code whose logic already lives in `DecisionsViewLogic`.
-/// This suite hosts the real views in an `NSHostingView` over a graph with one decision of
-/// every drawn shape (binary, threshold, options, before/after, none), expanded and
-/// collapsed, judged and not, so every builder runs against realistic data. It pins that no
-/// combination traps while building or laying out (a builder reaching for an option the
-/// brief lacks, e.g. `options[1]` on a one-option before/after) — which the pure-logic tests
-/// cannot see, and which is issue #119's remaining gap.
 @MainActor
 struct DecisionsViewRenderTests {
-
-    // MARK: - Fixtures
-
     private func option(_ label: String, chosen: Bool = false, detail: String? = nil) -> DecisionOption {
         DecisionOption(label: label, detail: detail, chosen: chosen)
     }
@@ -48,7 +37,6 @@ struct DecisionsViewRenderTests {
         )
     }
 
-    /// The sample graph plus one decision per drawn shape: some to review, some other.
     private func graph(toReviewEmpty: Bool = false) -> PRGraph {
         var g = ContourSampleData.publishTriggeredReindex
         let level: ReviewSignificance = toReviewEmpty ? .low : .high
@@ -91,8 +79,6 @@ struct DecisionsViewRenderTests {
                       onSetState: { _, _ in }, onSetNote: { _, _ in }, onSetToReview: { _, _ in })
     }
 
-    // MARK: - The lens
-
     @Test func listModeRendersDecisionsToReviewAndOtherDecisions() {
         withMode(.list) { layout(lens(graph())) }
     }
@@ -106,8 +92,6 @@ struct DecisionsViewRenderTests {
         withMode(.oneAtATime) { layout(lens(graph(toReviewEmpty: true)), width: 800) }
     }
 
-    /// Arriving on a decision (including an Other Decision, which must be revealed) with an
-    /// Overview question selected runs `arrive`, the card's question-first ordering and scroll.
     @Test func focusedArrivalRendersForReviewAndOtherDecisions() {
         withMode(.list) {
             layout(lens(graph(), focus: .init(decisionId: "binary", considerationId: "q1")))
@@ -124,8 +108,6 @@ struct DecisionsViewRenderTests {
         g.decisions = []
         layout(lens(g))
     }
-
-    // MARK: - Cards, rows and their parts
 
     private struct CardHost: View {
         let graph: PRGraph
@@ -184,8 +166,6 @@ struct DecisionsViewRenderTests {
         layout(ReviewProgressDots(graph: graph(), discussed: ["q1"]))
     }
 
-    // MARK: - Choice, spectrum, drill-down
-
     @Test func choiceViewRendersEveryShapeIncludingAnOptionlessAnswer() {
         let g = graph()
         for d in g.decisions {
@@ -209,7 +189,6 @@ struct DecisionsViewRenderTests {
         }
     }
 
-    /// The Affects section links to components, edges and flows; the sample graph has all three.
     @Test func drillDownRendersAffectedArchitectureAndFlows() {
         var g = ContourSampleData.publishTriggeredReindex
         let d = g.decisions[0]

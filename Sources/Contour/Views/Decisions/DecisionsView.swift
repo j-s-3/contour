@@ -1,36 +1,15 @@
 import SwiftUI
 
-/// The Decisions lens: where the reviewer makes judgments. The Overview says what deserves
-/// thought; this is where that thought is recorded, one consequential choice at a time.
-///
-/// Each decision is drawn as the question the engineer had to answer, the options on the
-/// table with the chosen one marked, what that choice traded, and why it landed on that
-/// side — one visual unit, scannable in a few seconds, followed by an explicit Looks good /
-/// Question / Discuss. Tradeoffs are never a separate destination: a tradeoff exists because
-/// a decision was made, so it is drawn on, and judged with, that decision.
-/// Everything else (full rationale, alternatives, consequences, what it affects, evidence)
-/// is behind More…, a right-click, or a conversation.
-///
-/// The lens directs scarce attention: the decisions where the reviewer's judgment appears to
-/// matter most are shown as Decisions to Review; everything else the analysis found is
-/// collapsed under Other Decisions, compact but still inspectable. Significance decides which
-/// is which, never abstraction level — and the reviewer can move a decision either way.
-/// The lens is built for a sequential, keyboard-only loop — J/K to move, A/Q/C to judge —
-/// and has a one-at-a-time mode that reads like a design review.
 struct DecisionsView: View {
     let graph: PRGraph
-    /// Where navigation asked the lens to open.
     var focus: Focus?
-    /// Overview questions talked through in a conversation, for review progress.
     var discussed: Set<String> = []
     var onSetState: (String, ReviewerState) -> Void
     var onSetNote: (String, String) -> Void
-    /// Add to review (true) / Not worth reviewing (false).
     var onSetToReview: (String, Bool) -> Void
 
     struct Focus: Equatable {
         var decisionId: String
-        /// The Overview question that brought the reviewer here, if any.
         var considerationId: String? = nil
     }
 
@@ -42,7 +21,6 @@ struct DecisionsView: View {
     @Environment(\.reviewActions) private var actions
     @AppStorage("decisions.mode") private var mode: Mode = .list
     @State private var selectedId: String?
-    /// The decision briefly lit up after navigating to it.
     @State private var arrivedId: String?
     @State private var expandedIds: Set<String> = []
     @State private var showOther = false
@@ -51,11 +29,9 @@ struct DecisionsView: View {
 
     private var toReview: [DecisionNode] { graph.decisionsToReview }
     private var other: [DecisionNode] { graph.otherDecisions }
-    /// Other Decisions open by default only when nothing was proposed for review.
     private var otherShown: Bool {
         DecisionsViewLogic.otherShown(showOther: showOther, toReviewIsEmpty: toReview.isEmpty)
     }
-    /// The review sequence J/K walks: decisions to review, then other decisions once shown.
     private var sequence: [DecisionNode] {
         DecisionsViewLogic.sequence(toReview: toReview, other: other, otherShown: otherShown)
     }
@@ -97,8 +73,6 @@ struct DecisionsView: View {
         }
     }
 
-    // MARK: - Header
-
     private var header: some View {
         let progress = graph.reviewProgress(discussed: discussed)
         return VStack(alignment: .leading, spacing: 6) {
@@ -119,8 +93,6 @@ struct DecisionsView: View {
                 Text(Self.framing(toReview: toReview.count, total: graph.decisions.count))
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                // The same n of m as the Overview and the sidebar: its things to think
-                // about, resolved — judging a decision here resolves the questions on it.
                 if progress.total > 0 {
                     ReviewProgressDots(graph: graph, discussed: discussed)
                     Text(verbatim: "\(progress.reviewed) of \(progress.total) resolved")
@@ -133,8 +105,6 @@ struct DecisionsView: View {
         }
     }
 
-    /// Says what the list is for — where the reviewer's time is best spent — without claiming
-    /// the analysis ranked importance perfectly, and that more was found than is shown.
     nonisolated static func framing(toReview: Int, total: Int) -> String {
         let others = total - toReview
         if toReview == 0 {
@@ -147,8 +117,6 @@ struct DecisionsView: View {
         let found = others > 0 ? ", out of \(total) identified" : ""
         return lead + found + (toReview == 1 ? ". Do you agree with it?" : ". Do you agree with them?")
     }
-
-    // MARK: - List mode
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -222,7 +190,6 @@ struct DecisionsView: View {
         .id(decision.id)
     }
 
-    /// A decision to review in the list or one-at-a-time, or an other decision's compact row.
     @ViewBuilder
     private func item(_ decision: DecisionNode) -> some View {
         if let index = toReview.firstIndex(where: { $0.id == decision.id }) {
@@ -254,8 +221,6 @@ struct DecisionsView: View {
         )
         .id(decision.id)
     }
-
-    // MARK: - One at a time
 
     @ViewBuilder
     private var oneAtATime: some View {
@@ -313,10 +278,6 @@ struct DecisionsView: View {
         }
     }
 
-    // MARK: - Behavior
-
-    /// Opens the decision navigation asked for: reveal it, select it, scroll to it, and
-    /// light it up briefly so the eye lands on it.
     private func arrive(_ proxy: ScrollViewProxy) {
         let id = focus?.decisionId
         let exists = id.flatMap { graph.decision($0) } != nil
@@ -372,8 +333,6 @@ struct DecisionsView: View {
         if let proxy { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(nextId) } }
     }
 
-    /// Records a judgment. "Looks good" moves on to the next decision still waiting for
-    /// one; "Question" opens a note for the author; "Discuss" opens a conversation.
     private func judge(_ decision: DecisionNode, _ state: ReviewerState, proxy: ScrollViewProxy? = nil) {
         let turningOn = decision.reviewerState != state
         selectedId = decision.id
@@ -395,8 +354,6 @@ struct DecisionsView: View {
         }
     }
 
-    /// Add to review / Not worth reviewing. A decision added to review is selected where it
-    /// lands; one taken out hands the selection to the next decision still to review.
     private func setToReview(_ decision: DecisionNode, _ toReview: Bool) {
         let nextId = DecisionsViewLogic.selectionAfterTogglingReview(
             toReview: self.toReview, decisionId: decision.id, addingToReview: toReview)
