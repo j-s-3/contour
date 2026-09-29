@@ -72,4 +72,14 @@ struct PromptBuilderTests {
         #expect(PromptBuilder.flowsPrompt(components: parts).contains("- a: A"))
         #expect(PromptBuilder.judgmentPrompt(graphSoFar: "{\"k\":1}").contains("{\"k\":1}"))
     }
+
+    @Test func judgmentPromptAsksForOneNeutralJudgmentPerItemWithoutAQuota() {
+        let text = PromptBuilder.judgmentPrompt(graphSoFar: "{}")
+        for rule in ["ONE JUDGMENT RULE", "COHERENCE RULE", "HUMAN-VALUE RULE", "NEUTRALITY RULE", "ABSTRACTION RULE"] {
+            #expect(text.contains(rule))
+        }
+        #expect(text.contains("There is no quota"))
+        #expect(text.contains(#""judgment": "...?""#))
+        #expect(!text.contains(#""decision": "...?""#))
+    }
 }

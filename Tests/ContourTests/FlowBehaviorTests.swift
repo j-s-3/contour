@@ -83,7 +83,10 @@ struct FlowBehaviorTests {
     }
     private func pipeQuestion(_ graph: PRGraph) throws -> Consideration {
         let stdin = try stdinFlow(graph)
-        return try #require(graph.thingsToThinkAbout.first { $0.relatedIds.contains(stdin.id) })
+        return try #require(
+            graph.thingsToThinkAbout.first { item in
+                item.relatedIds.contains(stdin.id) || item.flowAnchors.contains { $0.flowId == stdin.id }
+            })
     }
 
     @Test func olderFlowsAreNamedByTheirTriggerNotTheirCallChain() throws {
@@ -145,7 +148,9 @@ struct FlowBehaviorTests {
         var graph = try fixtureGraph()
         let question = try pipeQuestion(graph)
         let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        let stdinId = try stdinFlow(graph).id
         graph.pr.considerations?[q].flowAnchors = []
+        graph.pr.considerations?[q].relatedIds = [stdinId]
         #expect(
             graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
         )
@@ -158,7 +163,9 @@ struct FlowBehaviorTests {
         var graph = try fixtureGraph()
         let question = try pipeQuestion(graph)
         let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
+        let stdinId = try stdinFlow(graph).id
         graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: "not-a-flow", nodeId: "anything")]
+        graph.pr.considerations?[q].relatedIds = [stdinId]
         #expect(
             graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
         )

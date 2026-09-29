@@ -27,10 +27,10 @@ struct SummaryConsiderationRenderTests {
                 id: "a", category: .errorHandling, judgmentType: .confirmIntent,
                 headline: "Token failures behave differently from other GitHub read failures",
                 impact: "An authentication failure fails the whole operation.",
-                decision: "Should authentication failures fail the operation?"),
+                judgment: "Should authentication failures fail the operation?"),
             Consideration(
                 id: "b", category: .compatibility, headline: "A limit copies a dependency's internal value",
-                impact: "An upgrade could silently change behavior.", decision: "Confirm the dependency's limit.",
+                impact: "An upgrade could silently change behavior.", judgment: "Confirm the dependency's limit.",
                 kind: .question),
         ]
         #expect(render(graph(with: items)).height > 0)
@@ -44,7 +44,7 @@ struct SummaryConsiderationRenderTests {
         let judgment = try StageDecoding.decode(
             StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
         #expect(
-            judgment.considerations.allSatisfy { $0.category != nil && $0.judgmentType != nil && $0.decision != nil })
+            judgment.considerations.allSatisfy { $0.category != nil && $0.judgmentType != nil && $0.judgment != nil })
         #expect(render(graph(with: judgment.considerations), width: 700).height > 0)
     }
 

@@ -154,7 +154,7 @@ struct DecisionCard: View {
                                 .foregroundStyle(.orange)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .help(item.decision == nil ? item.impact : "\(item.headline). \(item.impact)")
+                                .help(item.judgment == nil ? item.impact : "\(item.headline). \(item.impact)")
                                 .reviewContextMenu(.consideration(item.id))
                         }
                     }

@@ -170,7 +170,8 @@ extension PRGraph {
             let decisionIds = item.relatedIds.filter { decision($0) != nil }
             let componentIds = item.relatedIds.filter { component($0) != nil }
             let flowIds = item.relatedIds.filter { flow($0) != nil }
-            var summary = [item.headline, item.impact] + [item.decision.map { "Decision: \($0)" }].compactMap { $0 }
+            var summary =
+                [item.headline, item.impact] + [item.judgment.map { "Your judgment: \($0)" }].compactMap { $0 }
             if let first = decisionIds.first.flatMap(decision) { summary.append("Related decision: \(first.title)") }
             var detail = """
                 Something the reviewer was asked to judge (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
@@ -179,7 +180,7 @@ extension PRGraph {
                 Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
                 """
             if let context = item.contextLabel { detail += "\nKind of judgment: \(context)" }
-            if let decision = item.decision { detail += "\nDecision asked of the reviewer: \(decision)" }
+            if let judgment = item.judgment { detail += "\nJudgment asked of the reviewer: \(judgment)" }
             if let evidence = item.evidence { detail += "\nTechnical evidence: \(evidence)" }
             return ResolvedSubject(
                 subject: subject, kind: .consideration, title: item.headline,

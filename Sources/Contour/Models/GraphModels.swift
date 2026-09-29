@@ -871,6 +871,14 @@ enum JudgmentType: String, Codable, Hashable, Sendable, CaseIterable {
         }
     }
 
+    func label(under category: ConsiderationCategory?) -> String {
+        guard let category else { return label }
+        let prefix = category.label + " "
+        guard label.lowercased().hasPrefix(prefix.lowercased()) else { return label }
+        let rest = label.dropFirst(prefix.count)
+        return rest.prefix(1).uppercased() + rest.dropFirst()
+    }
+
     init?(lenient raw: String) {
         let key = ConsiderationCategory.lenientKey(raw)
         switch key {
@@ -904,7 +912,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     var judgmentType: JudgmentType?
     var headline: String
     var impact: String
-    var decision: String?
+    var judgment: String?
     var kind: ConsiderationKind = .concern
     var provenance: Provenance = .interpretation
     var confidence: Confidence?
@@ -916,7 +924,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     init(
         id: String, category: ConsiderationCategory? = nil, judgmentType: JudgmentType? = nil, headline: String,
         impact: String,
-        decision: String? = nil, kind: ConsiderationKind = .concern,
+        judgment: String? = nil, kind: ConsiderationKind = .concern,
         provenance: Provenance = .interpretation, confidence: Confidence? = nil,
         evidence: String? = nil, relatedIds: [String] = [], refs: [CodeRef] = [],
         flowAnchors: [FlowAnchor] = []
@@ -926,7 +934,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         self.judgmentType = judgmentType
         self.headline = headline
         self.impact = impact
-        self.decision = decision
+        self.judgment = judgment
         self.kind = kind
         self.provenance = provenance
         self.confidence = confidence
@@ -936,10 +944,10 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         self.flowAnchors = flowAnchors
     }
     enum CodingKeys: String, CodingKey {
-        case id, category, judgmentType, headline, impact, decision, kind, provenance, confidence, evidence, relatedIds,
+        case id, category, judgmentType, headline, impact, judgment, kind, provenance, confidence, evidence, relatedIds,
             refs, flowAnchors
     }
-    private enum LegacyKeys: String, CodingKey { case question, detail, explanation }
+    private enum LegacyKeys: String, CodingKey { case question, detail, explanation, decision }
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let legacy = try decoder.container(keyedBy: LegacyKeys.self)
@@ -954,7 +962,9 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         impact = Self.plainProse(
             try c.decodeIfPresent(String.self, forKey: .impact)
                 ?? legacy.decodeIfPresent(String.self, forKey: .detail) ?? "")
-        decision = Self.nonEmpty(try c.decodeIfPresent(String.self, forKey: .decision).map(Self.plainProse))
+        judgment = Self.nonEmpty(
+            (try c.decodeIfPresent(String.self, forKey: .judgment)
+                ?? legacy.decodeIfPresent(String.self, forKey: .decision)).map(Self.plainProse))
         kind = (try? c.decodeIfPresent(ConsiderationKind.self, forKey: .kind)) ?? .concern
         provenance = (try? c.decodeIfPresent(Provenance.self, forKey: .provenance)) ?? .interpretation
         confidence = try? c.decodeIfPresent(Confidence.self, forKey: .confidence)
@@ -976,15 +986,15 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
         return trimmed
     }
 
-    var reviewerAsk: String { decision ?? headline }
+    var reviewerAsk: String { judgment ?? headline }
 
     var contextLabel: String? {
-        let parts = [category?.label, judgmentType?.label].compactMap { $0 }
+        let parts = [category?.label, judgmentType?.label(under: category)].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     var briefing: String {
-        [headline, impact, decision.map { "Decision: \($0)" }]
+        [headline, impact, judgment.map { "Your judgment: \($0)" }]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .map { $0.hasSuffix(".") || $0.hasSuffix("?") ? $0 : $0 + "." }
