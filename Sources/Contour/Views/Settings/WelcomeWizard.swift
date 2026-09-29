@@ -1,15 +1,87 @@
 import SwiftUI
 
+@MainActor
+@Observable
+final class WelcomeWizardModel {
+    let preferences: Preferences
+    var step: Int
+    var statuses: [ExternalTool: ToolStatus] = [:]
+    var isProbing = true
+    var urlText: String
+
+    private let probe: EnvironmentProbe
+    private let onFinish: (String?) -> Void
+
+    init(
+        preferences: Preferences = .shared, probe: EnvironmentProbe = EnvironmentProbe(), step: Int = 0,
+        urlText: String = "", onFinish: @escaping (String?) -> Void
+    ) {
+        self.preferences = preferences
+        self.probe = probe
+        self.step = step
+        self.urlText = urlText
+        self.onFinish = onFinish
+    }
+
+    var needsHarnessChoice: Bool {
+        WelcomeWizardLogic.needsHarnessChoice(installedHarnesses: preferences.installedHarnesses)
+    }
+
+    var blocker: String? {
+        WelcomeWizardLogic.blocker(
+            statuses: statuses, installedHarnesses: preferences.installedHarnesses,
+            resolvedHarness: preferences.resolvedHarness
+        )
+    }
+
+    var readySummary: String {
+        WelcomeWizardLogic.readySummary(
+            resolvedHarness: preferences.resolvedHarness, ghUsable: statuses[.gh]?.isUsable == true,
+            resolvedTracker: preferences.resolvedTracker
+        )
+    }
+
+    func goBack() { step -= 1 }
+
+    func goForward() { step += 1 }
+
+    func finish() {
+        guard WelcomeWizardLogic.canFinish(urlText: urlText) else { return }
+        preferences.hasCompletedOnboarding = true
+        onFinish(urlText.isEmpty ? nil : urlText)
+    }
+
+    func refresh() async {
+        isProbing = true
+        defer { isProbing = false }
+        let found = await probe.probeAll()
+        statuses = found
+        preferences.installedHarnesses = found.installedHarnesses
+        preferences.jiraAvailable = found.jiraAvailable
+    }
+}
+
 struct WelcomeWizard: View {
-    @State private var preferences = Preferences.shared
-    @State private var step = 0
-    @State private var statuses: [ExternalTool: ToolStatus] = [:]
-    @State private var isProbing = true
-    @State private var urlText = ""
+    @State private var model: WelcomeWizardModel
 
-    private let probe = EnvironmentProbe()
+    init(model: WelcomeWizardModel) {
+        _model = State(initialValue: model)
+    }
 
-    var onFinish: (String?) -> Void
+    init(onFinish: @escaping (String?) -> Void) {
+        self.init(model: WelcomeWizardModel(onFinish: onFinish))
+    }
+
+    private var preferences: Preferences { model.preferences }
+    private var step: Int { model.step }
+    private var statuses: [ExternalTool: ToolStatus] { model.statuses }
+    private var isProbing: Bool { model.isProbing }
+    private var needsHarnessChoice: Bool { model.needsHarnessChoice }
+    private var blocker: String? { model.blocker }
+    private var readySummary: String { model.readySummary }
+    private var urlText: String { model.urlText }
+    private func finish() { model.finish() }
+    private func refresh() async { await model.refresh() }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -142,17 +214,6 @@ struct WelcomeWizard: View {
         }
     }
 
-    private var needsHarnessChoice: Bool {
-        WelcomeWizardLogic.needsHarnessChoice(installedHarnesses: preferences.installedHarnesses)
-    }
-
-    private var blocker: String? {
-        WelcomeWizardLogic.blocker(
-            statuses: statuses, installedHarnesses: preferences.installedHarnesses,
-            resolvedHarness: preferences.resolvedHarness
-        )
-    }
-
     private var firstPRPane: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -166,7 +227,7 @@ struct WelcomeWizard: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
 
-            TextField("https://github.com/owner/repo/pull/123", text: $urlText)
+            TextField("https://github.com/owner/repo/pull/123", text: $model.urlText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
                 .onSubmit(finish)
@@ -180,17 +241,10 @@ struct WelcomeWizard: View {
         }
     }
 
-    private var readySummary: String {
-        WelcomeWizardLogic.readySummary(
-            resolvedHarness: preferences.resolvedHarness, ghUsable: statuses[.gh]?.isUsable == true,
-            resolvedTracker: preferences.resolvedTracker
-        )
-    }
-
     private var footer: some View {
         HStack {
             if step > 0 {
-                Button("Back") { step -= 1 }
+                Button("Back") { model.goBack() }
             }
             Spacer()
             Text("\(step + 1) of 3")
@@ -198,7 +252,7 @@ struct WelcomeWizard: View {
                 .foregroundStyle(.tertiary)
             Spacer()
             if step < 2 {
-                Button("Continue") { step += 1 }
+                Button("Continue") { model.goForward() }
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
                     .disabled(WelcomeWizardLogic.continueDisabled(step: step, blocker: blocker))
@@ -209,21 +263,6 @@ struct WelcomeWizard: View {
                     .disabled(!WelcomeWizardLogic.canFinish(urlText: urlText))
             }
         }
-    }
-
-    private func finish() {
-        guard WelcomeWizardLogic.canFinish(urlText: urlText) else { return }
-        preferences.hasCompletedOnboarding = true
-        onFinish(urlText.isEmpty ? nil : urlText)
-    }
-
-    private func refresh() async {
-        isProbing = true
-        defer { isProbing = false }
-        let found = await probe.probeAll()
-        statuses = found
-        preferences.installedHarnesses = found.installedHarnesses
-        preferences.jiraAvailable = found.jiraAvailable
     }
 }
 
