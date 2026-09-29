@@ -1,9 +1,5 @@
 import Foundation
 
-/// Ways a reviewer can widen a conversation beyond the thing they clicked. The default is
-/// deliberately narrow — the object plus its immediate neighbors, by title — so the first
-/// answer stays at the object's own level of abstraction. Each expansion is progressive
-/// disclosure at the conversational level.
 enum ContextExpansion: String, CaseIterable, Hashable, Sendable, Identifiable {
     case relatedDecisions
     case relatedFlows
@@ -31,20 +27,7 @@ enum ContextExpansion: String, CaseIterable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// Builds everything a contextual conversation needs from the review graph: the header
-/// and "You are discussing" card the reviewer sees, the suggestions, and the focused
-/// markdown document handed to the harness.
-///
-/// The document is hierarchical on purpose — PR, then the lineage down to the selected
-/// object, then the object in full, then its neighbors — so a model asked about
-/// "Page Publishing → Index Queue" gets the relationship and both endpoints, and a
-/// model asked about a code range gets the concept that range supports. It never inlines
-/// the whole repository or diff: the harness has read-only file tools and is told where
-/// to look.
 enum ChatContextBuilder {
-
-    /// Which expansions are meaningful for a subject — no point offering "Related flows"
-    /// for something that touches none.
     static func availableExpansions(for resolved: ResolvedSubject) -> [ContextExpansion] {
         var out: [ContextExpansion] = []
         if !resolved.decisionIds.isEmpty, ![.decision, .option].contains(resolved.kind) { out.append(.relatedDecisions) }
@@ -54,7 +37,6 @@ enum ChatContextBuilder {
         return out
     }
 
-    /// Starting prompts in the reviewer's own voice. Suggestions, not required buttons.
     static func suggestions(for resolved: ResolvedSubject) -> [String] {
         switch resolved.kind {
         case .component:
@@ -102,9 +84,6 @@ enum ChatContextBuilder {
         }
     }
 
-    /// The focused context document for one turn. `excerpts` are code excerpts the caller
-    /// has already read from the checkout (pinned references, the subject's own code when
-    /// Implementation is expanded).
     static func document(
         graph: PRGraph,
         resolved: ResolvedSubject,
@@ -171,9 +150,6 @@ enum ChatContextBuilder {
         return out
     }
 
-    // MARK: - Pieces
-
-    /// The `[[kind:id]]` token the model may use to link back to a review-model object.
     static func linkToken(for subject: ReviewSubject) -> String? {
         switch subject {
         case .component(let id): return "[[component:\(id)]]"
@@ -184,7 +160,6 @@ enum ChatContextBuilder {
         }
     }
 
-    /// Immediate neighbors by title (cheap, always present), in full only when expanded.
     private static func neighbors(graph: PRGraph, resolved: ResolvedSubject, expansions: Set<ContextExpansion>) -> String {
         var out = ""
         let components = resolved.componentIds.compactMap(graph.component).filter { c in
@@ -223,7 +198,6 @@ enum ChatContextBuilder {
             out += "\n"
         }
 
-        // Tradeoffs travel with their decisions: a related decision's tradeoff is named with it.
         let traded = decisions.prefix(8).compactMap { d in d.primaryTradeoff.map { (d, $0) } }
         if !traded.isEmpty, !expansions.contains(.relatedDecisions) {
             out += "## What the related decisions traded\n"
@@ -259,7 +233,6 @@ enum ChatContextBuilder {
         return out
     }
 
-    /// A compact outline of the whole review model, for the Entire PR expansion.
     private static func outline(_ graph: PRGraph) -> String {
         var out = "## Whole review model (outline)\n"
         for change in graph.behaviorChanges { out += "- " + PRGraph.describe(change).replacingOccurrences(of: "\n", with: "\n  ") + "\n" }

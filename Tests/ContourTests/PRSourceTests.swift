@@ -2,18 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// `PRSource.swift` was at 20.55% coverage (a stale figure — other coverage PRs already
-/// exercise `GitHubService.ownerRepo`/`normalize` indirectly, taking the freshest measured
-/// baseline to 54.79%). `normalize` had one pinned case each way; `parse`, `ownerRepo`'s
-/// failure branch, every `GitHubServiceError.errorDescription`, and `GitHubService`'s
-/// mode-based source dispatch (the seam CLAUDE.md names for testing this file without the
-/// network) were untested. `fetchContext`/`fetchIssue`'s forwarding to a real source, and
-/// `GHCLISource`'s real availability check inside `init`, are left uncovered — they'd need
-/// either a real network call or faking `gh` on `PATH`.
 struct PRSourceTests {
-
-    // MARK: - GitHubService.normalize
-
     @Test func normalizeAcceptsAnyStringContainingAPullURL() {
         #expect(GitHubService.normalize("https://github.com/acme/shop/pull/5") != nil)
         #expect(GitHubService.normalize("  https://github.com/acme/shop/pull/5  ") == "https://github.com/acme/shop/pull/5", "trims whitespace")
@@ -24,8 +13,6 @@ struct PRSourceTests {
         #expect(GitHubService.normalize("https://github.com/acme/shop") == nil, "no /pull/")
         #expect(GitHubService.normalize("https://example.com/acme/shop/pull/5") == nil, "not github.com")
     }
-
-    // MARK: - GitHubService.parse
 
     @Test func parseSplitsAValidPullURLIntoItsParts() throws {
         let parsed = try GitHubService.parse(prURL: "https://github.com/acme/shop/pull/42")
@@ -45,8 +32,6 @@ struct PRSourceTests {
         }
     }
 
-    // MARK: - GitHubService.ownerRepo(fromCanonicalURL:)
-
     @Test func ownerRepoExtractsTheFirstTwoPathComponents() throws {
         let (owner, repo) = try GitHubService.ownerRepo(fromCanonicalURL: "https://github.com/acme/shop/pull/5")
         #expect(owner == "acme" && repo == "shop")
@@ -57,8 +42,6 @@ struct PRSourceTests {
             try GitHubService.ownerRepo(fromCanonicalURL: "https://github.com/acme")
         }
     }
-
-    // MARK: - GitHubServiceError.errorDescription
 
     @Test func everyErrorCaseHasAReviewerFacingDescription() {
         #expect(GitHubServiceError.badURL("x").errorDescription?.contains("x") == true)
@@ -75,15 +58,12 @@ struct PRSourceTests {
         #expect(GitHubServiceError.ghUnavailable.errorDescription?.contains("GitHub CLI") == true)
     }
 
-    // MARK: - GitHubService mode dispatch
-
     @Test func ghModeThrowsWhenGHIsUnavailable() {
         let service = GitHubService(mode: .gh, ghAvailable: false)
         do {
             _ = try service.source()
             Issue.record("expected ghUnavailable")
         } catch GitHubServiceError.ghUnavailable {
-            // expected
         } catch { Issue.record("wrong error: \(error)") }
     }
 

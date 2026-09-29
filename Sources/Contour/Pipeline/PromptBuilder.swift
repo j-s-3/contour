@@ -1,14 +1,6 @@
 import Foundation
 
-/// Builds the untrusted-content scratch file and per-stage prompts for the AI pipeline
-/// (§10). Keeping this separate from AnalysisService means the prompt/schema contract is
-/// one file to audit — important, since these prompts are the whole grounding contract.
 struct PromptBuilder {
-
-    /// Written once per PR into `<checkout>/.contour-context.md`, then referenced from
-    /// every stage prompt with `@.contour-context.md` so pi's own `read` tool loads it.
-    /// Everything author-controlled is wrapped in `<UNTRUSTED_PR_CONTENT>` per the
-    /// prompt-injection mitigation in §16/§10.
     static func contextFileContents(_ ctx: RawPRContext) -> String {
         var out = "# PR Context (untrusted author content is delimited below)\n\n"
         out += "Repo: \(ctx.owner)/\(ctx.repo)\n"
@@ -38,15 +30,12 @@ struct PromptBuilder {
         out += "## in this checkout rather than relying on hunks alone; the diff has been truncated\n"
         out += "## if very large, use grep/find on the checkout for anything missing)\n"
         out += "<UNTRUSTED_PR_CONTENT>\n```diff\n"
-        out += String(ctx.diff.prefix(120_000)) // guard against pathological diffs, §14
+        out += String(ctx.diff.prefix(120_000))
         out += "\n```\n</UNTRUSTED_PR_CONTENT>\n"
         return out
     }
 
     static let contextFileName = ".contour-context.md"
-
-    // MARK: - Stage 0: Behavior change — the hero. Runs first: everything else is a
-    // drill-down from "what does the system do differently now."
 
     static func behaviorChangePrompt() -> String {
         """
@@ -107,8 +96,6 @@ struct PromptBuilder {
         }
         """
     }
-
-    // MARK: - Stage 1: Architecture / components
 
     static func architecturePrompt() -> String {
         """
@@ -231,8 +218,6 @@ struct PromptBuilder {
         """
     }
 
-    /// The architecture parts later stages link against, indented under their parent so a
-    /// stage can pick the most specific part a decision or step belongs to.
     static func componentOutline(_ components: [ComponentNode]) -> String {
         func lines(parent: String?, depth: Int) -> [String] {
             components.filter { $0.parentId == parent && $0.level != .implementation }.flatMap { c in
@@ -240,22 +225,10 @@ struct PromptBuilder {
             }
         }
         let known = Set(components.map(\.id))
-        // Parts whose parent id doesn't resolve are listed at the top rather than dropped.
         let orphans = components.filter { $0.level != .implementation && $0.parentId.map { !known.contains($0) } == true }
         return (lines(parent: nil, depth: 0) + orphans.map { "- \($0.id): \($0.title)" }).joined(separator: "\n")
     }
 
-    // MARK: - Stage 2: Understanding (intent + plain-language briefs)
-
-    /// What the PR is for, in one call: the author's stated intent plus the two
-    /// plain-language briefs a non-expert stakeholder (or a reviewer skimming before diving
-    /// in) can read in ten seconds. These used to be two calls over the same PR prose;
-    /// they're one now because the second only rediscovered what the first had read.
-    ///
-    /// "Problem to be solved" is grounded in the linked issue when there is one — the actual
-    /// ask, not the AI's guess at intent — and falls back to the PR description when there's
-    /// no issue. "How it was solved" is always grounded in the code, since that's the one
-    /// place the actual mechanism lives.
     static func understandingPrompt(ticket: TicketInfo?) -> String {
         let ticketSection: String
         if let ticket {
@@ -312,11 +285,6 @@ struct PromptBuilder {
         """
     }
 
-    // MARK: - Stage 3: Decisions (strong tier)
-
-    /// Runs alongside Architecture rather than after it: decisions are linked to
-    /// architecture parts afterwards, by the code both cite (`GraphLinker`), so this stage
-    /// no longer waits on another model call.
     static func decisionsPrompt() -> String {
         """
         Extract the meaningful ENGINEERING DECISIONS embodied by this PR: every real choice
@@ -450,11 +418,6 @@ struct PromptBuilder {
         """
     }
 
-    // MARK: - Stage 4: Flows + entry points
-
-    /// Still waits on Architecture — a flow's stages are attributed to its parts, which is
-    /// what the diagram draws — but no longer on Decisions: those are pinned to stages
-    /// afterwards by the code both cite (`GraphLinker`).
     static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
         let componentList = componentOutline(components)
         return """
@@ -573,8 +536,6 @@ struct PromptBuilder {
         }
         """
     }
-
-    // MARK: - Stage 5: Needs-judgment + questions (strong tier, final synthesis)
 
     static func judgmentPrompt(graphSoFar: String) -> String {
         """

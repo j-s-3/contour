@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// The contextual conversation surface. It should feel like talking to the thing you're
-/// looking at, not like a generic assistant: the header *is* the selected object, a small
-/// card restates what the conversation is about (and lets the reviewer widen it), and the
-/// composer is focused the moment it opens.
-///
-/// Lives in the window's inspector column, so it survives navigation: clicking a code
-/// citation opens the code viewer beside it, and the thread is still there.
 struct ContextualChatView: View {
     let store: GraphStore
     let graph: PRGraph
@@ -36,8 +29,6 @@ struct ContextualChatView: View {
         .onExitCommand { conversations.close() }
         .environment(\.openURL, OpenURLAction { url in handle(url) })
     }
-
-    // MARK: - Thread
 
     private func thread(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(spacing: 0) {
@@ -70,11 +61,8 @@ struct ContextualChatView: View {
     }
 
     private func focusComposerSoon() {
-        // The inspector animates in; focusing in the same runloop turn can be dropped.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { composerFocused = true }
     }
-
-    // MARK: - Header: the object you're talking to
 
     private func header(_ resolved: ResolvedSubject) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -103,8 +91,6 @@ struct ContextualChatView: View {
         .padding(.vertical, 12)
     }
 
-    /// The menu's items, separate from the `Menu` so a test can host them directly (a
-    /// `Menu`'s content is built lazily, only when opened).
     @ViewBuilder
     var conversationMenuContent: some View {
         Section("Conversations") {
@@ -136,8 +122,6 @@ struct ContextualChatView: View {
         .fixedSize()
         .help("Conversations in this review")
     }
-
-    // MARK: - "You are discussing"
 
     private func contextCard(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -196,8 +180,6 @@ struct ContextualChatView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Suggestions
-
     private func suggestions(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Ask about \(ChatViewLogic.subjectPhrase(for: resolved))")
@@ -219,8 +201,6 @@ struct ContextualChatView: View {
             }
         }
     }
-
-    // MARK: - Messages
 
     @ViewBuilder
     private func messageView(_ message: ChatMessage, conversation: Conversation) -> some View {
@@ -257,8 +237,6 @@ struct ContextualChatView: View {
             }
         }
     }
-
-    // MARK: - Composer
 
     private func composer(_ conversation: Conversation, _ resolved: ResolvedSubject) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -302,8 +280,6 @@ struct ContextualChatView: View {
         }
         .padding(12)
     }
-
-    // MARK: - Links
 
     private func linkify(_ text: String) -> String {
         ChatLinks.linkify(text, resolve: resolvePath, title: graph.linkTitle)

@@ -3,12 +3,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `ContextualChatView`'s body and builders are SwiftUI view code with no logic left to
-/// extract (derivations live in `ChatViewLogic`). This suite hosts the real view in an
-/// `NSHostingView` over `ContourSampleData` and lays it out for the empty state and for
-/// threads on every kind of subject, in every message state (user, streaming, errored,
-/// assistant markdown), so each builder actually runs. It pins that none of those
-/// combinations traps while building or laying out.
 @MainActor
 struct ContextualChatViewRenderTests {
     let graph = ContourSampleData.publishTriggeredReindex
@@ -57,8 +51,6 @@ struct ContextualChatViewRenderTests {
         _ = layout(store)
     }
 
-    /// With several conversations and the reviewer looking at unpinned evidence, the menu,
-    /// the "Include the code you're viewing" offer and the stop button all render.
     @Test func rendersMultipleThreadsTheEvidenceOfferAndTheRespondingComposer() throws {
         let store = GraphStore()
         store.conversations.open(.pullRequest)
@@ -68,14 +60,11 @@ struct ContextualChatViewRenderTests {
         store.navigate(to: .evidence(CodeRef(path: "a.swift", startLine: 1, endLine: 2)))
         _ = layout(store)
 
-        // Sending with no checkout records an error reply rather than running a harness.
         store.conversations.send("What changed?", in: conversation, graph: graph, checkout: nil, harnessID: nil)
         #expect(conversation.messages.count == 2)
         _ = layout(store)
     }
 
-    /// The conversations menu builds its items lazily, so the items are hosted directly:
-    /// the active thread gets the checkmark row and the "Close" row is offered.
     @Test func rendersTheConversationMenuItems() {
         let store = GraphStore()
         store.conversations.open(.pullRequest)
@@ -87,8 +76,6 @@ struct ContextualChatViewRenderTests {
         #expect(hosting.fittingSize.width >= 0)
     }
 
-    /// Appending messages to a hosted thread fires the scroll-to-bottom `onChange`
-    /// handlers once the run loop turns; they must not trap.
     @Test func newMessagesInAHostedThreadTriggerTheScrollHandlers() {
         let store = GraphStore()
         let conversation = store.conversations.open(.pullRequest)
@@ -101,8 +88,6 @@ struct ContextualChatViewRenderTests {
         #expect(hosting.fittingSize.width >= 0)
     }
 
-    /// The view's link handler delegates to `ChatViewLogic`: a Contour link navigates,
-    /// anything else is passed to the system and leaves navigation alone.
     @Test func handleNavigatesForContourLinksAndDefersOthersToTheSystem() throws {
         let store = GraphStore()
         let view = ContextualChatView(store: store, graph: graph)

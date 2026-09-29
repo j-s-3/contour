@@ -1,19 +1,5 @@
 import Foundation
 
-/// Per-stage response shapes, decoded from the `[String: Any]` an AnalysisService call
-/// returns. Kept distinct from the graph's own node types so a stage can return a partial
-/// or slightly-off shape without corrupting the whole PRGraph — decoding failures for one
-/// stage become an Uncertainty rather than crashing the pipeline (§14 "honest truncation").
-///
-/// Every array field here uses a lenient custom decode. This was not optional: on a real,
-/// large PR, `pi` sometimes emits `"entryPoints": null` (or similar) to mean "found none"
-/// rather than `"entryPoints": []`. Swift's synthesized `Decodable` treats an explicit JSON
-/// `null` against a non-optional `[T]` as `DecodingError.valueNotFound`, whose
-/// `localizedDescription` is the unhelpful "The data couldn't be read because it is
-/// missing." — exactly the crash this lenient decoding exists to prevent.
-/// Thrown instead of a bare `DecodingError` so a decode failure tells you which stage and
-/// which field broke, rather than Foundation's generic (and famously unhelpful)
-/// "The data couldn't be read because it isn't in the correct format."
 struct StageDecodingError: LocalizedError {
     var stageLabel: String
     var underlying: Error
@@ -41,10 +27,6 @@ struct StageDecodingError: LocalizedError {
 }
 
 enum StageDecoding {
-
-    /// - Parameter stageLabel: human-readable stage name, folded into any thrown error so
-    ///   a decode failure is diagnosable from the UI's error screen alone, without needing
-    ///   to reproduce the `pi` call by hand.
     static func decode<T: Decodable>(_ type: T.Type, stageLabel: String = "stage", from object: [String: Any]) throws -> T {
         let data = try JSONSerialization.data(withJSONObject: object)
         do {
@@ -79,12 +61,10 @@ enum StageDecoding {
             edges = try c.decodeIfPresent([ArchitectureEdge].self, forKey: .edges) ?? []
             boundaries = try c.decodeIfPresent([SystemBoundary].self, forKey: .boundaries) ?? []
             architectureImpact = try c.decodeIfPresent(Statement.self, forKey: .architectureImpact)
-            // An assessment that doesn't decode degrades to the prose impact alone.
             architecture = (try? c.decodeIfPresent(ArchitectureAssessment.self, forKey: .architecture)) ?? nil
             if architectureImpact == nil { architectureImpact = architecture?.explanation }
         }
     }
-
 
     struct DecisionsResult: Decodable, Sendable {
         var decisions: [DecisionNode]
@@ -126,9 +106,6 @@ enum StageDecoding {
         }
     }
 
-    /// What the PR is for, in the author's words and in plain language: the intent plus the
-    /// two ELI5 briefs (§ELI5). One call rather than two — both read the same PR prose and
-    /// the linked issue, and splitting them only made the model rediscover the same facts.
     struct UnderstandingResult: Decodable, Sendable {
         var intent: Statement
         var problemToBeSolved: Statement?
