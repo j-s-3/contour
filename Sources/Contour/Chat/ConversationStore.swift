@@ -76,7 +76,7 @@ final class ConversationStore {
     }
 
     func reset() {
-        conversations.forEach { $0.task?.cancel() }
+        for conversation in conversations { conversation.task?.cancel() }
         conversations = []
         activeId = nil
         isPresented = false

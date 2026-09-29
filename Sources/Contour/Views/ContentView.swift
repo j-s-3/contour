@@ -550,8 +550,8 @@ struct ContentView: View {
         case .summary:
             SummaryView(
                 graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
-                onRetry: { store.retry($0) }
-            ) { store.navigate(to: $0) }
+                onRetry: { store.retry($0) }, navigate: { store.navigate(to: $0) }
+            )
         case .architecture, .componentDetail(_), .edgeDetail(_):
             sectionContent(
                 .architecture, stage: .architecture, hasContent: !graph.components.isEmpty,

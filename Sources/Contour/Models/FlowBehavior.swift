@@ -200,9 +200,4 @@ struct FailableDecode<T: Decodable>: Decodable {
 struct FlowAnchor: Codable, Hashable, Sendable {
     var flowId: String
     var nodeId: String
-
-    init(flowId: String, nodeId: String) {
-        self.flowId = flowId
-        self.nodeId = nodeId
-    }
 }

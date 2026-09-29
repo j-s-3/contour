@@ -189,7 +189,10 @@ enum GraphLayoutEngine {
             columnX[l] = columnX[l - 1] + columnWidth[l - 1] + gapWidth[l - 1]
         }
 
-        enum Route { case straight, elbow, vertical, channel(band: Int, lane: Int) }
+        enum Route {
+            case straight, elbow, vertical
+            case channel(band: Int, lane: Int)
+        }
         var routes: [String: Route] = [:]
         var lanesPerBand: [Int: Int] = [:]
         var elbowsPerGap: [Int: [String]] = [:]
