@@ -146,8 +146,12 @@ struct FlowBehaviorTests {
         let question = try pipeQuestion(graph)
         let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
         graph.pr.considerations?[q].flowAnchors = []
-        #expect(graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
-        #expect(!graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
+        #expect(
+            graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
+        #expect(
+            !graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
     }
 
     @Test func anchorsNamingNoRealFlowFallBackToTheQuestionsRelatedIds() throws {

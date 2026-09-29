@@ -46,10 +46,12 @@ struct DecisionsBriefingTests {
         #expect(graph.decisionsToReview.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
         #expect(graph.otherDecisions.map(\.id) == ["fallback-to-longer-first-line", "skip-read-on-empty-input"])
         let fallback = try #require(graph.decision("fallback-to-longer-first-line"))
-        #expect(graph.significance(of: fallback) == .low)
-        #expect(!graph.attentionReason(for: fallback).contains("Overview asks"))
+        var unasked = graph
+        unasked.pr.considerations?.removeAll { $0.relatedIds.first == fallback.id }
+        #expect(unasked.significance(of: fallback) == .low)
+        #expect(!unasked.attentionReason(for: fallback).contains("Overview asks"))
 
-        var asked = graph
+        var asked = unasked
         asked.pr.considerations?.append(concern("asks-fallback", on: fallback.id))
         #expect(asked.significance(of: fallback) == .medium)
         #expect(asked.attentionReason(for: fallback).contains("Overview asks"))
@@ -289,7 +291,7 @@ struct DecisionsBriefingTests {
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
         let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
-        #expect(onBlocking == ["short-first-chunk-misses-binary"])
+        #expect(onBlocking == ["piped-input-detection-depends-on-chunking", "overlap-with-pending-bounded-read-pr"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
         #expect(
@@ -316,7 +318,7 @@ struct DecisionsBriefingTests {
         #expect(resolved.detail.contains("Read until 1 KB"))
         #expect(
             resolved.detail.contains(
-                "Overview question reviewed on this decision: Binary detection on pipes only checks the first chunk of data"
+                "Overview question reviewed on this decision: Piped input may still show binary data when it arrives in small pieces"
             ))
         #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
         #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))

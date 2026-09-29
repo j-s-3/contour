@@ -227,8 +227,8 @@ struct SummaryView: View {
     private var thingsToThinkAboutPlaceholder: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange.opacity(0.5))
+                Image(systemName: SummaryViewLogic.judgmentSymbol)
+                    .foregroundStyle(.tertiary)
                     .font(.callout)
                 Text(verbatim: SummaryViewLogic.judgmentHeaderLabel(count: nil))
                     .font(.callout.weight(.semibold))
@@ -239,7 +239,7 @@ struct SummaryView: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.orange.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.06)))
     }
 
     private var judgmentWorkingText: String {
@@ -298,13 +298,12 @@ struct SummaryView: View {
         let resolvedText = SummaryViewLogic.resolvedProgressText(reviewed: progress.reviewed, total: progress.total)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                Image(systemName: SummaryViewLogic.judgmentSymbol)
+                    .foregroundStyle(.secondary)
                     .font(.callout)
                 Text(verbatim: "\(items.count)")
                     .font(.title3.weight(.bold))
                     .monospacedDigit()
-                    .foregroundStyle(.orange)
                 Text(verbatim: SummaryViewLogic.judgmentHeaderLabel(count: items.count))
                     .font(.callout.weight(.semibold))
                     .tracking(0.5)
@@ -370,7 +369,7 @@ struct SummaryView: View {
         }
         .padding(.bottom, 10)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.orange.opacity(0.22)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.1)))
     }
 
     private func review(_ item: Consideration) {
@@ -485,8 +484,8 @@ struct ConsiderationRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 badge
                 VStack(alignment: .leading, spacing: 3) {
-                    if let category = item.category {
-                        Text(verbatim: category.label.uppercased())
+                    if let context = item.contextLabel {
+                        Text(verbatim: context.uppercased())
                             .font(.caption2.weight(.semibold))
                             .tracking(0.6)
                             .foregroundStyle(.tertiary)
@@ -572,12 +571,12 @@ struct ConsiderationRow: View {
     @ViewBuilder
     private func openBadge(_ isQuestion: Bool) -> some View {
         Circle()
-            .fill((isQuestion ? Color.secondary : Color.orange).opacity(0.14))
+            .fill(Color.secondary.opacity(isQuestion ? 0.14 : 0.18))
         if isQuestion {
             Image(systemName: "questionmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
         } else {
             Text(verbatim: "\(number)").font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(
-                .orange)
+                .primary)
         }
     }
 
@@ -782,6 +781,8 @@ enum SummaryViewLogic {
     static func judgmentHeaderLabel(count: Int?) -> String {
         (count == 1 ? "area needing your judgment" : "areas needing your judgment").uppercased()
     }
+
+    static let judgmentSymbol = "scalemass"
 
     static func decisionLabel(kind: ConsiderationKind) -> String {
         kind == .question ? "To confirm" : "Decision"

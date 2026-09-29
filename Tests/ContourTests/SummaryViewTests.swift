@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Testing
 
@@ -261,6 +262,11 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.judgmentHeaderLabel(count: 0) == "AREAS NEEDING YOUR JUDGMENT")
         #expect(SummaryViewLogic.judgmentHeaderLabel(count: 4) == "AREAS NEEDING YOUR JUDGMENT")
         #expect(SummaryViewLogic.judgmentHeaderLabel(count: nil) == "AREAS NEEDING YOUR JUDGMENT")
+    }
+
+    @Test func theSectionIsHeadedByAJudgmentSymbolNotAWarning() {
+        #expect(SummaryViewLogic.judgmentSymbol == "scalemass")
+        #expect(NSImage(systemSymbolName: SummaryViewLogic.judgmentSymbol, accessibilityDescription: nil) != nil)
     }
 
     @Test func decisionLabelAsksConcernsToDecideAndQuestionsToConfirm() {

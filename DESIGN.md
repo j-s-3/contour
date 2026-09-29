@@ -168,13 +168,19 @@ adds, dashed for a step that no longer happens, an optional success/failure outc
 last stage); **Why** and **Consequence** at one or two lines each; **Things to think
 about**, headed "n areas needing your judgment": 1–5 items that merge what used to be
 separate needs-judgment and uncertainty lists, distinguished only by a subtle badge. Each
-item reads top to bottom as observation, impact, decision: a quiet category (error
-handling, test coverage, compatibility, reliability, scaling, security, architecture,
-product behavior), a headline stating what was noticed, one plain-language sentence on why
-it could matter, and the decision asked of the reviewer ("To confirm" for an open
-question). Those four fields are written for an engineer who has not read the diff, so
-they describe system behavior rather than methods or types; the technical evidence, which
-may name exact symbols and lines, is shown only on drill-down;
+item reads top to bottom as observation, impact, decision: a quiet caption pairing the
+category (error handling, test coverage, compatibility, reliability, scaling, security,
+architecture, product behavior) with why judgment is needed (potential problem, confirm
+intent, design decision, compatibility decision, operational risk, security decision,
+unclear requirement, external dependency), a headline stating what is happening, a concrete
+scenario of what could happen if it merges, and the decision asked of the reviewer ("To
+confirm" for an open question). The items are a handoff of judgment, not a list of
+defects, so the section avoids warning styling: a neutral scales symbol, neutral number
+badges, and orange only on the decision line. The model writes these fields one level
+above the code (system behavior, consequence, human judgment) for an engineer who has not
+read the diff, and the decision asks what behavior is wanted rather than which
+implementation to pick. Mechanism, symbols and lines live in the technical evidence,
+shown only on drill-down;
 **Other behavior changes**, one line each, expanding inline; and **Explore the change**,
 three navigation tiles (Architecture, Flows, Decisions). Provenance is a tertiary glyph
 with a tooltip rather than a colored badge. The things to think about are the review

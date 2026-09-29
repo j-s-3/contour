@@ -24,7 +24,7 @@ struct SummaryConsiderationRenderTests {
     @Test func rowsWithCategoryImpactAndDecisionRender() {
         let items = [
             Consideration(
-                id: "a", category: .errorHandling,
+                id: "a", category: .errorHandling, judgmentType: .confirmIntent,
                 headline: "Token failures behave differently from other GitHub read failures",
                 impact: "An authentication failure fails the whole operation.",
                 decision: "Should authentication failures fail the operation?"),
@@ -43,7 +43,8 @@ struct SummaryConsiderationRenderTests {
     @Test func theCapturedFixtureConsiderationsRenderAtANarrowWidth() throws {
         let judgment = try StageDecoding.decode(
             StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
-        #expect(judgment.considerations.allSatisfy { $0.category != nil && $0.decision != nil })
+        #expect(
+            judgment.considerations.allSatisfy { $0.category != nil && $0.judgmentType != nil && $0.decision != nil })
         #expect(render(graph(with: judgment.considerations), width: 700).height > 0)
     }
 

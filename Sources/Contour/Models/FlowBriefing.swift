@@ -180,10 +180,12 @@ extension PRGraph {
             let nodeId: String?
             let anchors = item.flowAnchors.filter { flowIds.contains($0.flowId) }
             if !anchors.isEmpty {
-                nodeId = anchors.lazy
+                nodeId =
+                    anchors.lazy
                     .filter { $0.flowId == flow.id }
                     .compactMap { anchor in
-                        behavior.node(anchor.nodeId)?.id ?? behavior.nodes.first { $0.stepIds.contains(anchor.nodeId) }?.id
+                        behavior.node(anchor.nodeId)?.id
+                            ?? behavior.nodes.first { $0.stepIds.contains(anchor.nodeId) }?.id
                     }
                     .first
             } else {

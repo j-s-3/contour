@@ -178,7 +178,7 @@ extension PRGraph {
                 Why it matters: \(item.impact)
                 Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
                 """
-            if let category = item.category { detail += "\nCategory: \(category.label)" }
+            if let context = item.contextLabel { detail += "\nKind of judgment: \(context)" }
             if let decision = item.decision { detail += "\nDecision asked of the reviewer: \(decision)" }
             if let evidence = item.evidence { detail += "\nTechnical evidence: \(evidence)" }
             return ResolvedSubject(

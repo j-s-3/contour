@@ -105,6 +105,16 @@ struct OverviewBriefingTests {
         }
     }
 
+    @Test func reviewerFacingFieldsDropMarkdownBackticksButEvidenceKeepsThem() throws {
+        let json =
+            #"{"headline": "Files show a `<BINARY>` header", "impact": "Unless `-A` is passed.", "decision": "Keep `--binary`?", "evidence": "See `try_new`."}"#
+        let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
+        #expect(item.headline == "Files show a <BINARY> header")
+        #expect(item.impact == "Unless -A is passed.")
+        #expect(item.decision == "Keep --binary?")
+        #expect(item.evidence == "See `try_new`.")
+    }
+
     @Test func blankDecisionsAndUnknownCategoriesDecodeAsAbsent() throws {
         let json = #"{"headline": "H", "decision": "   ", "category": "vibes"}"#
         let item = try JSONDecoder().decode(Consideration.self, from: Data(json.utf8))
@@ -134,8 +144,8 @@ struct OverviewBriefingTests {
 
     @Test func aConsiderationRoundTripsThroughTheCacheEncoding() throws {
         let item = Consideration(
-            id: "a", category: .security, headline: "H", impact: "I", decision: "D?", kind: .question, evidence: "E",
-            relatedIds: ["d1"])
+            id: "a", category: .security, judgmentType: .securityDecision, headline: "H", impact: "I", decision: "D?",
+            kind: .question, evidence: "E", relatedIds: ["d1"])
         let decoded = try JSONDecoder().decode(Consideration.self, from: JSONEncoder().encode(item))
         #expect(decoded == item)
     }
@@ -146,6 +156,49 @@ struct OverviewBriefingTests {
         #expect(full.briefing == "Token failures differ. They fail the run. Decision: Should they?")
         let bare = Consideration(id: "b", headline: "Is this safe?", impact: "")
         #expect(bare.briefing == "Is this safe?")
+    }
+
+    @Test(arguments: [
+        ("potential_problem", JudgmentType.potentialProblem), ("bug", .potentialProblem),
+        ("CONFIRM INTENT", .confirmIntent), ("intentional", .confirmIntent),
+        ("design-decision", .designDecision), ("tradeoff", .designDecision),
+        ("compatibility decision", .compatibilityDecision), ("compatibility", .compatibilityDecision),
+        ("operational_risk", .operationalRisk), ("operations", .operationalRisk),
+        ("security-decision", .securityDecision), ("security", .securityDecision),
+        ("unclear requirement", .unclearRequirement), ("open-question", .unclearRequirement),
+        ("external-dependency", .externalDependency), ("cross-product dependency", .externalDependency),
+    ])
+    func judgmentTypesDecodeLeniently(raw: String, expected: JudgmentType) {
+        #expect(JudgmentType(lenient: raw) == expected)
+    }
+
+    @Test func everyJudgmentTypeHasALabelAndRoundTrips() throws {
+        for type in JudgmentType.allCases {
+            #expect(!type.label.isEmpty)
+            #expect(try JSONDecoder().decode(JudgmentType.self, from: JSONEncoder().encode(type)) == type)
+        }
+        #expect(JudgmentType(lenient: "vibes") == nil)
+    }
+
+    @Test func judgmentTypeDecodesAndAnUnknownOneIsAbsent() throws {
+        let known = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgmentType": "confirm_intent"}"#.utf8))
+        #expect(known.judgmentType == .confirmIntent)
+        let unknown = try JSONDecoder().decode(
+            Consideration.self, from: Data(#"{"headline": "H", "judgmentType": "hunch"}"#.utf8))
+        #expect(unknown.judgmentType == nil)
+    }
+
+    @Test func theContextLabelJoinsCategoryAndJudgmentType() {
+        #expect(
+            Consideration(id: "a", category: .compatibility, judgmentType: .confirmIntent, headline: "H", impact: "")
+                .contextLabel
+                == "Compatibility · Confirm intent")
+        #expect(Consideration(id: "b", category: .security, headline: "H", impact: "").contextLabel == "Security")
+        #expect(
+            Consideration(id: "c", judgmentType: .operationalRisk, headline: "H", impact: "").contextLabel
+                == "Operational risk")
+        #expect(Consideration(id: "d", headline: "H", impact: "").contextLabel == nil)
     }
 
     @Test func theReviewerAskIsTheDecisionWhenThereIsOne() {
