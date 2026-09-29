@@ -16,7 +16,7 @@ enum GraphLinker {
         guard !decisions.isEmpty else { return flows }
         return flows.map { flow in
             guard var behavior = flow.behavior, !behavior.nodes.isEmpty,
-                  behavior.nodes.allSatisfy({ $0.decisionIds.isEmpty })
+                behavior.nodes.allSatisfy({ $0.decisionIds.isEmpty })
             else { return flow }
             let stepRefs = Dictionary(flow.steps.map { ($0.id, $0.refs) }, uniquingKeysWith: { a, _ in a })
             let nodeRefs = behavior.nodes.map { node in node.refs + node.stepIds.flatMap { stepRefs[$0] ?? [] } }
@@ -67,16 +67,18 @@ enum GraphLinker {
         let anyOverlap = scored.contains { $0.evidence.overlaps > 0 }
         let candidates = anyOverlap ? scored.filter { $0.evidence.overlaps > 0 } : scored
         let byId = Dictionary(parts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let ancestors: Set<String> = Set(candidates.flatMap { candidate -> [String] in
-            var chain: [String] = []
-            var parent = candidate.part.parentId
-            while let id = parent, !chain.contains(id) {
-                chain.append(id)
-                parent = byId[id]?.parentId
-            }
-            return chain
-        })
-        return candidates
+        let ancestors: Set<String> = Set(
+            candidates.flatMap { candidate -> [String] in
+                var chain: [String] = []
+                var parent = candidate.part.parentId
+                while let id = parent, !chain.contains(id) {
+                    chain.append(id)
+                    parent = byId[id]?.parentId
+                }
+                return chain
+            })
+        return
+            candidates
             .filter { !ancestors.contains($0.part.id) }
             .sorted { $0.evidence != $1.evidence ? $0.evidence > $1.evidence : $0.offset < $1.offset }
             .map(\.part.id)

@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
@@ -50,7 +51,8 @@ struct SummaryViewRenderTests {
     @Test func rendersRevalidatingAndManyConsiderations() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = (1...8).map {
-            Consideration(id: "c\($0)", question: "Question \($0)?", detail: "Detail \($0)", explanation: "Because \($0).")
+            Consideration(
+                id: "c\($0)", question: "Question \($0)?", detail: "Detail \($0)", explanation: "Because \($0).")
         }
         var analysis = state(.done, complete: true)
         analysis.stages[.judgment] = .running(detail: nil)
@@ -64,7 +66,8 @@ struct SummaryViewRenderTests {
 
     @Test func rendersTheTicketChipAndOtherBehaviorChanges() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.pr.ticket = TicketInfo(kind: .jira, key: "DOC-1", summary: "Reindex", description: "", url: "https://example.com/DOC-1")
+        graph.pr.ticket = TicketInfo(
+            kind: .jira, key: "DOC-1", summary: "Reindex", description: "", url: "https://example.com/DOC-1")
         graph.behaviorChanges.append(BehaviorChange(id: "extra", title: "A second change"))
         #expect(render(summary(graph, AnalysisState(isComplete: true))) != nil)
         graph.pr.ticket?.kind = .github
@@ -82,17 +85,22 @@ struct SummaryViewRenderTests {
         )
         for expanded in [true, false] {
             for resolved in [true, false] {
-                let row = ConsiderationRow(number: 1, item: item, graph: graph, isResolved: resolved,
-                                           isExpanded: expanded, onToggle: {}, onReview: {}, navigate: { _ in })
+                let row = ConsiderationRow(
+                    number: 1, item: item, graph: graph, isResolved: resolved,
+                    isExpanded: expanded, onToggle: {}, onReview: {}, navigate: { _ in })
                 #expect(render(row) != nil)
             }
         }
         let bare = Consideration(id: "d", question: "Q?", detail: "")
-        #expect(render(ConsiderationRow(number: 2, item: bare, graph: graph, isResolved: false, isExpanded: true,
-                                        onToggle: {}, onReview: {}, navigate: { _ in })) != nil)
+        #expect(
+            render(
+                ConsiderationRow(
+                    number: 2, item: bare, graph: graph, isResolved: false, isExpanded: true,
+                    onToggle: {}, onReview: {}, navigate: { _ in })) != nil)
     }
 
     @Test func rendersAnExploreTile() {
-        #expect(render(ExploreTile(title: "Flows", detail: "3 traced", symbol: "arrow.triangle.branch", action: {})) != nil)
+        #expect(
+            render(ExploreTile(title: "Flows", detail: "3 traced", symbol: "arrow.triangle.branch", action: {})) != nil)
     }
 }

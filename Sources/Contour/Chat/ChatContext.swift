@@ -30,7 +30,9 @@ enum ContextExpansion: String, CaseIterable, Hashable, Sendable, Identifiable {
 enum ChatContextBuilder {
     static func availableExpansions(for resolved: ResolvedSubject) -> [ContextExpansion] {
         var out: [ContextExpansion] = []
-        if !resolved.decisionIds.isEmpty, ![.decision, .option].contains(resolved.kind) { out.append(.relatedDecisions) }
+        if !resolved.decisionIds.isEmpty, ![.decision, .option].contains(resolved.kind) {
+            out.append(.relatedDecisions)
+        }
         if !resolved.flowIds.isEmpty, resolved.kind != .flow { out.append(.relatedFlows) }
         if !resolved.refs.isEmpty, resolved.kind != .code { out.append(.implementation) }
         if resolved.kind != .pullRequest { out.append(.entirePR) }
@@ -40,45 +42,67 @@ enum ChatContextBuilder {
     static func suggestions(for resolved: ResolvedSubject) -> [String] {
         switch resolved.kind {
         case .component:
-            return ["Why is this its own part?", "What did this PR change here?", "How does this work?",
-                    "What could go wrong?", "Show me the implementation"]
+            return [
+                "Why is this its own part?", "What did this PR change here?", "How does this work?",
+                "What could go wrong?", "Show me the implementation",
+            ]
         case .relationship:
-            return ["What crosses here, and why?", "What changed about this in the PR?",
-                    "Is this synchronous on purpose?", "Show me where this happens"]
+            return [
+                "What crosses here, and why?", "What changed about this in the PR?",
+                "Is this synchronous on purpose?", "Show me where this happens",
+            ]
         case .decision:
-            return ["Why was this chosen?", "What alternatives were considered?", "What are the risks?",
-                    "Do we really need this?", "Show me the evidence"]
+            return [
+                "Why was this chosen?", "What alternatives were considered?", "What are the risks?",
+                "Do we really need this?", "Show me the evidence",
+            ]
         case .option:
-            return ["Why did they choose this?", "What if they'd picked the other option?",
-                    "What does this cost?", "Show me where this is decided"]
+            return [
+                "Why did they choose this?", "What if they'd picked the other option?",
+                "What does this cost?", "Show me where this is decided",
+            ]
         case .tradeoff:
-            return ["Why did the PR choose this side?", "What would break if we moved toward the other side?",
-                    "How likely is the downside in practice?", "How much does this matter for a normal file versus a pipe?",
-                    "Show me the evidence"]
+            return [
+                "Why did the PR choose this side?", "What would break if we moved toward the other side?",
+                "How likely is the downside in practice?", "How much does this matter for a normal file versus a pipe?",
+                "Show me the evidence",
+            ]
         case .flow:
-            return ["Walk me through this", "Which paths can execution take?", "What did this PR change?",
-                    "Where can this fail?", "Show me the important code"]
+            return [
+                "Walk me through this", "Which paths can execution take?", "What did this PR change?",
+                "Where can this fail?", "Show me the important code",
+            ]
         case .flowStep:
             if case .flowNode = resolved.subject {
-                return ["What happens here?", "What changed at this step?",
-                        "Can this behave differently depending on the input?", "Where is this implemented?",
-                        "Why does it work this way?"]
+                return [
+                    "What happens here?", "What changed at this step?",
+                    "Can this behave differently depending on the input?", "Where is this implemented?",
+                    "Why does it work this way?",
+                ]
             }
-            return ["What happens here?", "What can fail at this step?", "What calls this?",
-                    "Show me the code for this step"]
+            return [
+                "What happens here?", "What can fail at this step?", "What calls this?",
+                "Show me the code for this step",
+            ]
         case .behavior, .stage:
-            return ["Why did this change?", "What happens differently now?", "What could this break?",
-                    "Show me the implementation"]
+            return [
+                "Why did this change?", "What happens differently now?", "What could this break?",
+                "Show me the implementation",
+            ]
         case .statement:
             return ["Is this actually true?", "What's the evidence?", "What does this affect?"]
         case .consideration:
-            return ["Why does this matter?", "How likely is this?", "How would I verify it?",
-                    "What would a fix look like?", "Show me the evidence"]
+            return [
+                "Why does this matter?", "How likely is this?", "How would I verify it?",
+                "What would a fix look like?", "Show me the evidence",
+            ]
         case .entryPoint:
             return ["What triggers this?", "What happens next?", "Who can call this?"]
         case .code:
-            return ["Why this line?", "What does this code do?", "What calls this?",
-                    "What changed here?"]
+            return [
+                "Why this line?", "What does this code do?", "What calls this?",
+                "What changed here?",
+            ]
         case .pullRequest:
             return ["Summarize this PR", "What's the riskiest part?", "What should I review first?"]
         }
@@ -117,7 +141,9 @@ enum ChatContextBuilder {
         for (depth, level) in resolved.lineage.enumerated() {
             out += String(repeating: "  ", count: depth) + "- \(level)\n"
         }
-        out += String(repeating: "  ", count: resolved.lineage.count) + "- **\(resolved.title)** ← selected (\(resolved.kind.label))\n"
+        out +=
+            String(repeating: "  ", count: resolved.lineage.count)
+            + "- **\(resolved.title)** ← selected (\(resolved.kind.label))\n"
         if let token = linkToken(for: resolved.subject) { out += "  Link it as \(token).\n" }
         out += "\n"
 
@@ -131,7 +157,8 @@ enum ChatContextBuilder {
             out += "## Code references for this context\n"
             out += "Read these with your file tools when the question needs implementation detail.\n"
             for ref in refs.prefix(20) {
-                out += "- `\(ref.display)`\(ref.side == .base ? " (base side: read with the base commit, it may not exist at head)" : "")\n"
+                out +=
+                    "- `\(ref.display)`\(ref.side == .base ? " (base side: read with the base commit, it may not exist at head)" : "")\n"
             }
             out += "\n"
         }
@@ -160,7 +187,9 @@ enum ChatContextBuilder {
         }
     }
 
-    private static func neighbors(graph: PRGraph, resolved: ResolvedSubject, expansions: Set<ContextExpansion>) -> String {
+    private static func neighbors(graph: PRGraph, resolved: ResolvedSubject, expansions: Set<ContextExpansion>)
+        -> String
+    {
         var out = ""
         let components = resolved.componentIds.compactMap(graph.component).filter { c in
             if case .component(let id) = resolved.subject { return c.id != id }
@@ -191,7 +220,8 @@ enum ChatContextBuilder {
         if !decisions.isEmpty {
             out += "## Related decisions\n"
             for d in decisions.prefix(8) {
-                out += expansions.contains(.relatedDecisions)
+                out +=
+                    expansions.contains(.relatedDecisions)
                     ? "[[decision:\(d.id)]] " + PRGraph.describe(d) + "\n\n"
                     : "- \(d.title) [[decision:\(d.id)]]: \(d.decision.text)\n"
             }
@@ -214,7 +244,8 @@ enum ChatContextBuilder {
         if !flows.isEmpty {
             out += "## Related flows\n"
             for f in flows.prefix(6) {
-                out += expansions.contains(.relatedFlows)
+                out +=
+                    expansions.contains(.relatedFlows)
                     ? "[[flow:\(f.id)]] " + PRGraph.describe(f, graph: graph) + "\n\n"
                     : "- \(graph.flowOutline(f)) [[flow:\(f.id)]]\n"
             }
@@ -223,7 +254,8 @@ enum ChatContextBuilder {
 
         let considerations = graph.thingsToThinkAbout.filter { item in
             if case .consideration(let id) = resolved.subject, id == item.id { return false }
-            return !Set(item.relatedIds).isDisjoint(with: resolved.componentIds + resolved.decisionIds + resolved.flowIds + resolved.edgeIds)
+            return !Set(item.relatedIds).isDisjoint(
+                with: resolved.componentIds + resolved.decisionIds + resolved.flowIds + resolved.edgeIds)
         }
         if !considerations.isEmpty {
             out += "## Open review questions touching this\n"
@@ -235,7 +267,9 @@ enum ChatContextBuilder {
 
     private static func outline(_ graph: PRGraph) -> String {
         var out = "## Whole review model (outline)\n"
-        for change in graph.behaviorChanges { out += "- " + PRGraph.describe(change).replacingOccurrences(of: "\n", with: "\n  ") + "\n" }
+        for change in graph.behaviorChanges {
+            out += "- " + PRGraph.describe(change).replacingOccurrences(of: "\n", with: "\n  ") + "\n"
+        }
         out += "\n### Architecture\n"
         if let assessment = graph.architecture {
             out += "Impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)\n"

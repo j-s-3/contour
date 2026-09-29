@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct DiagramModeControlTests {

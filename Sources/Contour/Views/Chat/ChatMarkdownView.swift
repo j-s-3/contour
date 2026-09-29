@@ -60,10 +60,11 @@ struct ChatMarkdownView: View {
 
     nonisolated static func attributedText(for s: String, linkify: (String) -> String) -> AttributedString {
         let linked = linkify(s)
-        return (try? AttributedString(
-            markdown: linked,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(s)
+        return
+            (try? AttributedString(
+                markdown: linked,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )) ?? AttributedString(s)
     }
 
     nonisolated static func blocks(_ text: String) -> [Block] {
@@ -88,7 +89,10 @@ struct ChatMarkdownView: View {
                 }
                 continue
             }
-            if code != nil { code?.append(raw); continue }
+            if code != nil {
+                code?.append(raw)
+                continue
+            }
 
             if line.isEmpty {
                 flush()
@@ -99,9 +103,12 @@ struct ChatMarkdownView: View {
                 flush()
                 blocks.append(.bullet(String(line.dropFirst(2))))
             } else if let dot = line.firstIndex(of: "."), line[..<dot].allSatisfy(\.isNumber), !line[..<dot].isEmpty,
-                      line[line.index(after: dot)...].hasPrefix(" ") {
+                line[line.index(after: dot)...].hasPrefix(" ")
+            {
                 flush()
-                blocks.append(.numbered(String(line[...dot]), line[line.index(after: dot)...].trimmingCharacters(in: .whitespaces)))
+                blocks.append(
+                    .numbered(
+                        String(line[...dot]), line[line.index(after: dot)...].trimmingCharacters(in: .whitespaces)))
             } else {
                 paragraph.append(line)
             }

@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct PRDropTargetTests {
@@ -21,7 +22,8 @@ struct PRDropTargetTests {
     }
 
     @Test func aTextProviderWithSurroundingProseFindsTheLink() async {
-        let provider = NSItemProvider(object: "please review https://github.com/sharkdp/bat/pull/3877 today" as NSString)
+        let provider = NSItemProvider(
+            object: "please review https://github.com/sharkdp/bat/pull/3877 today" as NSString)
         let result = await PRDropTarget.loadPullRequest(from: provider)
         #expect(result == "https://github.com/sharkdp/bat/pull/3877")
     }

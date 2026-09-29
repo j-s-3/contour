@@ -46,8 +46,10 @@ struct PRGlance: Codable, Hashable, Sendable {
             guard ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].contains(state) else { continue }
             stance[review.author] = state
         }
-        return (stance.values.filter { $0 == "APPROVED" }.count,
-                stance.values.filter { $0 == "CHANGES_REQUESTED" }.count)
+        return (
+            stance.values.filter { $0 == "APPROVED" }.count,
+            stance.values.filter { $0 == "CHANGES_REQUESTED" }.count
+        )
     }
 
     static func date(iso8601: String?) -> Date? {
@@ -65,7 +67,7 @@ extension PRSummary {
     func glanceFacts(now: Date = Date()) -> [GlanceFact] {
         var facts = [
             GlanceFact(text: Self.count(filesChanged, "file", "files")),
-            GlanceFact(text: "+\(additions) \u{2212}\(deletions)")
+            GlanceFact(text: "+\(additions) \u{2212}\(deletions)"),
         ]
         guard let glance else { return facts }
 
@@ -94,7 +96,8 @@ extension PRSummary {
         if let created = glance.createdAt {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .full
-            facts.append(GlanceFact(text: "opened " + formatter.localizedString(for: min(created, now), relativeTo: now)))
+            facts.append(
+                GlanceFact(text: "opened " + formatter.localizedString(for: min(created, now), relativeTo: now)))
         }
         return facts
     }

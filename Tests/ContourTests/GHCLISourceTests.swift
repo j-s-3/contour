@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Contour
 
 struct GHCLISourceTests {
@@ -19,10 +20,14 @@ struct GHCLISourceTests {
             "additions": 10, "deletions": 2, "changedFiles": 3,
             "files": [["path": "src/a.swift"], ["path": "src/b.swift"]],
             "commits": [
-                ["oid": "c1", "messageHeadline": "msg1", "messageBody": "",
-                 "authors": [["login": "alice"]]],
-                ["oid": "c2", "messageHeadline": "msg2", "messageBody": "details",
-                 "authors": []],
+                [
+                    "oid": "c1", "messageHeadline": "msg1", "messageBody": "",
+                    "authors": [["login": "alice"]],
+                ],
+                [
+                    "oid": "c2", "messageHeadline": "msg2", "messageBody": "details",
+                    "authors": [],
+                ],
             ],
             "comments": [
                 ["body": "Please fix", "author": ["login": "bob"]],
@@ -59,7 +64,9 @@ struct GHCLISourceTests {
     }
 
     @Test func parsePRViewRejectsMissingRequiredFields() {
-        for key in ["url", "number", "title", "author", "state", "headRefName", "baseRefName", "headRefOid", "baseRefOid"] {
+        for key in [
+            "url", "number", "title", "author", "state", "headRefName", "baseRefName", "headRefOid", "baseRefOid",
+        ] {
             let payload = json(fullPRView(removing: [key]))
             #expect(throws: GitHubServiceError.self, "missing \(key) should be rejected") {
                 try GHCLISource.parsePRView(json: payload)
@@ -118,7 +125,9 @@ struct GHCLISourceTests {
         #expect(context.commits.isEmpty)
         #expect(context.comments.isEmpty)
         #expect(context.reviews.isEmpty)
-        #expect(context.headCloneURL == "https://github.com/acme/shop.git", "falls back to the base owner/repo when no headRepository")
+        #expect(
+            context.headCloneURL == "https://github.com/acme/shop.git",
+            "falls back to the base owner/repo when no headRepository")
         #expect(context.glance.checks == nil, "no statusCheckRollup means no CI to report")
         #expect(context.glance.unresolvedThreads == nil)
         #expect(context.glance.createdAt == nil)
@@ -142,9 +151,17 @@ struct GHCLISourceTests {
 
     @Test func parseUnresolvedThreadCountCountsOnlyThreadsThatArentResolved() {
         let payload: [String: Any] = [
-            "data": ["repository": ["pullRequest": ["reviewThreads": ["nodes": [
-                ["isResolved": true], ["isResolved": false], ["isResolved": false],
-            ]]]]],
+            "data": [
+                "repository": [
+                    "pullRequest": [
+                        "reviewThreads": [
+                            "nodes": [
+                                ["isResolved": true], ["isResolved": false], ["isResolved": false],
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ]
         #expect(GHCLISource.parseUnresolvedThreadCount(json: json(payload)) == 2)
     }
@@ -210,8 +227,9 @@ struct GHCLISourceTests {
             context.reviews == ["grace: no state", "someone: no author"],
             "a non-empty body keeps a review in the text list even without state or author"
         )
-        #expect(context.glance.approvals == 0 && context.glance.changesRequested == 0,
-                "neither review has both an author login and a state, so the tally counts neither")
+        #expect(
+            context.glance.approvals == 0 && context.glance.changesRequested == 0,
+            "neither review has both an author login and a state, so the tally counts neither")
     }
 
     @Test func fetchContextRejectsANonPRURLWithoutShellingOut() async {

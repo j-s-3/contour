@@ -14,7 +14,8 @@ struct JiraTracker: IssueTracker {
     private static let ticketKeyPattern = try! NSRegularExpression(pattern: #"\b([A-Z][A-Z0-9]{1,9}-[0-9]+)\b"#)
 
     static func ticketKey(in context: RawPRContext) -> String? {
-        let candidates = [context.title, context.body, context.headRefName, context.baseRefName]
+        let candidates =
+            [context.title, context.body, context.headRefName, context.baseRefName]
             + context.commits.map(\.message)
         for text in candidates {
             if let key = firstMatch(in: text) { return key }
@@ -25,7 +26,7 @@ struct JiraTracker: IssueTracker {
     private static func firstMatch(in text: String) -> String? {
         let range = NSRange(text.startIndex..., in: text)
         guard let match = ticketKeyPattern.firstMatch(in: text, range: range),
-              let matchRange = Range(match.range(at: 1), in: text)
+            let matchRange = Range(match.range(at: 1), in: text)
         else { return nil }
         return String(text[matchRange])
     }
@@ -50,9 +51,9 @@ struct JiraTracker: IssueTracker {
 
     static func parseWorkItemJSON(_ jsonString: String) -> ParsedWorkItem? {
         guard let data = jsonString.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let fields = obj["fields"] as? [String: Any],
-              let summary = fields["summary"] as? String
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let fields = obj["fields"] as? [String: Any],
+            let summary = fields["summary"] as? String
         else { return nil }
 
         let description = (fields["description"] as? [String: Any]).map(Self.flattenADF) ?? ""

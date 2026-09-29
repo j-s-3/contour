@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class CorpusRunTests: XCTestCase {
@@ -34,8 +35,9 @@ final class CorpusRunTests: XCTestCase {
     }
 
     func testCorpusRun() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
-                          "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + model calls, one full run per corpus PR).")
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
+            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + model calls, one full run per corpus PR).")
 
         let env = ProcessInfo.processInfo.environment
         let harness = env["CONTOUR_HARNESS"].flatMap(HarnessID.init(rawValue:)) ?? .claude
@@ -47,9 +49,10 @@ final class CorpusRunTests: XCTestCase {
         let corpus = try JSONDecoder().decode([CorpusEntry].self, from: Data(contentsOf: corpusURL))
         XCTAssertFalse(corpus.isEmpty, "the corpus is empty — nothing to run")
 
-        let resultsURL = env["CONTOUR_CORPUS_RESULTS"].map { URL(fileURLWithPath: $0) }
+        let resultsURL =
+            env["CONTOUR_CORPUS_RESULTS"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.temporaryDirectory
-                .appendingPathComponent("contour-corpus-results-\(Int(Date().timeIntervalSince1970)).jsonl")
+            .appendingPathComponent("contour-corpus-results-\(Int(Date().timeIntervalSince1970)).jsonl")
         _ = FileManager.default.createFile(atPath: resultsURL.path, contents: nil)
         print("=== Corpus run: \(corpus.count) PR(s), harness: \(harness.rawValue), github: \(access.rawValue) ===")
         print("Results file: \(resultsURL.path)")
@@ -57,12 +60,15 @@ final class CorpusRunTests: XCTestCase {
         for (index, entry) in corpus.enumerated() {
             print("--- [\(index + 1)/\(corpus.count)] \(entry.url) ---")
             let record = await Self.run(entry, harness: harness, access: access)
-            print("    outcome: \(record.outcome), \(record.totalDurationSeconds.rounded())s, "
-                + "\(record.decisionsCount) decisions, \(record.componentsCount) components, \(record.flowsCount) flows")
+            print(
+                "    outcome: \(record.outcome), \(record.totalDurationSeconds.rounded())s, "
+                    + "\(record.decisionsCount) decisions, \(record.componentsCount) components, \(record.flowsCount) flows"
+            )
             Self.append(record, to: resultsURL)
         }
 
-        let lineCount = (try? String(contentsOf: resultsURL, encoding: .utf8))?
+        let lineCount =
+            (try? String(contentsOf: resultsURL, encoding: .utf8))?
             .split(separator: "\n", omittingEmptySubsequences: true).count ?? 0
         XCTAssertEqual(lineCount, corpus.count, "expected one result line per corpus entry")
     }
@@ -71,10 +77,11 @@ final class CorpusRunTests: XCTestCase {
         let started = Date()
 
         guard (try? GitHubService.parse(prURL: entry.url)) != nil else {
-            return PRRecord(url: entry.url, reason: entry.reason, startedAt: started,
-                            totalDurationSeconds: Date().timeIntervalSince(started), outcome: "error",
-                            fatalMessage: "couldn't parse as a GitHub PR URL", stages: [], milestones: [:],
-                            decisionsCount: 0, componentsCount: 0, flowsCount: 0)
+            return PRRecord(
+                url: entry.url, reason: entry.reason, startedAt: started,
+                totalDurationSeconds: Date().timeIntervalSince(started), outcome: "error",
+                fatalMessage: "couldn't parse as a GitHub PR URL", stages: [], milestones: [:],
+                decisionsCount: 0, componentsCount: 0, flowsCount: 0)
         }
 
         var metrics = AnalysisMetrics(pr: entry.url, startedAt: started)

@@ -1,13 +1,18 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct FlowBehaviorTests {
     private func fixtureGraph() throws -> PRGraph {
-        let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
-        let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
-        let flows = try StageDecoding.decode(StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows))
-        let judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
+        let arch = try StageDecoding.decode(
+            StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
+        let decisions = try StageDecoding.decode(
+            StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
+        let flows = try StageDecoding.decode(
+            StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows))
+        let judgment = try StageDecoding.decode(
+            StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = arch.components
         graph.architectureEdges = arch.edges
@@ -20,19 +25,19 @@ struct FlowBehaviorTests {
 
     @Test func aMalformedStageOrDanglingEdgeDropsOnlyItself() throws {
         let json = """
-        {"id": "f", "title": "Open a file", "behavior": {
-          "summary": "bat samples the input and classifies it.",
-          "nodes": [
-            {"id": "t", "label": "Open a file", "kind": "trigger"},
-            {"id": "s", "label": "Inspect sample", "kind": "teleport", "change": "changed", "before": "first line", "after": "up to 1 KB"},
-            {"label": "no id"}
-          ],
-          "edges": [
-            {"fromId": "t", "toId": "s", "label": "  "},
-            {"fromId": "s", "toId": "missing"}
-          ]
-        }}
-        """
+            {"id": "f", "title": "Open a file", "behavior": {
+              "summary": "bat samples the input and classifies it.",
+              "nodes": [
+                {"id": "t", "label": "Open a file", "kind": "trigger"},
+                {"id": "s", "label": "Inspect sample", "kind": "teleport", "change": "changed", "before": "first line", "after": "up to 1 KB"},
+                {"label": "no id"}
+              ],
+              "edges": [
+                {"fromId": "t", "toId": "s", "label": "  "},
+                {"fromId": "s", "toId": "missing"}
+              ]
+            }}
+            """
         let flow = try JSONDecoder().decode(FlowNode.self, from: Data(json.utf8))
         let behavior = try #require(flow.behavior)
         #expect(behavior.nodes.map(\.id) == ["t", "s"])
@@ -43,7 +48,8 @@ struct FlowBehaviorTests {
     }
 
     @Test func aBehaviorWithNoStagesFallsBackToTheCondensedOne() throws {
-        let json = #"{"id": "f", "title": "x", "behavior": {"nodes": []}, "storySteps": [{"text": "Do it", "provenance": "fact"}]}"#
+        let json =
+            #"{"id": "f", "title": "x", "behavior": {"nodes": []}, "storySteps": [{"text": "Do it", "provenance": "fact"}]}"#
         let flow = try JSONDecoder().decode(FlowNode.self, from: Data(json.utf8))
         #expect(flow.behavior == nil)
     }
@@ -54,13 +60,13 @@ struct FlowBehaviorTests {
                 FlowBehaviorNode(id: "a", label: "Input", kind: .trigger),
                 FlowBehaviorNode(id: "old", label: "Inspect first line", change: .removed),
                 FlowBehaviorNode(id: "new", label: "Inspect buffered sample", change: .new),
-                FlowBehaviorNode(id: "c", label: "Classify")
+                FlowBehaviorNode(id: "c", label: "Classify"),
             ],
             edges: [
                 FlowBehaviorEdge(fromId: "a", toId: "old", change: .removed),
                 FlowBehaviorEdge(fromId: "old", toId: "c", change: .removed),
                 FlowBehaviorEdge(fromId: "a", toId: "new", change: .new),
-                FlowBehaviorEdge(fromId: "new", toId: "c", change: .new)
+                FlowBehaviorEdge(fromId: "new", toId: "c", change: .new),
             ]
         )
         #expect(behavior.visible(in: .before).nodes.map(\.id) == ["a", "old", "c"])
@@ -138,8 +144,12 @@ struct FlowBehaviorTests {
     @Test func aReviewQuestionAppearsOnlyInTheFlowItConcerns() throws {
         let graph = try fixtureGraph()
         let question = try pipeQuestion(graph)
-        #expect(graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
-        #expect(!graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id })
+        #expect(
+            graph.annotations(for: try stdinFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
+        #expect(
+            !graph.annotations(for: try fileFlow(graph)).contains { $0.kind == .question && $0.targetId == question.id }
+        )
     }
 
     @Test func anAnchoredQuestionSitsExactlyWhereTheJudgmentStagePutIt() throws {
@@ -151,9 +161,12 @@ struct FlowBehaviorTests {
             nodes: [
                 FlowBehaviorNode(id: "pipe", label: "Pipe input", kind: .trigger),
                 FlowBehaviorNode(id: "inspect", label: "Inspect buffered data", change: .changed),
-                FlowBehaviorNode(id: "classify", label: "Classify")
+                FlowBehaviorNode(id: "classify", label: "Classify"),
             ],
-            edges: [FlowBehaviorEdge(fromId: "pipe", toId: "inspect"), FlowBehaviorEdge(fromId: "inspect", toId: "classify")]
+            edges: [
+                FlowBehaviorEdge(fromId: "pipe", toId: "inspect"),
+                FlowBehaviorEdge(fromId: "inspect", toId: "classify"),
+            ]
         )
         let q = try #require(graph.pr.considerations?.firstIndex { $0.id == question.id })
         graph.pr.considerations?[q].flowAnchors = [FlowAnchor(flowId: stdin.id, nodeId: "classify")]
@@ -183,7 +196,8 @@ struct FlowBehaviorTests {
             let trigger = try #require(layout.node("publish"))
             #expect(layout.nodes.allSatisfy { $0.frame.minY >= trigger.frame.minY })
             for edge in behavior.edges {
-                let a = try #require(layout.node(edge.fromId)), b = try #require(layout.node(edge.toId))
+                let a = try #require(layout.node(edge.fromId))
+                let b = try #require(layout.node(edge.toId))
                 #expect(b.frame.minY > a.frame.maxY, "\(edge.id) should point down in \(mode)")
                 let placed = try #require(layout.edges.first { $0.id == edge.id })
                 #expect(placed.points.first == CGPoint(x: a.frame.midX, y: a.frame.maxY))
@@ -194,7 +208,8 @@ struct FlowBehaviorTests {
 
     @Test func branchesSitSideBySideAndNothingOverlaps() throws {
         let (layout, _) = try sampleLayout(.delta)
-        let yes = try #require(layout.node("searchable")), no = try #require(layout.node("retry"))
+        let yes = try #require(layout.node("searchable"))
+        let no = try #require(layout.node("retry"))
         #expect(yes.frame.minY == no.frame.minY)
         #expect(!yes.frame.intersects(no.frame))
         let branch = try #require(layout.node("ok"))
@@ -222,8 +237,9 @@ struct FlowBehaviorTests {
         let flow = try #require(graph.flow("publish-index-flow"))
         let behavior = graph.behavior(for: flow).visible(in: .delta)
         let notes = (0..<5).map { i in
-            FlowAnnotation(kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
-                           text: "A note long enough to wrap onto a second line in the diagram \(i)")
+            FlowAnnotation(
+                kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
+                text: "A note long enough to wrap onto a second line in the diagram \(i)")
         }
         let cap = BehaviorDiagramLayoutEngine.maxNotesPerStage
         let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes)
@@ -239,11 +255,13 @@ struct FlowBehaviorTests {
         let flow = try #require(graph.flow("publish-index-flow"))
         let behavior = graph.behavior(for: flow).visible(in: .delta)
         let notes = (0..<5).map { i in
-            FlowAnnotation(kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
-                           text: "A note long enough to wrap onto a second line in the diagram \(i)")
+            FlowAnnotation(
+                kind: i < 2 ? .decision : .question, targetId: "note-\(i)", nodeId: "queue",
+                text: "A note long enough to wrap onto a second line in the diagram \(i)")
         }
         let width: CGFloat = 1500
-        let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes, availableWidth: width)
+        let layout = BehaviorDiagramLayoutEngine.layout(
+            behavior, mode: .delta, annotations: notes, availableWidth: width)
         #expect(layout.annotations.count == notes.count)
         #expect(layout.overflow.isEmpty)
         #expect(layout.annotations.allSatisfy { $0.frame.width > BehaviorDiagramLayoutEngine.annotationWidth })
@@ -284,7 +302,7 @@ struct FlowBehaviorTests {
                 FlowBehaviorNode(id: "model", label: "Analysis behavior model?", kind: .decision, change: .new),
                 FlowBehaviorNode(id: "condense", label: "Condense from story steps", change: .new),
                 FlowBehaviorNode(id: "pin", label: "Pin decisions and questions", change: .new),
-                FlowBehaviorNode(id: "draw", label: "Draw the behavior diagram", change: .new)
+                FlowBehaviorNode(id: "draw", label: "Draw the behavior diagram", change: .new),
             ],
             edges: [
                 FlowBehaviorEdge(fromId: "open", toId: "list", change: .removed),
@@ -292,32 +310,42 @@ struct FlowBehaviorTests {
                 FlowBehaviorEdge(fromId: "model", toId: "condense", label: "No (older graph)", change: .new),
                 FlowBehaviorEdge(fromId: "model", toId: "pin", label: "Yes", change: .new),
                 FlowBehaviorEdge(fromId: "condense", toId: "pin", change: .new),
-                FlowBehaviorEdge(fromId: "pin", toId: "draw", change: .new)
+                FlowBehaviorEdge(fromId: "pin", toId: "draw", change: .new),
             ]
         )
         let notes = [("model", 1), ("condense", 3), ("pin", 4)].flatMap { node, count in
             (0..<count).map { i in
-                FlowAnnotation(kind: i == 0 ? .decision : .question, targetId: "\(node)-\(i)", nodeId: node,
-                               text: "Could the inferred diagram for older graphs mislead reviewers?")
+                FlowAnnotation(
+                    kind: i == 0 ? .decision : .question, targetId: "\(node)-\(i)", nodeId: node,
+                    text: "Could the inferred diagram for older graphs mislead reviewers?")
             }
         }
         for mode in DiagramMode.allCases {
             for width: CGFloat? in [nil, 900, 1500] {
                 let visible = behavior.visible(in: mode)
                 let ids = Set(visible.nodes.map(\.id))
-                let layout = BehaviorDiagramLayoutEngine.layout(visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) },
-                                                                availableWidth: width)
+                let layout = BehaviorDiagramLayoutEngine.layout(
+                    visible, mode: mode, annotations: notes.filter { ids.contains($0.nodeId) },
+                    availableWidth: width)
                 let obstacles = layout.annotations.map { ($0.id, $0.frame) } + layout.overflow.map { ($0.id, $0.frame) }
                 for placed in layout.edges {
-                    let stages = layout.nodes.filter { $0.id != placed.edge.fromId && $0.id != placed.edge.toId }.map { ($0.id, $0.frame) }
+                    let stages = layout.nodes.filter { $0.id != placed.edge.fromId && $0.id != placed.edge.toId }.map {
+                        ($0.id, $0.frame)
+                    }
                     for (p, q) in zip(placed.points, placed.points.dropFirst()) {
-                        let segment = CGRect(x: min(p.x, q.x), y: min(p.y, q.y), width: abs(p.x - q.x), height: abs(p.y - q.y))
-                            .insetBy(dx: -0.5, dy: -0.5)
+                        let segment = CGRect(
+                            x: min(p.x, q.x), y: min(p.y, q.y), width: abs(p.x - q.x), height: abs(p.y - q.y)
+                        )
+                        .insetBy(dx: -0.5, dy: -0.5)
                         for (id, frame) in obstacles + stages {
-                            #expect(!segment.intersects(frame), "\(placed.id) crosses \(id) in \(mode) at \(String(describing: width))")
+                            #expect(
+                                !segment.intersects(frame),
+                                "\(placed.id) crosses \(id) in \(mode) at \(String(describing: width))")
                         }
                     }
-                    #expect(placed.points.allSatisfy { $0.x >= 0 && $0.x <= layout.size.width }, "\(placed.id) leaves the canvas in \(mode)")
+                    #expect(
+                        placed.points.allSatisfy { $0.x >= 0 && $0.x <= layout.size.width },
+                        "\(placed.id) leaves the canvas in \(mode)")
                 }
             }
         }
@@ -358,12 +386,15 @@ struct FlowBehaviorTests {
 
     @Test func flowsThatHandOffToASharedStageAreFound() {
         var graph = ContourSampleData.publishTriggeredReindex
-        let shared = FlowNode(id: "reconcile", title: "Reconcile repository",
-                              behavior: FlowBehavior(nodes: [FlowBehaviorNode(id: "t", label: "Reconcile", kind: .trigger)]))
-        let upload = FlowNode(id: "upload", title: "Upload asset", behavior: FlowBehavior(nodes: [
-            FlowBehaviorNode(id: "t", label: "Upload asset", kind: .trigger),
-            FlowBehaviorNode(id: "r", label: "Reconcile repository", kind: .subflow, subflowId: "reconcile")
-        ]))
+        let shared = FlowNode(
+            id: "reconcile", title: "Reconcile repository",
+            behavior: FlowBehavior(nodes: [FlowBehaviorNode(id: "t", label: "Reconcile", kind: .trigger)]))
+        let upload = FlowNode(
+            id: "upload", title: "Upload asset",
+            behavior: FlowBehavior(nodes: [
+                FlowBehaviorNode(id: "t", label: "Upload asset", kind: .trigger),
+                FlowBehaviorNode(id: "r", label: "Reconcile repository", kind: .subflow, subflowId: "reconcile"),
+            ]))
         graph.flows += [shared, upload]
         #expect(graph.flowsConverging(into: "reconcile").map(\.id) == ["upload"])
         #expect(graph.flowsConverging(into: "upload").isEmpty)

@@ -39,7 +39,8 @@ struct DecisionsView: View {
 
     var body: some View {
         if graph.decisions.isEmpty {
-            ContentUnavailableView("No standout decisions", systemImage: "questionmark.diamond",
+            ContentUnavailableView(
+                "No standout decisions", systemImage: "questionmark.diamond",
                 description: Text("This PR didn't surface a choice a reviewer would need to judge."))
         } else {
             ScrollViewReader { proxy in
@@ -109,9 +110,11 @@ struct DecisionsView: View {
         let others = total - toReview
         if toReview == 0 {
             return "No choice in this PR stood out as needing your judgment. "
-                + (others == 1 ? "The one decision identified is below." : "The \(others) decisions identified are below.")
+                + (others == 1
+                    ? "The one decision identified is below." : "The \(others) decisions identified are below.")
         }
-        let lead = toReview == 1
+        let lead =
+            toReview == 1
             ? "1 choice in this PR appears worth your attention"
             : "\(toReview) choices in this PR appear worth your attention"
         let found = others > 0 ? ", out of \(total) identified" : ""
@@ -158,7 +161,9 @@ struct DecisionsView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Decisions the analysis found but judged less in need of your attention — you can add any of them to review")
+                .help(
+                    "Decisions the analysis found but judged less in need of your attention — you can add any of them to review"
+                )
             }
 
             if otherShown {
@@ -185,7 +190,10 @@ struct DecisionsView: View {
             isExpanded: expandedIds.contains(decision.id),
             onAddToReview: { setToReview(decision, true) },
             onToggleExpanded: { toggleExpanded(decision.id) },
-            onSelect: { selectedId = decision.id; keyboardFocused = true }
+            onSelect: {
+                selectedId = decision.id
+                keyboardFocused = true
+            }
         )
         .id(decision.id)
     }
@@ -217,7 +225,10 @@ struct DecisionsView: View {
             onSetNote: { onSetNote(decision.id, $0) },
             onToggleExpanded: { toggleExpanded(decision.id) },
             onNotWorthReviewing: { setToReview(decision, false) },
-            onSelect: { selectedId = decision.id; keyboardFocused = true }
+            onSelect: {
+                selectedId = decision.id
+                keyboardFocused = true
+            }
         )
         .id(decision.id)
     }
@@ -225,8 +236,9 @@ struct DecisionsView: View {
     @ViewBuilder
     private var oneAtATime: some View {
         if let current = selected, let index = sequence.firstIndex(where: { $0.id == current.id }) {
-            let position = DecisionsViewLogic.oneAtATimeStep(index: index, count: sequence.count,
-                                                             otherCount: other.count, otherShown: otherShown)
+            let position = DecisionsViewLogic.oneAtATimeStep(
+                index: index, count: sequence.count,
+                otherCount: other.count, otherShown: otherShown)
             VStack(spacing: 18) {
                 Text(verbatim: position.label)
                     .font(.callout.weight(.medium))
@@ -234,8 +246,12 @@ struct DecisionsView: View {
                     .foregroundStyle(.secondary)
                 item(current)
                 HStack {
-                    Button { step(-1) } label: { Label("Previous", systemImage: "arrow.left") }
-                        .disabled(!position.canGoPrevious)
+                    Button {
+                        step(-1)
+                    } label: {
+                        Label("Previous", systemImage: "arrow.left")
+                    }
+                    .disabled(!position.canGoPrevious)
                     Spacer()
                     if position.offersOtherDecisions {
                         Button("Other decisions (\(other.count))") {
@@ -245,8 +261,13 @@ struct DecisionsView: View {
                         .buttonStyle(.link)
                         Spacer()
                     }
-                    Button { step(1) } label: {
-                        HStack(spacing: 4) { Text("Next"); Image(systemName: "arrow.right") }
+                    Button {
+                        step(1)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Next")
+                            Image(systemName: "arrow.right")
+                        }
                     }
                     .disabled(!position.canGoNext)
                 }
@@ -340,7 +361,9 @@ struct DecisionsView: View {
         guard turningOn else { return }
         switch state {
         case .accepted:
-            guard let nextId = DecisionsViewLogic.nextAfterAccepting(sequence: sequence, decisionId: decision.id) else { return }
+            guard let nextId = DecisionsViewLogic.nextAfterAccepting(sequence: sequence, decisionId: decision.id) else {
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 selectedId = nextId
                 if let proxy { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(nextId) } }

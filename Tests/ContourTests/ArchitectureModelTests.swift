@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct ArchitectureModelTests {
@@ -7,50 +8,64 @@ struct ArchitectureModelTests {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = [
             ComponentNode(id: "input", title: "Input", changeKind: .unchanged),
-            ComponentNode(id: "inspection", title: "Content Inspection", changeKind: .changed,
-                          delta: ResponsibilityDelta(before: "first line", after: "buffered sample")),
-            ComponentNode(id: "classification", title: "Text / binary classification", changeKind: .changed,
-                          level: .component, parentId: "inspection"),
-            ComponentNode(id: "encoding", title: "Encoding detection", changeKind: .unchanged,
-                          level: .component, parentId: "inspection"),
-            ComponentNode(id: "try-new", title: "InputReader::try_new", changeKind: .changed,
-                          level: .implementation, parentId: "classification"),
+            ComponentNode(
+                id: "inspection", title: "Content Inspection", changeKind: .changed,
+                delta: ResponsibilityDelta(before: "first line", after: "buffered sample")),
+            ComponentNode(
+                id: "classification", title: "Text / binary classification", changeKind: .changed,
+                level: .component, parentId: "inspection"),
+            ComponentNode(
+                id: "encoding", title: "Encoding detection", changeKind: .unchanged,
+                level: .component, parentId: "inspection"),
+            ComponentNode(
+                id: "try-new", title: "InputReader::try_new", changeKind: .changed,
+                level: .implementation, parentId: "classification"),
             ComponentNode(id: "rendering", title: "Rendering", changeKind: .unchanged),
             ComponentNode(id: "terminal", title: "Terminal", changeKind: .unchanged),
         ]
         graph.architectureEdges = [
-            ArchitectureEdge(id: "input-sample", fromId: "input", toId: "classification", label: "buffered sample",
-                             change: .changed, previousLabel: "first line"),
+            ArchitectureEdge(
+                id: "input-sample", fromId: "input", toId: "classification", label: "buffered sample",
+                change: .changed, previousLabel: "first line"),
             ArchitectureEdge(id: "input-encoding", fromId: "input", toId: "encoding", label: "BOM"),
             ArchitectureEdge(id: "classify-encode", fromId: "classification", toId: "encoding", label: "text verdict"),
             ArchitectureEdge(id: "type", fromId: "inspection", toId: "rendering", label: "content type"),
             ArchitectureEdge(id: "output", fromId: "rendering", toId: "terminal", label: "formatted output"),
         ]
         graph.boundaries = [
-            SystemBoundary(id: "bat", label: "bat process", kind: .process, componentIds: ["input", "inspection", "rendering"]),
+            SystemBoundary(
+                id: "bat", label: "bat process", kind: .process, componentIds: ["input", "inspection", "rendering"]),
             SystemBoundary(id: "tty", label: "Terminal", kind: .external, componentIds: ["terminal"]),
         ]
         graph.decisions = [
-            DecisionNode(id: "how-much", title: "Inspect a buffered sample",
-                         decision: Statement(text: "Inspect up to 1 KB.", provenance: .fact),
-                         confidence: .high, componentIds: ["classification"], level: .system, significance: .high),
-            DecisionNode(id: "impl", title: "Fallback to first line",
-                         decision: Statement(text: "Use the longer.", provenance: .fact),
-                         confidence: .high, componentIds: ["try-new"], level: .implementation, significance: .low),
+            DecisionNode(
+                id: "how-much", title: "Inspect a buffered sample",
+                decision: Statement(text: "Inspect up to 1 KB.", provenance: .fact),
+                confidence: .high, componentIds: ["classification"], level: .system, significance: .high),
+            DecisionNode(
+                id: "impl", title: "Fallback to first line",
+                decision: Statement(text: "Use the longer.", provenance: .fact),
+                confidence: .high, componentIds: ["try-new"], level: .implementation, significance: .low),
         ]
         graph.flows = [
-            FlowNode(id: "pipe", title: "Pipe data into bat", steps: [
-                FlowStep(id: "s1", index: 1, title: "peek", componentId: "try-new"),
-            ]),
-            FlowNode(id: "render", title: "Render a file", steps: [
-                FlowStep(id: "s2", index: 1, title: "print", componentId: "rendering"),
-            ]),
+            FlowNode(
+                id: "pipe", title: "Pipe data into bat",
+                steps: [
+                    FlowStep(id: "s1", index: 1, title: "peek", componentId: "try-new")
+                ]),
+            FlowNode(
+                id: "render", title: "Render a file",
+                steps: [
+                    FlowStep(id: "s2", index: 1, title: "print", componentId: "rendering")
+                ]),
         ]
         graph.pr.considerations = [
-            Consideration(id: "chunking", question: "Is detection that depends on pipe chunking acceptable?",
-                          detail: "", relatedIds: ["how-much", "input", "classification"]),
-            Consideration(id: "explicit", question: "Is the BOM still honored?", detail: "",
-                          relatedIds: ["input-encoding"]),
+            Consideration(
+                id: "chunking", question: "Is detection that depends on pipe chunking acceptable?",
+                detail: "", relatedIds: ["how-much", "input", "classification"]),
+            Consideration(
+                id: "explicit", question: "Is the BOM still honored?", detail: "",
+                relatedIds: ["input-encoding"]),
         ]
         return graph
     }
@@ -83,7 +98,8 @@ struct ArchitectureModelTests {
 
     @Test func implementationNodesAreNeverBoxes() {
         let graph = batGraph()
-        #expect(!graph.architectureLevel(path: ["inspection", "classification"]).primary.contains { $0.id == "try-new" })
+        #expect(
+            !graph.architectureLevel(path: ["inspection", "classification"]).primary.contains { $0.id == "try-new" })
         #expect(graph.drawablePart(for: "try-new")?.id == "classification")
         #expect(graph.architecturePath(showing: "try-new") == ["inspection"])
         #expect(graph.architecturePath(showing: "rendering") == [])
@@ -135,7 +151,9 @@ struct ArchitectureModelTests {
         #expect(resolved.detail.contains("What this PR changed about it: first line → buffered sample"))
         #expect(resolved.detail.contains("Parts inside it: Text / binary classification, Encoding detection"))
         #expect(resolved.detail.contains("overall architectural impact: low — No structural change"))
-        #expect(resolved.detail.contains("Overview question about this part: Is detection that depends on pipe chunking acceptable?"))
+        #expect(
+            resolved.detail.contains(
+                "Overview question about this part: Is detection that depends on pipe chunking acceptable?"))
         #expect(resolved.flowIds == ["pipe"])
         #expect(resolved.decisionIds == ["how-much", "impl"])
 
@@ -149,7 +167,9 @@ struct ArchitectureModelTests {
         let resolved = try #require(graph.resolve(.relationship("input-sample")))
         #expect(resolved.summary.contains { $0.hasPrefix("first line → buffered sample") })
         #expect(resolved.detail.contains("previously carried: first line"))
-        #expect(resolved.detail.contains("Overview question about this relationship: Is detection that depends on pipe chunking acceptable?"))
+        #expect(
+            resolved.detail.contains(
+                "Overview question about this relationship: Is detection that depends on pipe chunking acceptable?"))
     }
 
     @Test func assessmentDecodesLeniently() throws {
@@ -158,10 +178,15 @@ struct ArchitectureModelTests {
         #expect(assessment.impact == .low)
         #expect(assessment.headline == "No structural change")
 
-        let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: [
-            "components": [],
-            "architecture": ["impact": "none", "headline": "Same", "explanation": ["text": "Unchanged.", "provenance": "interpretation"]],
-        ])
+        let arch = try StageDecoding.decode(
+            StageDecoding.ArchitectureResult.self,
+            from: [
+                "components": [],
+                "architecture": [
+                    "impact": "none", "headline": "Same",
+                    "explanation": ["text": "Unchanged.", "provenance": "interpretation"],
+                ],
+            ])
         #expect(arch.architecture?.impact == ArchitecturalImpact.none)
         #expect(arch.architectureImpact?.text == "Unchanged.")
     }

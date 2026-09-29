@@ -22,7 +22,7 @@ enum ReviewSubject: Hashable, Sendable {
 
 enum SubjectKind: String, Sendable {
     case pullRequest, behavior, stage, statement, consideration, component, relationship,
-         decision, option, tradeoff, flow, flowStep, entryPoint, code
+        decision, option, tradeoff, flow, flowStep, entryPoint, code
 
     var label: String {
         switch self {
@@ -112,7 +112,7 @@ extension PRGraph {
 
         case .behaviorStage(let changeId, let stageId):
             guard let change = behaviorChanges.first(where: { $0.id == changeId }),
-                  let stage = (change.before + change.after).first(where: { $0.id == stageId })
+                let stage = (change.before + change.after).first(where: { $0.id == stageId })
             else { return nil }
             let phase: String
             switch stage.tag {
@@ -132,16 +132,18 @@ extension PRGraph {
                 lineage: [prLine, "What changed", change.title],
                 summary: summary.compactMap(Self.oneLine),
                 detail: """
-                Behavior step "\(stage.label)" (\(phase.lowercased())\(stage.outcome.map { ", outcome: \($0.rawValue)" } ?? "")).
-                It belongs to the behavior change "\(change.title)":
-                - Before: \(before)
-                - After: \(after)
-                """,
+                    Behavior step "\(stage.label)" (\(phase.lowercased())\(stage.outcome.map { ", outcome: \($0.rawValue)" } ?? "")).
+                    It belongs to the behavior change "\(change.title)":
+                    - Before: \(before)
+                    - After: \(after)
+                    """,
                 componentIds: stage.componentIds,
                 decisionIds: decisionIds,
-                flowIds: unique([stage.flowId].compactMap { $0 } + stage.componentIds.flatMap { flows(traversing: $0).map(\.id) }),
+                flowIds: unique(
+                    [stage.flowId].compactMap { $0 } + stage.componentIds.flatMap { flows(traversing: $0).map(\.id) }),
                 refs: stage.refs,
-                detailTarget: stage.componentIds.first.map { .componentDetail($0) } ?? stage.flowId.map { .flowDetail($0) }
+                detailTarget: stage.componentIds.first.map { .componentDetail($0) }
+                    ?? stage.flowId.map { .flowDetail($0) }
             )
 
         case .behaviorWhy(let changeId), .behaviorConsequence(let changeId):
@@ -154,7 +156,8 @@ extension PRGraph {
                 subject: subject, kind: .statement, title: "\(label): \(statement.text)",
                 lineage: [prLine, "What changed", change.title],
                 summary: ["\(label) — \(change.title)", statement.text].compactMap(Self.oneLine),
-                detail: "\(label) of the behavior change \"\(change.title)\": \(Self.describe(statement))\n\n\(Self.describe(change))",
+                detail:
+                    "\(label) of the behavior change \"\(change.title)\": \(Self.describe(statement))\n\n\(Self.describe(change))",
                 componentIds: base?.componentIds ?? [],
                 decisionIds: base?.decisionIds ?? [],
                 flowIds: base?.flowIds ?? [],
@@ -170,11 +173,11 @@ extension PRGraph {
             var summary = [item.question, item.detail]
             if let first = decisionIds.first.flatMap(decision) { summary.append("Related decision: \(first.title)") }
             var detail = """
-            Something the reviewer was asked to think about (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
-            Question: \(item.question)
-            Why it matters: \(item.detail)
-            Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
-            """
+                Something the reviewer was asked to think about (\(item.kind == .question ? "an open question the analysis could not settle" : "a judgment call or risk")):
+                Question: \(item.question)
+                Why it matters: \(item.detail)
+                Provenance: \(Self.provenanceLabel(item.provenance, item.confidence))
+                """
             if let explanation = item.explanation { detail += "\nFull reasoning: \(explanation)" }
             return ResolvedSubject(
                 subject: subject, kind: .consideration, title: item.question,
@@ -205,16 +208,21 @@ extension PRGraph {
             if let before = node.delta?.before, let after = node.delta?.after {
                 summary.append("This PR: \(before) → \(after)")
             } else if !incoming.isEmpty {
-                summary.append("Receives " + incoming.prefix(3).map { "\($0.label) from \(component($0.fromId)?.title ?? $0.fromId)" }.joined(separator: ", "))
+                summary.append(
+                    "Receives "
+                        + incoming.prefix(3).map { "\($0.label) from \(component($0.fromId)?.title ?? $0.fromId)" }
+                        .joined(separator: ", "))
             }
             if let d = decisions.first { summary.append("Related decision: \(brief(for: d).question)") }
             var detail = """
-            Architecture part "\(node.title)" (\(node.level.label.lowercased()) level, \(node.changeKind.label.lowercased()) by this PR).
-            """
+                Architecture part "\(node.title)" (\(node.level.label.lowercased()) level, \(node.changeKind.label.lowercased()) by this PR).
+                """
             if !ancestors.isEmpty { detail += "\nPart of: \(ancestors.joined(separator: " › "))" }
             if let s = node.summary { detail += "\nResponsibility: \(Self.describe(s))" }
             if let delta = node.delta {
-                if let before = delta.before, let after = delta.after { detail += "\nWhat this PR changed about it: \(before) → \(after)" }
+                if let before = delta.before, let after = delta.after {
+                    detail += "\nWhat this PR changed about it: \(before) → \(after)"
+                }
                 if let summary = delta.summary { detail += "\nThis PR: \(Self.describe(summary))" }
             }
             if !inside.isEmpty { detail += "\nParts inside it: \(inside.map(\.title).joined(separator: ", "))" }
@@ -226,7 +234,8 @@ extension PRGraph {
                 detail += "\nInside boundary: \(boundary.label) (\(boundary.kind.label))"
             }
             if let assessment = architecture {
-                detail += "\nThe PR's overall architectural impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)"
+                detail +=
+                    "\nThe PR's overall architectural impact: \(assessment.impact.label.lowercased()) — \(assessment.headline)"
             }
             for q in questions { detail += "\n- Overview question about this part: \(q.question) \(q.detail)" }
             return ResolvedSubject(
@@ -247,8 +256,12 @@ extension PRGraph {
             let from = component(edge.fromId)?.title ?? edge.fromId
             let to = component(edge.toId)?.title ?? edge.toId
             let decisions = decisions(forEdge: edge)
-            let crossing = edge.previousLabel.map { "\($0) → \(edge.label)" } ?? (edge.label.isEmpty ? "relates to" : edge.label)
-            var summary = ["\(from) → \(to)", "\(crossing) · \(edge.flow == .async ? "asynchronous" : "synchronous") · \(Self.edgeChangeLabel(edge.change))"]
+            let crossing =
+                edge.previousLabel.map { "\($0) → \(edge.label)" } ?? (edge.label.isEmpty ? "relates to" : edge.label)
+            var summary = [
+                "\(from) → \(to)",
+                "\(crossing) · \(edge.flow == .async ? "asynchronous" : "synchronous") · \(Self.edgeChangeLabel(edge.change))",
+            ]
             if let d = decisions.first { summary.append("Related decision: \(d.title)") }
             if let note = edge.note { summary.append(note) }
             let fromFlows = Set(flows(through: edge.fromId).map(\.id))
@@ -277,7 +290,8 @@ extension PRGraph {
             var summary = [brief.question]
             if let chosen = brief.chosen {
                 let others = brief.options.filter { !$0.chosen }.map(\.label)
-                summary.append("Chose \(chosen.label)" + (others.isEmpty ? "" : " over \(others.joined(separator: ", "))"))
+                summary.append(
+                    "Chose \(chosen.label)" + (others.isEmpty ? "" : " over \(others.joined(separator: ", "))"))
             } else {
                 summary.append(d.decision.text)
             }
@@ -309,18 +323,21 @@ extension PRGraph {
             guard brief.options.indices.contains(index) else { return nil }
             let option = brief.options[index]
             let others = brief.options.enumerated().filter { $0.offset != index }.map(\.element)
-            var summary = [option.label, option.chosen ? "The option this PR chose" : "An option this PR did not choose", brief.question]
+            var summary = [
+                option.label, option.chosen ? "The option this PR chose" : "An option this PR did not choose",
+                brief.question,
+            ]
             if let detail = option.detail { summary.insert(detail, at: 1) }
             return ResolvedSubject(
                 subject: subject, kind: .option, title: option.label,
                 lineage: [prLine, "Decisions", brief.question],
                 summary: summary.compactMap(Self.oneLine),
                 detail: """
-                Option "\(option.label)"\(option.detail.map { " (\($0))" } ?? "") — \(option.chosen ? "the option this PR chose" : "an option this PR did NOT choose").
-                The other options were: \(others.map { "\($0.label)\($0.chosen ? " (chosen)" : "")" }.joined(separator: "; ")).
+                    Option "\(option.label)"\(option.detail.map { " (\($0))" } ?? "") — \(option.chosen ? "the option this PR chose" : "an option this PR did NOT choose").
+                    The other options were: \(others.map { "\($0.label)\($0.chosen ? " (chosen)" : "")" }.joined(separator: "; ")).
 
-                \(base.detail)
-                """,
+                    \(base.detail)
+                    """,
                 componentIds: base.componentIds,
                 decisionIds: [decisionId],
                 flowIds: base.flowIds,
@@ -331,7 +348,8 @@ extension PRGraph {
 
         case .tradeoff(let decisionId, let index):
             guard let d = decision(decisionId), d.tradeoffs.indices.contains(index),
-                  let base = resolve(.decision(decisionId)) else { return nil }
+                let base = resolve(.decision(decisionId))
+            else { return nil }
             let t = d.tradeoffs[index]
             let question = brief(for: d).question
             var summary = ["\(t.dimensionA) ↔ \(t.dimensionB)", "Leans toward \(t.chosenDimension)", question]
@@ -341,11 +359,11 @@ extension PRGraph {
                 lineage: [prLine, "Decisions", question],
                 summary: summary.compactMap(Self.oneLine),
                 detail: """
-                A tradeoff made by one decision (\(t.prominence == .primary ? "the tension that makes the decision worth reviewing" : "a secondary tradeoff of the decision")): \(Self.describe(t)).
-                The reviewer is weighing this as part of the decision below, not as a separate item.
+                    A tradeoff made by one decision (\(t.prominence == .primary ? "the tension that makes the decision worth reviewing" : "a secondary tradeoff of the decision")): \(Self.describe(t)).
+                    The reviewer is weighing this as part of the decision below, not as a separate item.
 
-                \(base.detail)
-                """,
+                    \(base.detail)
+                    """,
                 componentIds: base.componentIds,
                 decisionIds: [decisionId],
                 flowIds: base.flowIds,
@@ -381,7 +399,8 @@ extension PRGraph {
                 subject: subject, kind: .flowStep, title: step.title,
                 lineage: [prLine, "Flows", f.title],
                 summary: summary.compactMap(Self.oneLine),
-                detail: "Flow step: \(Self.describe(step, graph: self))\n\nThe whole flow, for position:\n\(Self.describe(f, graph: self))",
+                detail:
+                    "Flow step: \(Self.describe(step, graph: self))\n\nThe whole flow, for position:\n\(Self.describe(f, graph: self))",
                 componentIds: [step.componentId].compactMap { $0 },
                 decisionIds: decisionIds(affectingAny: [step.componentId].compactMap { $0 }),
                 flowIds: [flowId],
@@ -396,8 +415,10 @@ extension PRGraph {
             return ResolvedSubject(
                 subject: subject, kind: .flowStep, title: story.text,
                 lineage: [prLine, "Flows", f.title],
-                summary: [story.text, "Step \(index + 1) of \(f.storySteps.count) in \(f.title)"].compactMap(Self.oneLine),
-                detail: "Story-level step \(index + 1) of the flow \"\(f.title)\": \(story.text)\n\n\(Self.describe(f, graph: self))",
+                summary: [story.text, "Step \(index + 1) of \(f.storySteps.count) in \(f.title)"].compactMap(
+                    Self.oneLine),
+                detail:
+                    "Story-level step \(index + 1) of the flow \"\(f.title)\": \(story.text)\n\n\(Self.describe(f, graph: self))",
                 componentIds: componentIds,
                 decisionIds: decisionIds(affectingAny: componentIds),
                 flowIds: [flowId],
@@ -415,9 +436,12 @@ extension PRGraph {
             let componentIds = unique([node.componentId].compactMap { $0 } + steps.compactMap(\.componentId))
             let scenario = scenarioTitle(for: f)
             var summary = [node.label, "\(Self.flowChangeLabel(node.change)) · \(scenario)"]
-            if let before = node.before, let after = node.after { summary.append("Before: \(before) · After: \(after)") }
+            if let before = node.before, let after = node.after {
+                summary.append("Before: \(before) · After: \(after)")
+            }
             if let d = pinned.first.flatMap(decision) { summary.append("Related decision: \(brief(for: d).question)") }
-            let related = pinned.isEmpty
+            let related =
+                pinned.isEmpty
                 ? decisionIds(affectingAny: componentIds).filter { id in decisionsToReview.contains { $0.id == id } }
                 : pinned
             return ResolvedSubject(
@@ -441,7 +465,8 @@ extension PRGraph {
                 subject: subject, kind: .entryPoint, title: e.title,
                 lineage: [prLine, "Flows"],
                 summary: summary.compactMap(Self.oneLine),
-                detail: "Entry point \"\(e.title)\" (\(e.kind), \(e.changeKind.label.lowercased()))" + (triggered.map { "\n\nIt starts this flow:\n\(Self.describe($0, graph: self))" } ?? ""),
+                detail: "Entry point \"\(e.title)\" (\(e.kind), \(e.changeKind.label.lowercased()))"
+                    + (triggered.map { "\n\nIt starts this flow:\n\(Self.describe($0, graph: self))" } ?? ""),
                 componentIds: unique(triggered?.steps.compactMap(\.componentId) ?? []),
                 flowIds: [e.flowId].compactMap { $0 },
                 refs: e.refs,
@@ -458,10 +483,11 @@ extension PRGraph {
                 subject: subject, kind: .code, title: ref.display,
                 lineage: [prLine] + (owners.first.map { [$0.title] } ?? []),
                 summary: summary.compactMap(Self.oneLine),
-                detail: "Code reference \(ref.display) (\(ref.side == .base ? "base, before this PR" : "head, after this PR")).\n\n"
+                detail:
+                    "Code reference \(ref.display) (\(ref.side == .base ? "base, before this PR" : "head, after this PR")).\n\n"
                     + (ownerDetail.isEmpty
-                       ? "No review-model object cites this exact range."
-                       : "The concepts this code supports:\n\n" + ownerDetail.joined(separator: "\n\n")),
+                        ? "No review-model object cites this exact range."
+                        : "The concepts this code supports:\n\n" + ownerDetail.joined(separator: "\n\n")),
                 componentIds: unique(owners.flatMap { resolve($0.subject)?.componentIds ?? [] }),
                 decisionIds: unique(owners.flatMap { resolve($0.subject)?.decisionIds ?? [] }),
                 flowIds: unique(owners.flatMap { resolve($0.subject)?.flowIds ?? [] }),
@@ -506,7 +532,8 @@ extension PRGraph {
     func describeEdge(_ e: ArchitectureEdge) -> String {
         let from = component(e.fromId)?.title ?? e.fromId
         let to = component(e.toId)?.title ?? e.toId
-        var s = "\(from) —\(e.label.isEmpty ? "relates to" : e.label)→ \(to) [\(e.flow == .async ? "async" : "sync"), \(Self.edgeChangeLabel(e.change))"
+        var s =
+            "\(from) —\(e.label.isEmpty ? "relates to" : e.label)→ \(to) [\(e.flow == .async ? "async" : "sync"), \(Self.edgeChangeLabel(e.change))"
         if let previous = e.previousLabel { s += ", previously carried: \(previous)" }
         if e.onCriticalPath { s += ", on a critical path" }
         if e.isTrustBoundary { s += ", crosses a trust boundary" }
@@ -543,10 +570,13 @@ extension PRGraph {
         }
         if let question = d.question { s += "- Question it answers: \(question)\n" }
         for option in d.options {
-            s += "- Option: \(option.label)\(option.detail.map { " (\($0))" } ?? "")\(option.chosen ? " ← chosen" : "")\n"
+            s +=
+                "- Option: \(option.label)\(option.detail.map { " (\($0))" } ?? "")\(option.chosen ? " ← chosen" : "")\n"
         }
         if let why = d.why { s += "- Why (short): \(describe(why))\n" }
-        for t in d.tradeoffs { s += "- \(t.prominence == .primary ? "Tradeoff" : "Secondary tradeoff"): \(describe(t))\n" }
+        for t in d.tradeoffs {
+            s += "- \(t.prominence == .primary ? "Tradeoff" : "Secondary tradeoff"): \(describe(t))\n"
+        }
         s += "- Decision: \(describe(d.decision))"
         for r in d.rationale { s += "\n- Rationale: \(describe(r))" }
         for a in d.alternatives { s += "\n- Alternative: \(describe(a))" }
@@ -558,7 +588,8 @@ extension PRGraph {
 
     static func describe(_ t: DecisionTradeoff) -> String {
         let lean = abs(t.chosenPosition - 0.5) < 0.1 ? "roughly balanced" : "leaning toward \(t.chosenDimension)"
-        var s = "\(t.dimensionA) versus \(t.dimensionB), \(lean) (position \(String(format: "%.2f", t.chosenPosition)) from \(t.dimensionA) = 0 to \(t.dimensionB) = 1)"
+        var s =
+            "\(t.dimensionA) versus \(t.dimensionB), \(lean) (position \(String(format: "%.2f", t.chosenPosition)) from \(t.dimensionA) = 0 to \(t.dimensionB) = 1)"
         if let e = t.explanation { s += " — \(describe(e))" }
         if !t.refs.isEmpty { s += " [evidence: \(t.refs.map(\.display).joined(separator: ", "))]" }
         return s
@@ -583,23 +614,29 @@ extension PRGraph {
         if let before = node.before { s += " before: \(before);" }
         if let after = node.after { s += " after: \(after);" }
         let next = behavior.outgoing(node.id).map { e in
-            (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " when \($0)" } ?? "") + (e.flow == .async ? " (async)" : "")
+            (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " when \($0)" } ?? "")
+                + (e.flow == .async ? " (async)" : "")
         }
         if !next.isEmpty { s += " → " + next.joined(separator: "; ") }
-        if let sub = node.subflowId, let f = flow(sub) { s += " (continues in the shared flow \"\(scenarioTitle(for: f))\")" }
+        if let sub = node.subflowId, let f = flow(sub) {
+            s += " (continues in the shared flow \"\(scenarioTitle(for: f))\")"
+        }
         return s
     }
 
     func describe(_ node: FlowBehaviorNode, in f: FlowNode) -> String {
         let behavior = behavior(for: f)
-        var s = "Flow stage \"\(node.label)\" in the flow \"\(scenarioTitle(for: f))\" — \(Self.flowChangeLabel(node.change).lowercased())."
+        var s =
+            "Flow stage \"\(node.label)\" in the flow \"\(scenarioTitle(for: f))\" — \(Self.flowChangeLabel(node.change).lowercased())."
         if let detail = node.detail { s += "\nWhat happens here: \(detail)" }
         if let before = node.before { s += "\nBefore this PR: \(before)" }
         if let after = node.after { s += "\nAfter this PR: \(after)" }
         if node.isUncertain { s += "\nThis stage is inferred, not traced in the code." }
         let previous = behavior.incoming(node.id).compactMap { behavior.node($0.fromId)?.label }
         if !previous.isEmpty { s += "\nComes after: \(previous.joined(separator: ", "))" }
-        let next = behavior.outgoing(node.id).map { e in (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " (when \($0))" } ?? "") }
+        let next = behavior.outgoing(node.id).map { e in
+            (behavior.node(e.toId)?.label ?? e.toId) + (e.label.map { " (when \($0))" } ?? "")
+        }
         if !next.isEmpty { s += "\nLeads to: \(next.joined(separator: ", "))" }
         if !node.substeps.isEmpty { s += "\nSub-steps: \(node.substeps.joined(separator: " → "))" }
         for note in annotations(for: f) where note.nodeId == node.id {

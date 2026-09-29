@@ -65,7 +65,8 @@ enum BehaviorDiagramLogic {
         isSelected ? 2.4 : (isTinted ? 1.8 : 1)
     }
 
-    static func stageCaption(kind: FlowNodeKind, subflowTitle: String?) -> (text: String, symbol: String, color: Color)? {
+    static func stageCaption(kind: FlowNodeKind, subflowTitle: String?) -> (text: String, symbol: String, color: Color)?
+    {
         switch kind {
         case .external: return ("EXTERNAL", "globe", .purple)
         case .datastore: return ("STORAGE", "cylinder.split.1x2", .secondary)
@@ -90,7 +91,9 @@ enum BehaviorDiagramLogic {
         case none
     }
 
-    static func changeDetailContent(mode: DiagramMode, change: FlowChange, before: String?, after: String?) -> ChangeDetailContent {
+    static func changeDetailContent(mode: DiagramMode, change: FlowChange, before: String?, after: String?)
+        -> ChangeDetailContent
+    {
         guard change == .changed else { return .none }
         switch mode {
         case .delta where before != nil || after != nil: return .beforeAndAfter(before: before, after: after)
@@ -131,8 +134,10 @@ enum BehaviorDiagramLogic {
     static func arrowHeadWings(from: CGPoint, tip: CGPoint, size: CGFloat) -> (left: CGPoint, right: CGPoint) {
         let angle = atan2(tip.y - from.y, tip.x - from.x)
         let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
-        return (CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)),
-                CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle)))
+        return (
+            CGPoint(x: back.x - size * 0.5 * sin(angle), y: back.y + size * 0.5 * cos(angle)),
+            CGPoint(x: back.x + size * 0.5 * sin(angle), y: back.y - size * 0.5 * cos(angle))
+        )
     }
 }
 
@@ -161,8 +166,9 @@ struct BehaviorDiagramView: View {
 
     private var canvas: some View {
         GeometryReader { geo in
-            let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations,
-                                                            availableWidth: geo.size.width)
+            let layout = BehaviorDiagramLayoutEngine.layout(
+                behavior, mode: mode, annotations: annotations,
+                availableWidth: geo.size.width)
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(layout.boundaries) { boundaryBox($0) }
@@ -175,20 +181,25 @@ struct BehaviorDiagramView: View {
                     .allowsHitTesting(false)
 
                     ForEach(layout.nodes) { placed in
-                        StageBox(node: placed.node, mode: mode, isSelected: selectedNodeId == placed.id,
-                                 isHovered: hoveredId == placed.id,
-                                 subflowTitle: placed.node.subflowId.flatMap(subflowTitle))
-                            .frame(width: placed.frame.width, height: placed.frame.height)
-                            .position(x: placed.frame.midX, y: placed.frame.midY)
-                            .onTapGesture(count: 2) { onDrill(placed.node) }
-                            .onTapGesture { onSelect(placed.node) }
-                            .onHover { hoveredId = BehaviorDiagramLogic.hoverUpdate(current: hoveredId, id: placed.id, isHovering: $0) }
-                            .reviewContextMenu(.flowNode(flowId: flowId, nodeId: placed.id)) {
-                                Button("Show Implementation") { onShowImplementation(placed.node) }
-                                if let sub = placed.node.subflowId, let title = subflowTitle(sub) {
-                                    Button("Open \u{201C}\(title)\u{201D}") { onOpenSubflow(sub) }
-                                }
+                        StageBox(
+                            node: placed.node, mode: mode, isSelected: selectedNodeId == placed.id,
+                            isHovered: hoveredId == placed.id,
+                            subflowTitle: placed.node.subflowId.flatMap(subflowTitle)
+                        )
+                        .frame(width: placed.frame.width, height: placed.frame.height)
+                        .position(x: placed.frame.midX, y: placed.frame.midY)
+                        .onTapGesture(count: 2) { onDrill(placed.node) }
+                        .onTapGesture { onSelect(placed.node) }
+                        .onHover {
+                            hoveredId = BehaviorDiagramLogic.hoverUpdate(
+                                current: hoveredId, id: placed.id, isHovering: $0)
+                        }
+                        .reviewContextMenu(.flowNode(flowId: flowId, nodeId: placed.id)) {
+                            Button("Show Implementation") { onShowImplementation(placed.node) }
+                            if let sub = placed.node.subflowId, let title = subflowTitle(sub) {
+                                Button("Open \u{201C}\(title)\u{201D}") { onOpenSubflow(sub) }
                             }
+                        }
                     }
 
                     ForEach(layout.edges) { placed in
@@ -201,9 +212,10 @@ struct BehaviorDiagramView: View {
                         AnnotationNote(annotation: placed.annotation) { onOpenAnnotation(placed.annotation) }
                             .frame(width: placed.frame.width, height: placed.frame.height, alignment: .topLeading)
                             .position(x: placed.frame.midX, y: placed.frame.midY)
-                            .reviewContextMenu(placed.annotation.kind == .decision
-                                               ? .decision(placed.annotation.targetId)
-                                               : .consideration(placed.annotation.targetId))
+                            .reviewContextMenu(
+                                placed.annotation.kind == .decision
+                                    ? .decision(placed.annotation.targetId)
+                                    : .consideration(placed.annotation.targetId))
                     }
 
                     ForEach(layout.overflow) { placed in
@@ -236,7 +248,9 @@ struct BehaviorDiagramView: View {
         path.addLines(placed.points)
         let dash = BehaviorDiagramLogic.edgeDash(flow: e.flow, change: e.change)
         let width = BehaviorDiagramLogic.edgeWidth(change: e.change)
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round, dash: dash))
+        context.stroke(
+            path, with: .color(color),
+            style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round, dash: dash))
 
         let tip = placed.points[placed.points.count - 1]
         let from = placed.points[placed.points.count - 2]
@@ -250,17 +264,21 @@ struct BehaviorDiagramView: View {
         context.fill(arrow, with: .color(color))
     }
 
-    private func drawTether(_ placed: BehaviorDiagramLayout.PlacedAnnotation, layout: BehaviorDiagramLayout,
-                            in context: inout GraphicsContext) {
+    private func drawTether(
+        _ placed: BehaviorDiagramLayout.PlacedAnnotation, layout: BehaviorDiagramLayout,
+        in context: inout GraphicsContext
+    ) {
         guard let node = layout.node(placed.annotation.nodeId) else { return }
         let y = placed.frame.minY + 10
         var path = Path()
         path.move(to: CGPoint(x: node.frame.midX, y: y))
         path.addLine(to: CGPoint(x: placed.frame.minX, y: y))
-        context.stroke(path, with: .color(placed.annotation.kind.color.opacity(0.6)),
-                       style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
-        context.fill(Path(ellipseIn: CGRect(x: node.frame.midX - 2.5, y: y - 2.5, width: 5, height: 5)),
-                     with: .color(placed.annotation.kind.color))
+        context.stroke(
+            path, with: .color(placed.annotation.kind.color.opacity(0.6)),
+            style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+        context.fill(
+            Path(ellipseIn: CGRect(x: node.frame.midX - 2.5, y: y - 2.5, width: 5, height: 5)),
+            with: .color(placed.annotation.kind.color))
     }
 
     private func branchLabel(_ text: String, edge: FlowBehaviorEdge) -> some View {
@@ -268,7 +286,11 @@ struct BehaviorDiagramView: View {
             .font(.caption2.weight(.bold))
             .tracking(0.4)
             .lineLimit(1)
-            .foregroundStyle(fades(edge.change) ? AnyShapeStyle(.secondary) : AnyShapeStyle(edge.change == .existing ? Color.primary : edge.change.color))
+            .foregroundStyle(
+                fades(edge.change)
+                    ? AnyShapeStyle(.secondary)
+                    : AnyShapeStyle(edge.change == .existing ? Color.primary : edge.change.color)
+            )
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(.background, in: Capsule())
             .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.8))
@@ -282,10 +304,13 @@ struct BehaviorDiagramView: View {
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 14).fill(tint.opacity(0.04))
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(tint.opacity(outside ? 0.55 : 0.35), style: StrokeStyle(lineWidth: 1.2, dash: outside ? [6, 4] : []))
+                .strokeBorder(
+                    tint.opacity(outside ? 0.55 : 0.35),
+                    style: StrokeStyle(lineWidth: 1.2, dash: outside ? [6, 4] : []))
             HStack(spacing: 4) {
                 Image(systemName: Self.glyph(b.kind)).font(.caption2)
-                Text(BehaviorDiagramLogic.boundaryLabelText(kind: b.kind, label: b.label)).font(.caption2.weight(.bold)).tracking(0.5)
+                Text(BehaviorDiagramLogic.boundaryLabelText(kind: b.kind, label: b.label)).font(.caption2.weight(.bold))
+                    .tracking(0.5)
             }
             .foregroundStyle(tint)
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -316,8 +341,10 @@ struct BehaviorDiagramView: View {
                 legendSwatch(.secondary, "Unchanged")
             }
             legendLine(dash: [6, 4], "Async")
-            Label("Decision", systemImage: FlowAnnotation.Kind.decision.symbol).foregroundStyle(FlowAnnotation.Kind.decision.color)
-            Label("Review question", systemImage: FlowAnnotation.Kind.question.symbol).foregroundStyle(FlowAnnotation.Kind.question.color)
+            Label("Decision", systemImage: FlowAnnotation.Kind.decision.symbol).foregroundStyle(
+                FlowAnnotation.Kind.decision.color)
+            Label("Review question", systemImage: FlowAnnotation.Kind.question.symbol).foregroundStyle(
+                FlowAnnotation.Kind.question.color)
         }
         .font(.caption2)
         .labelStyle(CompactLabelStyle())
@@ -349,7 +376,10 @@ struct BehaviorDiagramView: View {
 
 private struct CompactLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) { configuration.icon; configuration.title.foregroundStyle(.primary) }
+        HStack(spacing: 4) {
+            configuration.icon
+            configuration.title.foregroundStyle(.primary)
+        }
     }
 }
 
@@ -386,7 +416,10 @@ private struct StageBox: View {
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.accentColor.opacity(0.1), in: Capsule())
-            .overlay(Capsule().strokeBorder(isSelected ? Color.accentColor : Color.accentColor.opacity(0.45), lineWidth: isSelected ? 2.4 : 1.2))
+            .overlay(
+                Capsule().strokeBorder(
+                    isSelected ? Color.accentColor : Color.accentColor.opacity(0.45), lineWidth: isSelected ? 2.4 : 1.2)
+            )
             .contentShape(Capsule())
         case .decision:
             stageContent(alignment: .center)
@@ -445,8 +478,10 @@ private struct StageBox: View {
 
     @ViewBuilder
     private var changeDetail: some View {
-        switch BehaviorDiagramLogic.changeDetailContent(mode: mode, change: node.change, before: node.before, after: node.after) {
-        case let .beforeAndAfter(before, after):
+        switch BehaviorDiagramLogic.changeDetailContent(
+            mode: mode, change: node.change, before: node.before, after: node.after)
+        {
+        case .beforeAndAfter(let before, let after):
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 2) {
                 if let before {
                     GridRow {
@@ -462,9 +497,9 @@ private struct StageBox: View {
                 }
             }
             .padding(.top, 2)
-        case let .beforeOnly(before):
+        case .beforeOnly(let before):
             Text(before).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        case let .afterOnly(after):
+        case .afterOnly(let after):
             Text(after).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         case .none:
             EmptyView()
@@ -485,7 +520,9 @@ private struct StageBox: View {
         BehaviorDiagramLogic.stageStroke(mode: mode, change: node.change, kind: node.kind, isSelected: isSelected)
     }
 
-    private var strokeWidth: CGFloat { BehaviorDiagramLogic.stageStrokeWidth(isSelected: isSelected, isTinted: tint != nil) }
+    private var strokeWidth: CGFloat {
+        BehaviorDiagramLogic.stageStrokeWidth(isSelected: isSelected, isTinted: tint != nil)
+    }
 
     private var dash: [CGFloat] { BehaviorDiagramLogic.dash(mode: mode, change: node.change, kind: node.kind) }
 
@@ -509,7 +546,11 @@ struct Lozenge: InsettableShape {
         p.closeSubpath()
         return p
     }
-    func inset(by amount: CGFloat) -> Lozenge { var s = self; s.inset += amount; return s }
+    func inset(by amount: CGFloat) -> Lozenge {
+        var s = self
+        s.inset += amount
+        return s
+    }
 }
 
 private struct AnnotationNote: View {
@@ -543,6 +584,8 @@ private struct AnnotationNote: View {
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovered = h } }
-        .help((annotation.detail.map { $0 + "\n" } ?? "") + (annotation.kind == .decision ? "Open this decision" : "Review this question"))
+        .help(
+            (annotation.detail.map { $0 + "\n" } ?? "")
+                + (annotation.kind == .decision ? "Open this decision" : "Review this question"))
     }
 }

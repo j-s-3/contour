@@ -17,7 +17,9 @@ enum ChatViewLogic {
         !draft.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    nonisolated static func evidenceToOffer(current: NavigationTarget, pinnedRefs: [CodeRef], subject: ReviewSubject) -> CodeRef? {
+    nonisolated static func evidenceToOffer(current: NavigationTarget, pinnedRefs: [CodeRef], subject: ReviewSubject)
+        -> CodeRef?
+    {
         guard case .evidence(let ref) = current, !pinnedRefs.contains(ref), subject != .codeRef(ref) else { return nil }
         return ref
     }

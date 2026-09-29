@@ -1,6 +1,7 @@
 import Foundation
-import os
 import Testing
+import os
+
 @testable import Contour
 
 struct AnalysisServiceTests {
@@ -91,7 +92,8 @@ struct AnalysisServiceMockPathTests {
         await #expect(throws: AnalysisServiceError.self) {
             try await service.runStage(prompt: "p", cwd: cwd, tier: .strong, stage: .judgment, onProgress: { _ in })
         }
-        let result = try await service.runStage(prompt: "p", cwd: cwd, tier: .strong, stage: .judgment, onProgress: { _ in })
+        let result = try await service.runStage(
+            prompt: "p", cwd: cwd, tier: .strong, stage: .judgment, onProgress: { _ in })
         #expect(!result.isEmpty)
     }
 }

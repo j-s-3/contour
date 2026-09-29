@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct PreferencesTests {
@@ -56,12 +57,15 @@ struct PreferencesTests {
 
     @Test func jiraWithoutAcliFallsBackToGitHub() {
         #expect(PreferenceResolution.tracker(env: [:], stored: .jira, jiraAvailable: false) == .github)
-        #expect(PreferenceResolution.tracker(env: ["CONTOUR_TRACKER": "jira"], stored: nil, jiraAvailable: false) == .github)
+        #expect(
+            PreferenceResolution.tracker(env: ["CONTOUR_TRACKER": "jira"], stored: nil, jiraAvailable: false) == .github
+        )
     }
 
     @Test func trackerCanBeTurnedOffEntirely() {
         #expect(PreferenceResolution.tracker(env: [:], stored: TrackerID.none, jiraAvailable: true) == .none)
-        #expect(PreferenceResolution.tracker(env: ["CONTOUR_TRACKER": "none"], stored: .jira, jiraAvailable: true) == .none)
+        #expect(
+            PreferenceResolution.tracker(env: ["CONTOUR_TRACKER": "none"], stored: .jira, jiraAvailable: true) == .none)
     }
 
     @Test func githubAccessDefaultsToAuto() {

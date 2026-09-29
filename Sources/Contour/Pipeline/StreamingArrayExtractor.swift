@@ -39,9 +39,13 @@ struct StreamingArrayExtractor {
             let byte = buffer[cursor]
             defer { cursor += 1 }
             if inString {
-                if escaped { escaped = false }
-                else if byte == UInt8(ascii: "\\") { escaped = true }
-                else if byte == UInt8(ascii: "\"") { inString = false }
+                if escaped {
+                    escaped = false
+                } else if byte == UInt8(ascii: "\\") {
+                    escaped = true
+                } else if byte == UInt8(ascii: "\"") {
+                    inString = false
+                }
                 continue
             }
             switch byte {

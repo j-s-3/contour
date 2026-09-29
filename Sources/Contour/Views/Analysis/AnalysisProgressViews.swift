@@ -60,21 +60,26 @@ struct AnalysisIndicator: View {
     @State private var settled = false
 
     var body: some View {
-        Button { showDetails.toggle() } label: { label }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.secondary.opacity(settled ? 0 : 0.1), in: Capsule())
-            .help("Analysis progress — click for details")
-            .popover(isPresented: $showDetails, arrowEdge: .bottom) {
-                AnalysisDetailsView(state: state, log: log, metrics: metrics, refCheck: refCheck, onStop: onStop, onRetry: onRetry)
-            }
-            .task(id: state.isComplete) {
-                settled = false
-                guard state.isComplete, state.failedSections.isEmpty, state.stoppedSections.isEmpty else { return }
-                try? await Task.sleep(for: .seconds(4))
-                withAnimation(.easeOut(duration: 0.6)) { settled = true }
-            }
+        Button {
+            showDetails.toggle()
+        } label: {
+            label
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.secondary.opacity(settled ? 0 : 0.1), in: Capsule())
+        .help("Analysis progress — click for details")
+        .popover(isPresented: $showDetails, arrowEdge: .bottom) {
+            AnalysisDetailsView(
+                state: state, log: log, metrics: metrics, refCheck: refCheck, onStop: onStop, onRetry: onRetry)
+        }
+        .task(id: state.isComplete) {
+            settled = false
+            guard state.isComplete, state.failedSections.isEmpty, state.stoppedSections.isEmpty else { return }
+            try? await Task.sleep(for: .seconds(4))
+            withAnimation(.easeOut(duration: 0.6)) { settled = true }
+        }
     }
 
     @ViewBuilder
@@ -162,13 +167,17 @@ struct AnalysisDetailsView: View {
                         Label("Stop analysis", systemImage: "stop.fill")
                     }
                     .controlSize(.small)
-                    .help("Stop the remaining analysis. What's already here stays; each stopped section can be retried on its own.")
+                    .help(
+                        "Stop the remaining analysis. What's already here stays; each stopped section can be retried on its own."
+                    )
                 }
             }
 
             if let head = state.revalidatingFrom {
                 Label {
-                    Text(verbatim: "Showing analysis from previous revision \(head.prefix(7)) while this one is analyzed")
+                    Text(
+                        verbatim: "Showing analysis from previous revision \(head.prefix(7)) while this one is analyzed"
+                    )
                 } icon: {
                     Image(systemName: "clock.arrow.circlepath")
                 }
@@ -276,11 +285,13 @@ struct RefCheckView: View {
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
-                    Text("These were left out of the review, and anything resting only on them is marked low confidence.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
+                    Text(
+                        "These were left out of the review, and anything resting only on them is marked low confidence."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
                 }
                 .padding(.top, 4)
             } label: {
@@ -441,11 +452,13 @@ struct SectionFailedView: View {
                     Button("Ask about \(section.title.lowercased())…", action: onAsk)
                 }
             }
-            Text("The technical details are in the analysis log — click the analysis status in the toolbar, then Show log.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: 640, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "The technical details are in the analysis log — click the analysis status in the toolbar, then Show log."
+            )
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: 640, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

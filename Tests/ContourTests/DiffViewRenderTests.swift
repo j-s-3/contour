@@ -1,54 +1,55 @@
-import Testing
-import SwiftUI
 import AppKit
+import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
 struct DiffViewRenderTests {
 
     private let diffText = """
-    diff --git a/src/input.rs b/src/input.rs
-    index 1111111..2222222 100644
-    --- a/src/input.rs
-    +++ b/src/input.rs
-    @@ -1,3 +1,4 @@ use std::io;
-     fn a() {
-    -    old();
-    +    new();
-    +    more();
+        diff --git a/src/input.rs b/src/input.rs
+        index 1111111..2222222 100644
+        --- a/src/input.rs
+        +++ b/src/input.rs
+        @@ -1,3 +1,4 @@ use std::io;
+         fn a() {
+        -    old();
+        +    new();
+        +    more();
 
-     }
-    \\ No newline at end of file
-    @@ -20,2 +21,2 @@ fn later()
-    -x
-    +y
-    diff --git a/src/added.rs b/src/added.rs
-    new file mode 100644
-    index 0000000..1111111
-    --- /dev/null
-    +++ b/src/added.rs
-    @@ -0,0 +1,1 @@
-    +fn added() {}
-    diff --git a/src/gone.rs b/src/gone.rs
-    deleted file mode 100644
-    index 1111111..0000000
-    --- a/src/gone.rs
-    +++ /dev/null
-    @@ -1,2 +0,0 @@
-    -fn a() {}
-    -fn b() {}
-    diff --git a/old/name.rs b/new/name.rs
-    similarity index 100%
-    rename from old/name.rs
-    rename to new/name.rs
-    diff --git a/logo.png b/logo.png
-    index 1111111..2222222 100644
-    Binary files a/logo.png and b/logo.png differ
-    diff --git a/empty.txt b/empty.txt
-    new file mode 100644
-    index 0000000..e69de29
+         }
+        \\ No newline at end of file
+        @@ -20,2 +21,2 @@ fn later()
+        -x
+        +y
+        diff --git a/src/added.rs b/src/added.rs
+        new file mode 100644
+        index 0000000..1111111
+        --- /dev/null
+        +++ b/src/added.rs
+        @@ -0,0 +1,1 @@
+        +fn added() {}
+        diff --git a/src/gone.rs b/src/gone.rs
+        deleted file mode 100644
+        index 1111111..0000000
+        --- a/src/gone.rs
+        +++ /dev/null
+        @@ -1,2 +0,0 @@
+        -fn a() {}
+        -fn b() {}
+        diff --git a/old/name.rs b/new/name.rs
+        similarity index 100%
+        rename from old/name.rs
+        rename to new/name.rs
+        diff --git a/logo.png b/logo.png
+        index 1111111..2222222 100644
+        Binary files a/logo.png and b/logo.png differ
+        diff --git a/empty.txt b/empty.txt
+        new file mode 100644
+        index 0000000..e69de29
 
-    """
+        """
 
     private func graphCiting(_ path: String, count: Int) -> PRGraph {
         var graph = ContourSampleData.publishTriggeredReindex

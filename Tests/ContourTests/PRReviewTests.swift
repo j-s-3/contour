@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Contour
 
 final class PRReviewTests: XCTestCase {

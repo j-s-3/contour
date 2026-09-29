@@ -1,12 +1,15 @@
-import Testing
-import SwiftUI
 import AppKit
+import SwiftUI
+import Testing
+
 @testable import Contour
 
 @MainActor
 struct FlowsViewRenderTests {
 
-    private func host(_ graph: PRGraph, focus: FlowsView.Focus? = nil, mode: DiagramMode = .delta) -> NSHostingView<AnyView> {
+    private func host(_ graph: PRGraph, focus: FlowsView.Focus? = nil, mode: DiagramMode = .delta) -> NSHostingView<
+        AnyView
+    > {
         let view = FlowsView(graph: graph, focus: focus, mode: .constant(mode), onOpenEvidence: { _ in })
         let hosting = NSHostingView(rootView: AnyView(view))
         hosting.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
@@ -71,7 +74,6 @@ struct FlowsViewRenderTests {
         _ = host(graph)
     }
 
-
     @MainActor private final class Session {
         struct Wrapper: View {
             let graph: PRGraph
@@ -112,7 +114,9 @@ struct FlowsViewRenderTests {
                     with: type, location: .zero, modifierFlags: modifiers, timestamp: 0,
                     windowNumber: window.windowNumber, context: nil, characters: characters,
                     charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 0
-                ) { window.sendEvent(event) }
+                ) {
+                    window.sendEvent(event)
+                }
             }
             pump()
         }
@@ -144,7 +148,7 @@ struct FlowsViewRenderTests {
         let target = try #require(graph.flows.first)
         var caller = FlowNode(id: "caller", title: "Caller")
         caller.behavior = FlowBehavior(nodes: [
-            FlowBehaviorNode(id: "hop", label: "Hop", kind: .subflow, subflowId: target.id),
+            FlowBehaviorNode(id: "hop", label: "Hop", kind: .subflow, subflowId: target.id)
         ])
         graph.flows.append(caller)
         let session = Session(graph)

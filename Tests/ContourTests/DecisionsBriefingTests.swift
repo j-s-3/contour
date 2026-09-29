@@ -1,13 +1,18 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct DecisionsBriefingTests {
     private func fixtureGraph() throws -> PRGraph {
-        let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
-        let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
-        let flows = try StageDecoding.decode(StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows))
-        let judgment = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
+        let arch = try StageDecoding.decode(
+            StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
+        let decisions = try StageDecoding.decode(
+            StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
+        let flows = try StageDecoding.decode(
+            StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows))
+        let judgment = try StageDecoding.decode(
+            StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment))
         var graph = ContourSampleData.publishTriggeredReindex
         graph.components = arch.components
         graph.architectureEdges = arch.edges
@@ -17,12 +22,16 @@ struct DecisionsBriefingTests {
         return graph
     }
 
-    private func decision(_ id: String, level: AbstractionLevel = .system, options: [DecisionOption] = [],
-                          shape: DecisionShape? = nil, significance: ReviewSignificance? = nil) -> DecisionNode {
+    private func decision(
+        _ id: String, level: AbstractionLevel = .system, options: [DecisionOption] = [],
+        shape: DecisionShape? = nil, significance: ReviewSignificance? = nil
+    ) -> DecisionNode {
         DecisionNode(
             id: id, title: "Title \(id)",
             decision: Statement(text: "Read one chunk (src/input.rs:12-20). Then stop.", provenance: .fact),
-            rationale: [Statement(text: "Waiting could block a tty (src/input.rs:30). More detail.", provenance: .claim)],
+            rationale: [
+                Statement(text: "Waiting could block a tty (src/input.rs:30). More detail.", provenance: .claim)
+            ],
             alternatives: [Statement(text: "Loop until 1 KB. It blocks.", provenance: .interpretation)],
             confidence: .medium, level: level, options: options, shape: shape, significance: significance
         )
@@ -46,7 +55,7 @@ struct DecisionsBriefingTests {
         graph.pr.considerations = []
         graph.decisions = [
             decision("helper-home", level: .system, significance: .low),
-            decision("idempotent-retry", level: .implementation, significance: .high)
+            decision("idempotent-retry", level: .implementation, significance: .high),
         ]
         #expect(graph.decisionsToReview.map(\.id) == ["idempotent-retry"])
         #expect(graph.otherDecisions.map(\.id) == ["helper-home"])
@@ -54,8 +63,10 @@ struct DecisionsBriefingTests {
 
     @Test func overviewConcernsRaiseSignificance() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.decisions = [decision("medium", significance: .medium), decision("low", significance: .low),
-                           decision("quiet", significance: .medium)]
+        graph.decisions = [
+            decision("medium", significance: .medium), decision("low", significance: .low),
+            decision("quiet", significance: .medium),
+        ]
         graph.pr.considerations = [concern("c1", on: "medium"), concern("c2", on: "low")]
         #expect(graph.decisionsToReview.map(\.id) == ["medium"])
         #expect(graph.otherDecisions.map(\.id) == ["low", "quiet"])
@@ -106,7 +117,9 @@ struct DecisionsBriefingTests {
     @Test func aConversationResolvesOnlyQuestionsWithNoDecisionToJudge() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("a", significance: .high), decision("b", significance: .low)]
-        graph.pr.considerations = [concern("onReview", on: "a"), concern("onOther", on: "b"), concern("loose", on: "none")]
+        graph.pr.considerations = [
+            concern("onReview", on: "a"), concern("onOther", on: "b"), concern("loose", on: "none"),
+        ]
         let discussed: Set<String> = ["onReview", "onOther", "loose"]
         let resolved = graph.thingsToThinkAbout.filter { graph.isResolved($0, discussed: discussed) }.map(\.id)
         #expect(resolved == ["onOther", "loose"])
@@ -123,24 +136,29 @@ struct DecisionsBriefingTests {
     }
 
     @Test func framingSaysMoreWereFound() {
-        #expect(DecisionsView.framing(toReview: 2, total: 4)
+        #expect(
+            DecisionsView.framing(toReview: 2, total: 4)
                 == "2 choices in this PR appear worth your attention, out of 4 identified. Do you agree with them?")
-        #expect(DecisionsView.framing(toReview: 1, total: 1)
+        #expect(
+            DecisionsView.framing(toReview: 1, total: 1)
                 == "1 choice in this PR appears worth your attention. Do you agree with it?")
     }
 
     @Test func significanceDecodesLeniently() throws {
         let json = #"""
-        {"id": "d", "title": "t", "decision": {"text": "x", "provenance": "fact"}, "confidence": "high",
-         "level": "implementation", "significance": "high",
-         "impacts": ["Data integrity", "failure-behavior", "vibes", "concurrency"],
-         "significanceReason": "  Retries could duplicate writes.  "}
-        """#
+            {"id": "d", "title": "t", "decision": {"text": "x", "provenance": "fact"}, "confidence": "high",
+             "level": "implementation", "significance": "high",
+             "impacts": ["Data integrity", "failure-behavior", "vibes", "concurrency"],
+             "significanceReason": "  Retries could duplicate writes.  "}
+            """#
         let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
         #expect(d.significance == .high)
         #expect(d.impacts == [.dataIntegrity, .failureBehavior, .concurrency])
         #expect(d.significanceReason == "Retries could duplicate writes.")
-        let unknown = try JSONDecoder().decode(DecisionNode.self, from: Data(json.replacingOccurrences(of: #""significance": "high""#, with: #""significance": "critical""#).utf8))
+        let unknown = try JSONDecoder().decode(
+            DecisionNode.self,
+            from: Data(
+                json.replacingOccurrences(of: #""significance": "high""#, with: #""significance": "critical""#).utf8))
         #expect(unknown.significance == nil)
         let roundTrip = try JSONDecoder().decode(DecisionNode.self, from: JSONEncoder().encode(d))
         #expect(roundTrip.impacts == d.impacts)
@@ -150,7 +168,10 @@ struct DecisionsBriefingTests {
     @Test func withoutOptionsTheChoiceIsDrawnFromTheTradeoff() {
         var graph = ContourSampleData.publishTriggeredReindex
         var d = decision("d")
-        d.tradeoffs = [DecisionTradeoff(dimensionA: "detection completeness", dimensionB: "streaming behavior", chosenPosition: 0.85)]
+        d.tradeoffs = [
+            DecisionTradeoff(
+                dimensionA: "detection completeness", dimensionB: "streaming behavior", chosenPosition: 0.85)
+        ]
         graph.decisions = [d]
         let brief = graph.brief(for: d)
         #expect(brief.shape == .binary)
@@ -165,12 +186,19 @@ struct DecisionsBriefingTests {
 
     @Test func explicitOptionsWinAndKeepTheTradeoff() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.decisions = [decision("d", options: [
-            DecisionOption(label: "First line"), DecisionOption(label: "First 1 KB", detail: "better detection", chosen: true)
-        ])]
+        graph.decisions = [
+            decision(
+                "d",
+                options: [
+                    DecisionOption(label: "First line"),
+                    DecisionOption(label: "First 1 KB", detail: "better detection", chosen: true),
+                ])
+        ]
         graph.decisions[0].question = "How much data should binary detection inspect?"
-        graph.decisions[0].why = Statement(text: "Binary files can have a newline before their first NUL.", provenance: .claim)
-        let traded = DecisionTradeoff(dimensionA: "minimal buffering", dimensionB: "detection completeness", chosenPosition: 0.8)
+        graph.decisions[0].why = Statement(
+            text: "Binary files can have a newline before their first NUL.", provenance: .claim)
+        let traded = DecisionTradeoff(
+            dimensionA: "minimal buffering", dimensionB: "detection completeness", chosenPosition: 0.8)
         graph.decisions[0].tradeoffs = [traded]
         let brief = graph.brief(for: graph.decisions[0])
         #expect(brief.question == "How much data should binary detection inspect?")
@@ -182,18 +210,25 @@ struct DecisionsBriefingTests {
 
     @Test func aTradeoffTheOptionsAlreadySayIsNotDrawnTwice() {
         var graph = ContourSampleData.publishTriggeredReindex
-        var d = decision("d", options: [
-            DecisionOption(label: "Always fill 1 KB", detail: "deterministic classification"),
-            DecisionOption(label: "Use what's buffered", detail: "non-blocking streaming", chosen: true)
-        ])
-        d.tradeoffs = [DecisionTradeoff(dimensionA: "Deterministic classification", dimensionB: "non-blocking streaming.", chosenPosition: 0.9)]
+        var d = decision(
+            "d",
+            options: [
+                DecisionOption(label: "Always fill 1 KB", detail: "deterministic classification"),
+                DecisionOption(label: "Use what's buffered", detail: "non-blocking streaming", chosen: true),
+            ])
+        d.tradeoffs = [
+            DecisionTradeoff(
+                dimensionA: "Deterministic classification", dimensionB: "non-blocking streaming.", chosenPosition: 0.9)
+        ]
         graph.decisions = [d]
         #expect(graph.brief(for: d).tradeoff == nil)
     }
 
     @Test func thePrimaryTradeoffLeadsAndSecondaryOnesWait() {
-        let secondary = DecisionTradeoff(dimensionA: "one sample source", dimensionB: "old behavior kept", prominence: .secondary)
-        let primary = DecisionTradeoff(dimensionA: "detection completeness", dimensionB: "streaming behavior", prominence: .primary)
+        let secondary = DecisionTradeoff(
+            dimensionA: "one sample source", dimensionB: "old behavior kept", prominence: .secondary)
+        let primary = DecisionTradeoff(
+            dimensionA: "detection completeness", dimensionB: "streaming behavior", prominence: .primary)
         var d = decision("d", options: [DecisionOption(label: "A"), DecisionOption(label: "B", chosen: true)])
         d.tradeoffs = [secondary, primary]
         var graph = ContourSampleData.publishTriggeredReindex
@@ -206,16 +241,25 @@ struct DecisionsBriefingTests {
     @Test func beforeAfterNeedsTheNewStructureChosen() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [
-            decision("ok", options: [DecisionOption(label: "Reader → Printer"), DecisionOption(label: "Reader → Inspector → Printer", chosen: true)], shape: .beforeAfter),
-            decision("backwards", options: [DecisionOption(label: "New", chosen: true), DecisionOption(label: "Old")], shape: .beforeAfter),
+            decision(
+                "ok",
+                options: [
+                    DecisionOption(label: "Reader → Printer"),
+                    DecisionOption(label: "Reader → Inspector → Printer", chosen: true),
+                ], shape: .beforeAfter),
+            decision(
+                "backwards", options: [DecisionOption(label: "New", chosen: true), DecisionOption(label: "Old")],
+                shape: .beforeAfter),
         ]
         #expect(graph.brief(for: graph.decisions[0]).shape == .beforeAfter)
         #expect(graph.brief(for: graph.decisions[1]).shape == .binary)
     }
 
     @Test func shapeFollowsTheChoice() {
-        let three = [DecisionOption(label: "Read more"), DecisionOption(label: "Use the buffer", chosen: true),
-                     DecisionOption(label: "Skip streams")]
+        let three = [
+            DecisionOption(label: "Read more"), DecisionOption(label: "Use the buffer", chosen: true),
+            DecisionOption(label: "Skip streams"),
+        ]
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [
             decision("list", options: three, shape: .binary),
@@ -243,7 +287,9 @@ struct DecisionsBriefingTests {
         #expect(onBlocking == ["short-first-read-gap"])
         let placed = graph.decisions.flatMap { graph.overviewQuestions(reviewedOn: $0.id).map(\.id) }
         #expect(placed.count == Set(placed).count)
-        #expect(Set(placed) == Set(graph.thingsToThinkAbout.compactMap { graph.reviewDecisionId(for: $0) == nil ? nil : $0.id }))
+        #expect(
+            Set(placed)
+                == Set(graph.thingsToThinkAbout.compactMap { graph.reviewDecisionId(for: $0) == nil ? nil : $0.id }))
     }
 
     @Test func aDecisionReachesItsArchitectureAndFlows() throws {
@@ -263,7 +309,10 @@ struct DecisionsBriefingTests {
         #expect(resolved.lineage.last == graph.brief(for: graph.decision("use-already-buffered-bytes")!).question)
         #expect(resolved.detail.contains("the option this PR chose"))
         #expect(resolved.detail.contains("Read until 1 KB"))
-        #expect(resolved.detail.contains("Overview question reviewed on this decision: Can binary data still slip through when the first read is short?"))
+        #expect(
+            resolved.detail.contains(
+                "Overview question reviewed on this decision: Can binary data still slip through when the first read is short?"
+            ))
         #expect(resolved.detail.contains("Tradeoff: detection completeness versus streaming responsiveness"))
         #expect(resolved.detailTarget == .decisionDetail("use-already-buffered-bytes"))
         #expect(!ChatContextBuilder.availableExpansions(for: resolved).contains(.relatedDecisions))
@@ -304,11 +353,11 @@ struct DecisionsBriefingTests {
 
     @Test func newDecisionFieldsDecodeLeniently() throws {
         let json = #"""
-        {"id": "d", "title": "T", "decision": {"text": "x", "provenance": "fact"},
-         "question": "Should it wait?", "shape": "spiral",
-         "options": [{"label": "Wait"}, {"label": "Don't", "detail": "never blocks", "chosen": true}],
-         "why": {"text": "Streams are interactive.", "provenance": "claim"}}
-        """#
+            {"id": "d", "title": "T", "decision": {"text": "x", "provenance": "fact"},
+             "question": "Should it wait?", "shape": "spiral",
+             "options": [{"label": "Wait"}, {"label": "Don't", "detail": "never blocks", "chosen": true}],
+             "why": {"text": "Streams are interactive.", "provenance": "claim"}}
+            """#
         let d = try JSONDecoder().decode(DecisionNode.self, from: Data(json.utf8))
         #expect(d.question == "Should it wait?")
         #expect(d.shape == nil)
@@ -316,11 +365,13 @@ struct DecisionsBriefingTests {
         #expect(d.options.last?.detail == "never blocks")
         #expect(d.why?.provenance == .claim)
 
-        let old = try JSONDecoder().decode(DecisionNode.self, from: Data(#"{"id": "d", "title": "T", "decision": {"text": "x", "provenance": "fact"}}"#.utf8))
+        let old = try JSONDecoder().decode(
+            DecisionNode.self,
+            from: Data(#"{"id": "d", "title": "T", "decision": {"text": "x", "provenance": "fact"}}"#.utf8))
         #expect(old.question == nil && old.options.isEmpty && old.why == nil)
     }
 }
 
-private extension PRGraph {
-    func splitSentencesCount(_ text: String) -> Int { Self.splitSentences(text).count }
+extension PRGraph {
+    fileprivate func splitSentencesCount(_ text: String) -> Int { Self.splitSentences(text).count }
 }

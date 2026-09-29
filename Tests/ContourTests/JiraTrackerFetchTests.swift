@@ -1,22 +1,23 @@
 import Testing
+
 @testable import Contour
 
 struct JiraTrackerFetchTests {
     @Test func parseWorkItemJSONExtractsSummaryDescriptionAndSelfLink() {
         let json = """
-        {
-            "self": "https://jira-prod-us-28-1.prod.atl-paas.net/rest/api/2/issue/10001",
-            "fields": {
-                "summary": "Fix flaky login redirect",
-                "description": {
-                    "type": "doc",
-                    "content": [
-                        {"type": "paragraph", "content": [{"type": "text", "text": "Users see a blank page."}]}
-                    ]
+            {
+                "self": "https://jira-prod-us-28-1.prod.atl-paas.net/rest/api/2/issue/10001",
+                "fields": {
+                    "summary": "Fix flaky login redirect",
+                    "description": {
+                        "type": "doc",
+                        "content": [
+                            {"type": "paragraph", "content": [{"type": "text", "text": "Users see a blank page."}]}
+                        ]
+                    }
                 }
             }
-        }
-        """
+            """
         let parsed = JiraTracker.parseWorkItemJSON(json)
         #expect(parsed?.summary == "Fix flaky login redirect")
         #expect(parsed?.description == "Users see a blank page.")
@@ -44,15 +45,17 @@ struct JiraTrackerFetchTests {
 
     @Test func parseSiteHostExtractsTheSiteLine() {
         let output = """
-        Logged in as: someone@example.com
-        Site: your-org.atlassian.net
-        Auth type: oauth
-        """
+            Logged in as: someone@example.com
+            Site: your-org.atlassian.net
+            Auth type: oauth
+            """
         #expect(JiraTracker.parseSiteHost(fromAuthStatusOutput: output) == "your-org.atlassian.net")
     }
 
     @Test func parseSiteHostTrimsWhitespaceAroundTheHost() {
-        #expect(JiraTracker.parseSiteHost(fromAuthStatusOutput: "Site:   your-org.atlassian.net   ") == "your-org.atlassian.net")
+        #expect(
+            JiraTracker.parseSiteHost(fromAuthStatusOutput: "Site:   your-org.atlassian.net   ")
+                == "your-org.atlassian.net")
     }
 
     @Test func parseSiteHostIsNilWhenNoSiteLineExists() {
@@ -77,11 +80,15 @@ struct JiraTrackerFetchTests {
     }
 
     @Test func browseURLFallsBackToAtlassianDotNetWithNeitherHostAvailable() {
-        #expect(JiraTracker.browseURL(forKey: "PROJ-1", siteHost: nil, selfLink: nil) == "https://atlassian.net/browse/PROJ-1")
+        #expect(
+            JiraTracker.browseURL(forKey: "PROJ-1", siteHost: nil, selfLink: nil)
+                == "https://atlassian.net/browse/PROJ-1")
     }
 
     @Test func browseURLFallsBackWhenTheSelfLinkHasNoHost() {
-        #expect(JiraTracker.browseURL(forKey: "PROJ-1", siteHost: nil, selfLink: "not a url") == "https://atlassian.net/browse/PROJ-1")
+        #expect(
+            JiraTracker.browseURL(forKey: "PROJ-1", siteHost: nil, selfLink: "not a url")
+                == "https://atlassian.net/browse/PROJ-1")
     }
 
     @Test(.enabled(if: Shell.which("acli") == nil))

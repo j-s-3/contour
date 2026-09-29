@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+
 @testable import Contour
 
 /// Hosts `BehaviorChangeDiagramView` in a real `NSHostingView` and forces a layout pass, so
@@ -47,7 +48,11 @@ struct BehaviorChangeDiagramRenderTests {
 
     @Test func emptySidesRenderTheirPlaceholderText() {
         #expect(render(BehaviorChange(id: "e", title: "Empty")).height > 0)
-        #expect(render(BehaviorChange(id: "o", title: "One-sided",
-                                      after: [BehaviorStage(id: "x", label: "New", tag: .afterOnly)])).height > 0)
+        #expect(
+            render(
+                BehaviorChange(
+                    id: "o", title: "One-sided",
+                    after: [BehaviorStage(id: "x", label: "New", tag: .afterOnly)])
+            ).height > 0)
     }
 }

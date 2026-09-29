@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct WelcomeWizardTests {
@@ -22,7 +23,9 @@ struct WelcomeWizardTests {
     }
 
     private func status(_ tool: ExternalTool, installed: Bool) -> ToolStatus {
-        ToolStatus(tool: tool, path: installed ? "/usr/bin/\(tool.rawValue)" : nil, version: nil, authenticated: nil, detail: "")
+        ToolStatus(
+            tool: tool, path: installed ? "/usr/bin/\(tool.rawValue)" : nil, version: nil, authenticated: nil,
+            detail: "")
     }
 
     @Test func blockerNamesGitWhenGitIsMissing() {
@@ -39,7 +42,8 @@ struct WelcomeWizardTests {
 
     @Test func blockerAsksToPickAHarnessWhenSeveralAreInstalledButNoneChosen() {
         let statuses: [ExternalTool: ToolStatus] = [.git: status(.git, installed: true)]
-        let blocker = WelcomeWizardLogic.blocker(statuses: statuses, installedHarnesses: [.pi, .claude], resolvedHarness: nil)
+        let blocker = WelcomeWizardLogic.blocker(
+            statuses: statuses, installedHarnesses: [.pi, .claude], resolvedHarness: nil)
         #expect(blocker == "Pick a harness to continue.")
     }
 
@@ -58,7 +62,8 @@ struct WelcomeWizardTests {
     }
 
     @Test func readySummaryNamesTheResolvedHarness() {
-        let summary = WelcomeWizardLogic.readySummary(resolvedHarness: .claude, ghUsable: false, resolvedTracker: .github)
+        let summary = WelcomeWizardLogic.readySummary(
+            resolvedHarness: .claude, ghUsable: false, resolvedTracker: .github)
         #expect(summary.contains("Analyzing with Claude Code"))
     }
 

@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct SettingsViewTests {
@@ -18,7 +19,8 @@ struct SettingsViewTests {
     }
 
     @Test func labelAppendsTheDetectedVersionWhenPresent() {
-        let status = ToolStatus(tool: .pi, path: "/usr/local/bin/pi", version: "1.2.3", authenticated: true, detail: "ok")
+        let status = ToolStatus(
+            tool: .pi, path: "/usr/local/bin/pi", version: "1.2.3", authenticated: true, detail: "ok")
         #expect(SettingsViewLogic.label(for: .pi, statuses: [.pi: status]) == "pi — 1.2.3")
     }
 
@@ -42,8 +44,12 @@ struct SettingsViewTests {
     }
 
     @Test func overrideNoticeTextNamesTheSpecificVariable() {
-        #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_HARNESS") == "Overridden by CONTOUR_HARNESS in the environment.")
-        #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_TRACKER") == "Overridden by CONTOUR_TRACKER in the environment.")
+        #expect(
+            SettingsViewLogic.overrideNoticeText(for: "CONTOUR_HARNESS")
+                == "Overridden by CONTOUR_HARNESS in the environment.")
+        #expect(
+            SettingsViewLogic.overrideNoticeText(for: "CONTOUR_TRACKER")
+                == "Overridden by CONTOUR_TRACKER in the environment.")
     }
 
     @Test func symbolAndTintAreNeutralWithNoStatusYet() {
@@ -58,7 +64,8 @@ struct SettingsViewTests {
     }
 
     @Test func symbolAndTintAreOrangeWhenInstalledButNotUsable() {
-        let status = ToolStatus(tool: .gh, path: "/usr/bin/gh", version: "2.0", authenticated: false, detail: "not signed in")
+        let status = ToolStatus(
+            tool: .gh, path: "/usr/bin/gh", version: "2.0", authenticated: false, detail: "not signed in")
         #expect(SettingsViewLogic.symbol(for: status, tool: .gh) == "exclamationmark.triangle.fill")
         #expect(SettingsViewLogic.tint(for: status, tool: .gh) == .orange)
     }

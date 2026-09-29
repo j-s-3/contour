@@ -27,7 +27,10 @@ struct CommandPaletteView: View {
             .padding(14)
             Divider()
             List(filtered) { command in
-                Button(action: { command.action(); isPresented = false }) {
+                Button(action: {
+                    command.action()
+                    isPresented = false
+                }) {
                     HStack {
                         Image(systemName: command.symbol).frame(width: 20)
                         VStack(alignment: .leading) {
@@ -49,7 +52,10 @@ struct CommandPaletteView: View {
     }
 
     private func runFirst() {
-        if let first = filtered.first { first.action(); isPresented = false }
+        if let first = filtered.first {
+            first.action()
+            isPresented = false
+        }
     }
 
     private var allCommands: [PaletteCommand] { Self.allCommands(store: store) }
@@ -57,45 +63,63 @@ struct CommandPaletteView: View {
     static func allCommands(store: GraphStore) -> [PaletteCommand] {
         var commands: [PaletteCommand] = [
             .init(title: "Go to Overview", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
-            .init(title: "Go to Architecture", subtitle: nil, symbol: "square.stack.3d.up") { store.navigate(to: .architecture) },
+            .init(title: "Go to Architecture", subtitle: nil, symbol: "square.stack.3d.up") {
+                store.navigate(to: .architecture)
+            },
             .init(title: "Go to Decisions", subtitle: nil, symbol: "checklist") { store.navigate(to: .decisions) },
             .init(title: "Go to Flows", subtitle: nil, symbol: "arrow.triangle.branch") { store.navigate(to: .flows) },
             .init(title: "Go to Raw diff", subtitle: nil, symbol: "doc.text") { store.navigate(to: .diff) },
-            .init(title: "Open a different PR…", subtitle: "File ▸ Open Pull Request… (⌘O)", symbol: "arrow.uturn.left") { store.close() },
-            .init(title: "Re-analyze (ignore cache)", subtitle: "re-runs all analysis stages for this PR", symbol: "arrow.clockwise") {
+            .init(title: "Open a different PR…", subtitle: "File ▸ Open Pull Request… (⌘O)", symbol: "arrow.uturn.left")
+            { store.close() },
+            .init(
+                title: "Re-analyze (ignore cache)", subtitle: "re-runs all analysis stages for this PR",
+                symbol: "arrow.clockwise"
+            ) {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
-            }
+            },
         ]
         if store.current.showsDiagram {
             let modes = DiagramMode.allCases.filter { $0 != store.diagramMode }.map { mode in
-                PaletteCommand(title: "Show: \(mode.label)", subtitle: "Diagram view · \(mode.key.uppercased())",
-                               symbol: "eye") { store.diagramMode = mode }
+                PaletteCommand(
+                    title: "Show: \(mode.label)", subtitle: "Diagram view · \(mode.key.uppercased())",
+                    symbol: "eye"
+                ) { store.diagramMode = mode }
             }
             commands.insert(contentsOf: modes, at: 0)
         }
         if store.canStopAnalysis {
-            commands.append(.init(title: "Stop analysis", subtitle: "keeps what's already here; stopped sections can be retried",
-                                  symbol: "stop.circle") { store.stopAnalysis() })
+            commands.append(
+                .init(
+                    title: "Stop analysis", subtitle: "keeps what's already here; stopped sections can be retried",
+                    symbol: "stop.circle"
+                ) { store.stopAnalysis() })
         }
         guard let graph = store.graph else { return commands }
-        commands.append(.init(title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
-                              symbol: "doc.on.clipboard") { store.copyReviewSummary() })
-        commands.append(.init(title: "Open on GitHub", subtitle: nil, symbol: "arrow.up.forward.square") { store.openOnGitHub() })
+        commands.append(
+            .init(
+                title: "Copy review summary", subtitle: "your marks and notes as Markdown for a GitHub review comment",
+                symbol: "doc.on.clipboard"
+            ) { store.copyReviewSummary() })
+        commands.append(
+            .init(title: "Open on GitHub", subtitle: nil, symbol: "arrow.up.forward.square") { store.openOnGitHub() })
         for d in graph.decisions {
-            commands.append(.init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {
-                store.navigate(to: .decisionDetail(d.id))
-            })
+            commands.append(
+                .init(title: graph.brief(for: d).question, subtitle: "Decision", symbol: "checklist") {
+                    store.navigate(to: .decisionDetail(d.id))
+                })
         }
         for c in graph.architectureParts {
             let parent = c.parentId.flatMap(graph.component).map { "Part of \($0.title)" }
-            commands.append(.init(title: c.title, subtitle: parent ?? "Architecture", symbol: "square.stack.3d.up") {
-                store.navigate(to: .componentDetail(c.id))
-            })
+            commands.append(
+                .init(title: c.title, subtitle: parent ?? "Architecture", symbol: "square.stack.3d.up") {
+                    store.navigate(to: .componentDetail(c.id))
+                })
         }
         for f in graph.flows {
-            commands.append(.init(title: graph.scenarioTitle(for: f), subtitle: "Flow", symbol: "arrow.triangle.branch") {
-                store.navigate(to: .flowDetail(f.id))
-            })
+            commands.append(
+                .init(title: graph.scenarioTitle(for: f), subtitle: "Flow", symbol: "arrow.triangle.branch") {
+                    store.navigate(to: .flowDetail(f.id))
+                })
         }
         return commands
     }

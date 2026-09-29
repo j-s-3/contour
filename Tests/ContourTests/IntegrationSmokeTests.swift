@@ -1,12 +1,14 @@
 import XCTest
+
 @testable import Contour
 
 final class IntegrationSmokeTests: XCTestCase {
     static let defaultPR = "https://github.com/cli/cli/pull/1"
 
     func testFullPipelineAgainstRealTinyPR() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
-                          "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + model calls).")
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
+            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + model calls).")
 
         let env = ProcessInfo.processInfo.environment
         let harness = env["CONTOUR_HARNESS"].flatMap(HarnessID.init(rawValue:)) ?? .claude
@@ -25,11 +27,14 @@ final class IntegrationSmokeTests: XCTestCase {
             switch event {
             case .log(let entry): print("[\(entry.stage)] \(entry.detail)")
             case .status(let stage, let status):
-                print(String(format: "%6.1fs  %@ → %@", Date().timeIntervalSince(started), stage.shortLabel, "\(status)"))
+                print(
+                    String(format: "%6.1fs  %@ → %@", Date().timeIntervalSince(started), stage.shortLabel, "\(status)"))
                 if case .failed(let message) = status { failures.append("\(stage.shortLabel): \(message)") }
             case .graph(let g): graph = g
             case .diff(let d): diff = d
-            case .fatal(let message): XCTFail(message); break loop
+            case .fatal(let message):
+                XCTFail(message)
+                break loop
             case .complete: break loop
             case .checkout, .revalidating, .fromCache: break
             }
@@ -47,7 +52,9 @@ final class IntegrationSmokeTests: XCTestCase {
         print("Intent:", result.graph.pr.intent.text)
         print("Components:", result.graph.components.map(\.title))
         print("Decisions:", result.graph.decisions.map(\.title))
-        print("Tradeoffs:", result.graph.decisions.flatMap { d in d.tradeoffs.map { "\(d.id): \($0.dimensionA) vs \($0.dimensionB)" } })
+        print(
+            "Tradeoffs:",
+            result.graph.decisions.flatMap { d in d.tradeoffs.map { "\(d.id): \($0.dimensionA) vs \($0.dimensionB)" } })
         print("Flows:", result.graph.flows.map(\.title))
         print("Entry points:", result.graph.entryPoints.map(\.title))
         print("Needs judgment:", result.graph.pr.needsJudgment.map(\.text))
@@ -58,8 +65,9 @@ final class IntegrationSmokeTests: XCTestCase {
     }
 
     func testAnonymousSourceFetchesAPublicPR() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
-                          "Set RUN_CONTOUR_INTEGRATION=1 to run this (network).")
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
+            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network).")
 
         let ctx = try await AnonymousAPISource().fetchContext(prURL: "https://github.com/cli/cli/pull/1")
         XCTAssertEqual(ctx.owner, "cli")
@@ -72,8 +80,9 @@ final class IntegrationSmokeTests: XCTestCase {
     }
 
     func testBothSourcesAgreeOnTheSamePR() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
-                          "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + gh).")
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
+            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + gh).")
         try XCTSkipIf(Shell.which("gh") == nil, "gh not installed")
 
         let url = "https://github.com/cli/cli/pull/1"

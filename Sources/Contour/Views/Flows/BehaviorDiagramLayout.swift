@@ -54,8 +54,10 @@ enum BehaviorDiagramLayoutEngine {
     static let roomyWidth: CGFloat = 1200
     static let overflowHeight: CGFloat = 20
 
-    static func layout(_ behavior: FlowBehavior, mode: DiagramMode, annotations: [FlowAnnotation],
-                       availableWidth: CGFloat? = nil) -> BehaviorDiagramLayout {
+    static func layout(
+        _ behavior: FlowBehavior, mode: DiagramMode, annotations: [FlowAnnotation],
+        availableWidth: CGFloat? = nil
+    ) -> BehaviorDiagramLayout {
         let nodes = behavior.nodes
         guard !nodes.isEmpty else { return BehaviorDiagramLayout() }
         let index = Dictionary(nodes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -107,7 +109,11 @@ enum BehaviorDiagramLayoutEngine {
         for row in rows {
             tops.append(y)
             let rowHeight = row.map { heights[$0]! }.max() ?? 0
-            let notes = row.map { stackHeight(byNode[$0] ?? [], width: noteWidth) + (hidden[$0, default: 0] > 0 ? overflowHeight + 6 : 0) }.max() ?? 0
+            let notes =
+                row.map {
+                    stackHeight(byNode[$0] ?? [], width: noteWidth)
+                        + (hidden[$0, default: 0] > 0 ? overflowHeight + 6 : 0)
+                }.max() ?? 0
             let gap = max(minLayerGap, notes > 0 ? 12 + notes + 10 + labelBand : 0)
             y += rowHeight + gap
         }
@@ -127,13 +133,17 @@ enum BehaviorDiagramLayoutEngine {
             var noteY = frame.maxY + 12
             for note in notes {
                 let h = height(of: note, width: noteWidth)
-                out.annotations.append(.init(annotation: note,
-                                             frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: h)))
+                out.annotations.append(
+                    .init(
+                        annotation: note,
+                        frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: h)))
                 noteY += h + 6
             }
             if let count = hidden[n.id], count > 0 {
-                out.overflow.append(.init(nodeId: n.id, count: count,
-                                          frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: overflowHeight)))
+                out.overflow.append(
+                    .init(
+                        nodeId: n.id, count: count,
+                        frame: CGRect(x: frame.midX + 14, y: noteY, width: noteWidth, height: overflowHeight)))
             }
         }
 
@@ -146,22 +156,30 @@ enum BehaviorDiagramLayoutEngine {
                 let bar = b.minY - labelBand
                 let between = out.nodes.filter {
                     let l = layer[$0.id]!
-                    return l > layer[edge.fromId]! && l < layer[edge.toId]! && $0.frame.minX - 8 < a.midX && a.midX < $0.frame.maxX + 8
+                    return l > layer[edge.fromId]! && l < layer[edge.toId]! && $0.frame.minX - 8 < a.midX
+                        && a.midX < $0.frame.maxX + 8
                 }
                 if between.isEmpty {
-                    points = [CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: bar),
-                              CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
+                    points = [
+                        CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: bar),
+                        CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY),
+                    ]
                 } else {
                     let exit = a.maxY + 6
-                    let obstacles = out.nodes.filter { $0.id != edge.fromId && $0.id != edge.toId }.map(\.frame)
+                    let obstacles =
+                        out.nodes.filter { $0.id != edge.fromId && $0.id != edge.toId }.map(\.frame)
                         + out.annotations.map(\.frame) + out.overflow.map(\.frame)
                     let lane = detourLane(from: a.midX, exit: exit, bar: bar, to: b.midX, avoiding: obstacles)
-                    points = [CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: exit), CGPoint(x: lane, y: exit),
-                              CGPoint(x: lane, y: bar), CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
+                    points = [
+                        CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: exit), CGPoint(x: lane, y: exit),
+                        CGPoint(x: lane, y: bar), CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY),
+                    ]
                 }
             } else {
-                points = [CGPoint(x: a.minX, y: a.midY), CGPoint(x: leftLane, y: a.midY),
-                          CGPoint(x: leftLane, y: b.midY), CGPoint(x: b.minX, y: b.midY)]
+                points = [
+                    CGPoint(x: a.minX, y: a.midY), CGPoint(x: leftLane, y: a.midY),
+                    CGPoint(x: leftLane, y: b.midY), CGPoint(x: b.minX, y: b.midY),
+                ]
             }
             points = simplified(points)
             let label = edge.label.map { _ in CGPoint(x: b.midX, y: b.minY - labelBand / 2) }
@@ -172,9 +190,12 @@ enum BehaviorDiagramLayoutEngine {
             let members = nodes.filter { $0.boundaryId == boundary.id }.compactMap { frames[$0.id] }
             guard let first = members.first else { continue }
             let union = members.dropFirst().reduce(first) { $0.union($1) }
-            out.boundaries.append(.init(boundary: boundary,
-                                        frame: CGRect(x: union.minX - 16, y: union.minY - 30,
-                                                      width: union.width + 32, height: union.height + 46)))
+            out.boundaries.append(
+                .init(
+                    boundary: boundary,
+                    frame: CGRect(
+                        x: union.minX - 16, y: union.minY - 30,
+                        width: union.width + 32, height: union.height + 46)))
         }
 
         let extents = out.nodes.map(\.frame) + out.annotations.map(\.frame) + out.boundaries.map(\.frame)
@@ -204,7 +225,9 @@ enum BehaviorDiagramLayoutEngine {
         return behavior.edges.filter { !back.contains($0.id) }
     }
 
-    private static func layers(_ nodes: [FlowBehaviorNode], forward: [FlowBehaviorEdge], index: [String: Int]) -> [String: Int] {
+    private static func layers(_ nodes: [FlowBehaviorNode], forward: [FlowBehaviorEdge], index: [String: Int])
+        -> [String: Int]
+    {
         var layer: [String: Int] = [:]
         var indegree = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, 0) })
         for e in forward { indegree[e.toId, default: 0] += 1 }
@@ -222,14 +245,18 @@ enum BehaviorDiagramLayoutEngine {
         return layer
     }
 
-    private static func detourLane(from start: CGFloat, exit: CGFloat, bar: CGFloat, to end: CGFloat,
-                                   avoiding obstacles: [CGRect]) -> CGFloat {
+    private static func detourLane(
+        from start: CGFloat, exit: CGFloat, bar: CGFloat, to end: CGFloat,
+        avoiding obstacles: [CGRect]
+    ) -> CGFloat {
         let clearance: CGFloat = 32
         let padded = obstacles.map { $0.insetBy(dx: -clearance / 2, dy: -3) }
         func blocked(_ lane: CGFloat) -> [CGRect] {
-            let segments = [CGRect(x: min(start, lane), y: exit, width: abs(start - lane), height: 0),
-                            CGRect(x: lane, y: exit, width: 0, height: bar - exit),
-                            CGRect(x: min(lane, end), y: bar, width: abs(lane - end), height: 0)]
+            let segments = [
+                CGRect(x: min(start, lane), y: exit, width: abs(start - lane), height: 0),
+                CGRect(x: lane, y: exit, width: 0, height: bar - exit),
+                CGRect(x: min(lane, end), y: bar, width: abs(lane - end), height: 0),
+            ]
             return padded.filter { r in segments.contains { $0.insetBy(dx: -0.5, dy: -0.5).intersects(r) } }
         }
         func search(_ direction: CGFloat) -> CGFloat? {
@@ -246,9 +273,9 @@ enum BehaviorDiagramLayoutEngine {
         let left = search(-1).flatMap { $0 >= margin / 2 ? $0 : nil }
         let right = search(1)
         switch (left, right) {
-        case let (l?, r?): return start - l <= r - start ? l : r
-        case let (l?, nil): return l
-        case let (nil, r?): return r
+        case (let l?, let r?): return start - l <= r - start ? l : r
+        case (let l?, nil): return l
+        case (nil, let r?): return r
         case (nil, nil):
             return (obstacles.map(\.maxX).max() ?? start) + clearance
         }
@@ -259,9 +286,14 @@ enum BehaviorDiagramLayoutEngine {
         for p in points {
             if let last = out.last, abs(last.x - p.x) < 0.5, abs(last.y - p.y) < 0.5 { continue }
             if out.count >= 2 {
-                let a = out[out.count - 2], b = out[out.count - 1]
-                let collinear = (abs(a.x - b.x) < 0.5 && abs(b.x - p.x) < 0.5) || (abs(a.y - b.y) < 0.5 && abs(b.y - p.y) < 0.5)
-                if collinear { out[out.count - 1] = p; continue }
+                let a = out[out.count - 2]
+                let b = out[out.count - 1]
+                let collinear =
+                    (abs(a.x - b.x) < 0.5 && abs(b.x - p.x) < 0.5) || (abs(a.y - b.y) < 0.5 && abs(b.y - p.y) < 0.5)
+                if collinear {
+                    out[out.count - 1] = p
+                    continue
+                }
             }
             out.append(p)
         }

@@ -29,7 +29,8 @@ struct SummaryView: View {
 
                 switch SummaryViewLogic.whySectionMode(
                     hasDominantChange: graph.dominantBehaviorChange != nil,
-                    hasWhyOrConsequence: graph.dominantBehaviorChange?.why != nil || graph.dominantBehaviorChange?.consequence != nil,
+                    hasWhyOrConsequence: graph.dominantBehaviorChange?.why != nil
+                        || graph.dominantBehaviorChange?.consequence != nil,
                     awaitingBehavior: awaitingBehavior
                 ) {
                 case .whyAndConsequence:
@@ -45,7 +46,9 @@ struct SummaryView: View {
                 }
 
                 let considerations = graph.thingsToThinkAbout(during: analysis)
-                switch SummaryViewLogic.thingsToThinkAboutBranch(items: considerations, judgmentStopped: judgmentStatus == .stopped) {
+                switch SummaryViewLogic.thingsToThinkAboutBranch(
+                    items: considerations, judgmentStopped: judgmentStatus == .stopped)
+                {
                 case .list:
                     if let items = considerations {
                         thingsToThinkAbout(items)
@@ -167,8 +170,10 @@ struct SummaryView: View {
                         .transition(.opacity)
                     WorkingLine(text: "Building before / after…")
                 } else {
-                    WorkingLine(text: SummaryViewLogic.awaitingBehaviorText(understandingFailed: understandingStatus.failure != nil),
-                                font: .title3)
+                    WorkingLine(
+                        text: SummaryViewLogic.awaitingBehaviorText(
+                            understandingFailed: understandingStatus.failure != nil),
+                        font: .title3)
                 }
             } else if let problem = graph.pr.problemToBeSolved {
                 Text(graph.pr.howItWasSolved?.text ?? problem.text)
@@ -239,7 +244,8 @@ struct SummaryView: View {
 
     private var judgmentWorkingText: String {
         SummaryViewLogic.judgmentWorkingText(
-            decisionsFound: graph.decisions.count, decisionsStatus: analysis.status(.decisions), judgmentStatus: judgmentStatus
+            decisionsFound: graph.decisions.count, decisionsStatus: analysis.status(.decisions),
+            judgmentStatus: judgmentStatus
         )
     }
 
@@ -271,7 +277,8 @@ struct SummaryView: View {
                     .font(.body)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                ProvenanceMark(provenance: statement.provenance, confidence: statement.confidence, source: statement.source)
+                ProvenanceMark(
+                    provenance: statement.provenance, confidence: statement.confidence, source: statement.source)
             }
             .contentShape(Rectangle())
             .reviewContextMenu(subject)
@@ -285,7 +292,8 @@ struct SummaryView: View {
     }
 
     private func thingsToThinkAbout(_ items: [Consideration]) -> some View {
-        let visible = SummaryViewLogic.visibleConsiderations(items, showAll: showAllConsiderations, budget: considerationBudget)
+        let visible = SummaryViewLogic.visibleConsiderations(
+            items, showAll: showAllConsiderations, budget: considerationBudget)
         let progress = graph.reviewProgress(discussed: discussed)
         let resolvedText = SummaryViewLogic.resolvedProgressText(reviewed: progress.reviewed, total: progress.total)
         return VStack(alignment: .leading, spacing: 0) {
@@ -326,7 +334,9 @@ struct SummaryView: View {
                 )
             }
 
-            if let moreLabel = SummaryViewLogic.showMoreLabel(count: items.count, budget: considerationBudget, showingAll: showAllConsiderations) {
+            if let moreLabel = SummaryViewLogic.showMoreLabel(
+                count: items.count, budget: considerationBudget, showingAll: showAllConsiderations)
+            {
                 Button(moreLabel) {
                     withAnimation(.easeInOut(duration: 0.18)) { showAllConsiderations.toggle() }
                 }
@@ -416,15 +426,23 @@ struct SummaryView: View {
         return VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Explore the change")
             HStack(spacing: 12) {
-                ExploreTile(title: "Architecture",
-                            detail: tileDetail(.architecture, ready: architecture, count: graph.components.count, noun: "part"),
-                            symbol: "square.stack.3d.up") { navigate(.architecture) }
-                ExploreTile(title: "Flows",
-                            detail: tileDetail(.flows, ready: "\(graph.flows.count) traced", count: graph.flows.count, noun: "flow"),
-                            symbol: "arrow.triangle.branch") { navigate(.flows) }
-                ExploreTile(title: "Decisions",
-                            detail: tileDetail(.decisions, ready: decisionsReady, count: graph.decisions.count, noun: "decision"),
-                            symbol: "checklist") { navigate(.decisions) }
+                ExploreTile(
+                    title: "Architecture",
+                    detail: tileDetail(.architecture, ready: architecture, count: graph.components.count, noun: "part"),
+                    symbol: "square.stack.3d.up"
+                ) { navigate(.architecture) }
+                ExploreTile(
+                    title: "Flows",
+                    detail: tileDetail(
+                        .flows, ready: "\(graph.flows.count) traced", count: graph.flows.count, noun: "flow"),
+                    symbol: "arrow.triangle.branch"
+                ) { navigate(.flows) }
+                ExploreTile(
+                    title: "Decisions",
+                    detail: tileDetail(
+                        .decisions, ready: decisionsReady, count: graph.decisions.count, noun: "decision"),
+                    symbol: "checklist"
+                ) { navigate(.decisions) }
             }
         }
     }
@@ -526,7 +544,8 @@ struct ConsiderationRow: View {
         if isQuestion {
             Image(systemName: "questionmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
         } else {
-            Text(verbatim: "\(number)").font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(.orange)
+            Text(verbatim: "\(number)").font(.system(size: 12, weight: .semibold)).monospacedDigit().foregroundStyle(
+                .orange)
         }
     }
 
@@ -544,7 +563,9 @@ struct ConsiderationRow: View {
             if !related.isEmpty {
                 FlowLayout(spacing: 8) {
                     ForEach(related, id: \.title) { link in
-                        Button { navigate(link.target) } label: {
+                        Button {
+                            navigate(link.target)
+                        } label: {
                             Label(link.title, systemImage: link.symbol).font(.caption)
                         }
                         .buttonStyle(.link)
@@ -558,7 +579,9 @@ struct ConsiderationRow: View {
                 Text(SummaryViewLogic.capitalizedFirst(PRGraph.provenanceLabel(item.provenance, item.confidence)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                Button { actions.ask(.consideration(item.id)) } label: {
+                Button {
+                    actions.ask(.consideration(item.id))
+                } label: {
                     Label("Ask about this", systemImage: "sparkles").font(.caption)
                 }
                 .buttonStyle(.link)
@@ -599,7 +622,10 @@ struct ExploreTile: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .background(hovered ? Color.secondary.opacity(0.1) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+            .background(
+                hovered ? Color.secondary.opacity(0.1) : Color.secondary.opacity(0.05),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.6)))
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -628,7 +654,9 @@ enum SummaryViewLogic {
         }
     }
 
-    static func judgmentWorkingText(decisionsFound: Int, decisionsStatus: StageStatus, judgmentStatus: StageStatus) -> String {
+    static func judgmentWorkingText(decisionsFound: Int, decisionsStatus: StageStatus, judgmentStatus: StageStatus)
+        -> String
+    {
         if !judgmentStatus.isRunning, decisionsStatus.isRunning || decisionsStatus == .pending {
             return decisionsFound > 0
                 ? "\(decisionsFound) \(decisionsFound == 1 ? "decision" : "decisions") found · looking for consequential choices…"
@@ -657,7 +685,9 @@ enum SummaryViewLogic {
         }
     }
 
-    static func relatedLinks(for item: Consideration, graph: PRGraph) -> [(title: String, symbol: String, target: NavigationTarget)] {
+    static func relatedLinks(for item: Consideration, graph: PRGraph) -> [(
+        title: String, symbol: String, target: NavigationTarget
+    )] {
         item.relatedIds.compactMap { id in
             if let d = graph.decision(id) { return (d.title, "checklist", .decisionDetail(id)) }
             if let c = graph.component(id) { return (c.title, "square.stack.3d.up", .componentDetail(id)) }
@@ -750,7 +780,9 @@ enum SummaryViewLogic {
         case none
     }
 
-    static func whySectionMode(hasDominantChange: Bool, hasWhyOrConsequence: Bool, awaitingBehavior: Bool) -> WhySectionMode {
+    static func whySectionMode(hasDominantChange: Bool, hasWhyOrConsequence: Bool, awaitingBehavior: Bool)
+        -> WhySectionMode
+    {
         if hasDominantChange && hasWhyOrConsequence { return .whyAndConsequence }
         if awaitingBehavior { return .placeholder }
         return .none

@@ -1,10 +1,13 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct ReviewSummaryTests {
-    private func decision(_ id: String, question: String, significance: ReviewSignificance = .high,
-                          state: ReviewerState = .unreviewed, note: String = "") -> DecisionNode {
+    private func decision(
+        _ id: String, question: String, significance: ReviewSignificance = .high,
+        state: ReviewerState = .unreviewed, note: String = ""
+    ) -> DecisionNode {
         DecisionNode(
             id: id, title: "Title \(id)",
             decision: Statement(text: "Decided \(id).", provenance: .fact),
@@ -24,32 +27,39 @@ struct ReviewSummaryTests {
     }
 
     @Test func rendersChangeJudgedDecisionsAndOpenQuestions() {
-        let g = graph([
-            decision("a", question: "Should publish reindex synchronously?", state: .accepted),
-            decision("b", question: "Is the queue bounded?", state: .discuss, note: "What happens under a burst?\nWe saw this before."),
-            decision("c", question: "Where does retry live?", state: .questioned, note: "  Why not in the worker?  ")
-        ], considerations: [
-            Consideration(id: "q1", question: "Can a burst of publishes starve the queue?", detail: "", relatedIds: ["b"]),
-            Consideration(id: "q2", question: "Is reindex idempotent?", detail: "", relatedIds: ["a"])
-        ])
+        let g = graph(
+            [
+                decision("a", question: "Should publish reindex synchronously?", state: .accepted),
+                decision(
+                    "b", question: "Is the queue bounded?", state: .discuss,
+                    note: "What happens under a burst?\nWe saw this before."),
+                decision(
+                    "c", question: "Where does retry live?", state: .questioned, note: "  Why not in the worker?  "),
+            ],
+            considerations: [
+                Consideration(
+                    id: "q1", question: "Can a burst of publishes starve the queue?", detail: "", relatedIds: ["b"]),
+                Consideration(id: "q2", question: "Is reindex idempotent?", detail: "", relatedIds: ["a"]),
+            ])
 
-        #expect(g.reviewSummaryMarkdown == """
-        **What changed:** The publish handler now enqueues an immediate reindex instead of relying on the nightly rebuild.
+        #expect(
+            g.reviewSummaryMarkdown == """
+                **What changed:** The publish handler now enqueues an immediate reindex instead of relying on the nightly rebuild.
 
-        ### Decisions (3 of 3 to review judged)
+                ### Decisions (3 of 3 to review judged)
 
-        - **Needs discussion** — Is the queue bounded?
-          > What happens under a burst?
-          > We saw this before.
-        - **Questioned** — Where does retry live?
-          > Why not in the worker?
-        - **Looks good** — Should publish reindex synchronously?
+                - **Needs discussion** — Is the queue bounded?
+                  > What happens under a burst?
+                  > We saw this before.
+                - **Questioned** — Where does retry live?
+                  > Why not in the worker?
+                - **Looks good** — Should publish reindex synchronously?
 
-        ### Open questions
+                ### Open questions
 
-        - Can a burst of publishes starve the queue?
+                - Can a burst of publishes starve the queue?
 
-        """)
+                """)
     }
 
     @Test func saysSoWhenNothingIsJudged() {
@@ -64,7 +74,7 @@ struct ReviewSummaryTests {
         let g = graph([
             decision("a", question: "Main?", state: .accepted),
             decision("b", question: "Minor?", significance: .low, state: .questioned),
-            decision("c", question: "Aside?", significance: .low, note: "Worth a follow-up.")
+            decision("c", question: "Aside?", significance: .low, note: "Worth a follow-up."),
         ])
         let md = g.reviewSummaryMarkdown
         #expect(md.contains("### Decisions (1 of 1 to review judged)"))
@@ -76,7 +86,8 @@ struct ReviewSummaryTests {
     @Test func fallsBackToIntentForWhatChanged() {
         var g = graph([])
         g.pr.howItWasSolved = nil
-        g.pr.intent = Statement(text: "Reindex on publish (src/publish.rs:10-20). Also tidies logging.", provenance: .claim)
+        g.pr.intent = Statement(
+            text: "Reindex on publish (src/publish.rs:10-20). Also tidies logging.", provenance: .claim)
         #expect(g.reviewSummaryMarkdown.hasPrefix("**What changed:** Reindex on publish.\n\n"))
     }
 }

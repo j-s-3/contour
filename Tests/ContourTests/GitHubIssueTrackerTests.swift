@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct GitHubIssueTrackerTests {
@@ -119,7 +120,8 @@ struct GitHubIssueTrackerTests {
     }
 
     @Test func fetchUsesTheRefsOwnOwnerAndRepoWhenPresent() async {
-        let source = CannedSource(issue: RawIssue(title: "Bug", body: "desc", url: "https://github.com/other-org/other-repo/issues/55"))
+        let source = CannedSource(
+            issue: RawIssue(title: "Bug", body: "desc", url: "https://github.com/other-org/other-repo/issues/55"))
         let tracker = GitHubIssueTracker(source: source, currentOwner: "acme", currentRepo: "shop")
         let ref = IssueRef(id: "55", tracker: .github, owner: "other-org", repo: "other-repo")
 

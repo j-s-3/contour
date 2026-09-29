@@ -1,5 +1,6 @@
 import SwiftUI
 import Testing
+
 @testable import Contour
 
 struct ArchitectureInspectorTests {
@@ -45,7 +46,8 @@ struct ArchitectureInspectorTests {
     }
 
     private func edge(flow: EdgeFlow = .sync, trust: Bool = false, critical: Bool = false) -> ArchitectureEdge {
-        ArchitectureEdge(id: "e", fromId: "a", toId: "b", label: "l", flow: flow, isTrustBoundary: trust, onCriticalPath: critical)
+        ArchitectureEdge(
+            id: "e", fromId: "a", toId: "b", label: "l", flow: flow, isTrustBoundary: trust, onCriticalPath: critical)
     }
 
     @Test func propertiesDescribesSyncVsAsync() {
@@ -54,7 +56,8 @@ struct ArchitectureInspectorTests {
     }
 
     @Test func propertiesAppendsTrustBoundaryAndCriticalPathWhenBothApply() {
-        #expect(ArchitectureInspector.properties(edge(flow: .async, trust: true, critical: true))
+        #expect(
+            ArchitectureInspector.properties(edge(flow: .async, trust: true, critical: true))
                 == "Asynchronous · crosses a trust boundary · on a critical path")
     }
 
@@ -71,19 +74,23 @@ struct ArchitectureInspectorTests {
     }
 
     @Test func showsUnchangedNoteWhenOnlyOneSideOfBeforeAfterIsPresent() {
-        let onlyBefore = ComponentNode(id: "p", title: "P", changeKind: .changed,
-                                        delta: ResponsibilityDelta(before: "old", after: nil))
-        let onlyAfter = ComponentNode(id: "p", title: "P", changeKind: .changed,
-                                       delta: ResponsibilityDelta(before: nil, after: "new"))
+        let onlyBefore = ComponentNode(
+            id: "p", title: "P", changeKind: .changed,
+            delta: ResponsibilityDelta(before: "old", after: nil))
+        let onlyAfter = ComponentNode(
+            id: "p", title: "P", changeKind: .changed,
+            delta: ResponsibilityDelta(before: nil, after: "new"))
         #expect(ArchitectureInspector.showsUnchangedNote(onlyBefore))
         #expect(ArchitectureInspector.showsUnchangedNote(onlyAfter))
     }
 
     @Test func doesNotShowUnchangedNoteWithASummaryOrACompleteBeforeAfterPair() {
-        let withSummary = ComponentNode(id: "p", title: "P", changeKind: .changed,
-                                         delta: ResponsibilityDelta(summary: Statement(text: "x", provenance: .fact)))
-        let withPair = ComponentNode(id: "p", title: "P", changeKind: .changed,
-                                      delta: ResponsibilityDelta(before: "old", after: "new"))
+        let withSummary = ComponentNode(
+            id: "p", title: "P", changeKind: .changed,
+            delta: ResponsibilityDelta(summary: Statement(text: "x", provenance: .fact)))
+        let withPair = ComponentNode(
+            id: "p", title: "P", changeKind: .changed,
+            delta: ResponsibilityDelta(before: "old", after: "new"))
         #expect(!ArchitectureInspector.showsUnchangedNote(withSummary))
         #expect(!ArchitectureInspector.showsUnchangedNote(withPair))
     }
@@ -95,8 +102,9 @@ struct ArchitectureInspectorTests {
 
     @Test func connectionLabelFallsBackToAnEmDashWhenUnlabeled() {
         #expect(ArchitectureInspector.connectionLabel(edge(flow: .sync)) == "l")
-        #expect(ArchitectureInspector.connectionLabel(
-            ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "—")
+        #expect(
+            ArchitectureInspector.connectionLabel(
+                ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "—")
     }
 
     @Test func connectionLabelWeightAndColorAreQuietOnlyForExisting() {
@@ -119,7 +127,8 @@ struct ArchitectureInspectorTests {
 
     @Test func crossesLabelFallsBackToNotLabeled() {
         #expect(ArchitectureInspector.crossesLabel(edge(flow: .sync)) == "l")
-        #expect(ArchitectureInspector.crossesLabel(ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "Not labeled")
+        #expect(
+            ArchitectureInspector.crossesLabel(ArchitectureEdge(fromId: "a", toId: "b", label: "")) == "Not labeled")
     }
 
     @Test func relationshipThisPRNotePrefersANonEmptyNote() {
@@ -155,7 +164,8 @@ struct ArchitectureInspectorTests {
     }
 
     @Test func foldedEdgeLineFormatsAnArrowBetweenTitles() {
-        #expect(ArchitectureInspector.foldedEdgeLine(fromTitle: "Web", toTitle: "API", label: "request")
+        #expect(
+            ArchitectureInspector.foldedEdgeLine(fromTitle: "Web", toTitle: "API", label: "request")
                 == "Web → API: request")
     }
 
@@ -178,12 +188,15 @@ struct ArchitectureInspectorTests {
     }
 
     @Test func implementationCountLabelIsSingularForExactlyOne() {
-        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 1, nameCount: 0) == "1 implementation component")
-        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 0, nameCount: 1) == "1 implementation component")
+        #expect(
+            ArchitectureInspector.implementationCountLabel(nodeCount: 1, nameCount: 0) == "1 implementation component")
+        #expect(
+            ArchitectureInspector.implementationCountLabel(nodeCount: 0, nameCount: 1) == "1 implementation component")
     }
 
     @Test func implementationCountLabelIsPluralForMoreThanOneAndSumsBothCounts() {
-        #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 2, nameCount: 1) == "3 implementation components")
+        #expect(
+            ArchitectureInspector.implementationCountLabel(nodeCount: 2, nameCount: 1) == "3 implementation components")
     }
 
     @Test func mergedRefsDeduplicatesPartAndImplementationRefsInOrder() {

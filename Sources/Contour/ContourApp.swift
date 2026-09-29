@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static let appIcon: NSImage? = Bundle.module.url(forResource: "AppIcon", withExtension: "icns")
@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let icon = AppDelegate.appIcon { NSApp.applicationIconImage = icon }
             Preferences.shared.applyModelOverrides()
             #if DEBUG
-            MainThreadWatchdog.start()
+                MainThreadWatchdog.start()
             #endif
         }
         NSApp.activate(ignoringOtherApps: true)

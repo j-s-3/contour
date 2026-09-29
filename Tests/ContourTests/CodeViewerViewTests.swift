@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Contour
 
 struct CodeViewerViewTests {
@@ -63,7 +64,10 @@ struct CodeViewerViewTests {
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: nil, ref: ref, contextLines: 6, service: RepoContextService()
         )
-        guard case .noCheckout = outcome else { Issue.record("expected .noCheckout, got \(outcome)"); return }
+        guard case .noCheckout = outcome else {
+            Issue.record("expected .noCheckout, got \(outcome)")
+            return
+        }
     }
 
     @Test func loadExcerptReturnsTheCitedRangeFromARealCheckout() async throws {
@@ -77,7 +81,10 @@ struct CodeViewerViewTests {
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 1, service: RepoContextService()
         )
-        guard case .loaded(let lines) = outcome else { Issue.record("expected .loaded, got \(outcome)"); return }
+        guard case .loaded(let lines) = outcome else {
+            Issue.record("expected .loaded, got \(outcome)")
+            return
+        }
         #expect(lines.map(\.number) == [4, 5, 6])
         #expect(lines.map(\.text) == ["line 4", "line 5", "line 6"])
     }
@@ -93,7 +100,10 @@ struct CodeViewerViewTests {
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 0, service: RepoContextService()
         )
-        guard case .loaded(let lines) = outcome else { Issue.record("expected .loaded, got \(outcome)"); return }
+        guard case .loaded(let lines) = outcome else {
+            Issue.record("expected .loaded, got \(outcome)")
+            return
+        }
         #expect(lines.first?.text == "committed")
     }
 
@@ -105,23 +115,34 @@ struct CodeViewerViewTests {
         let outcome = await CodeViewerLogic.loadExcerpt(
             checkout: checkout, ref: ref, contextLines: 0, service: RepoContextService()
         )
-        guard case .failed(let message) = outcome else { Issue.record("expected .failed, got \(outcome)"); return }
+        guard case .failed(let message) = outcome else {
+            Issue.record("expected .failed, got \(outcome)")
+            return
+        }
         #expect(!message.isEmpty)
     }
 
     @Test func loadWholeFileReturnsNoCheckoutWhenThereIsNoLocalCheckout() async {
         let outcome = await CodeViewerLogic.loadWholeFile(checkout: nil, path: "a.swift", service: RepoContextService())
-        guard case .noCheckout = outcome else { Issue.record("expected .noCheckout, got \(outcome)"); return }
+        guard case .noCheckout = outcome else {
+            Issue.record("expected .noCheckout, got \(outcome)")
+            return
+        }
     }
 
     @Test func loadWholeFileReturnsTheFilesFullContentsFromARealCheckout() async throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        try "whole file contents\nsecond line".write(to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
+        try "whole file contents\nsecond line".write(
+            to: dir.appendingPathComponent("a.swift"), atomically: true, encoding: .utf8)
 
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
-        let outcome = await CodeViewerLogic.loadWholeFile(checkout: checkout, path: "a.swift", service: RepoContextService())
-        guard case .loaded(let content) = outcome else { Issue.record("expected .loaded, got \(outcome)"); return }
+        let outcome = await CodeViewerLogic.loadWholeFile(
+            checkout: checkout, path: "a.swift", service: RepoContextService())
+        guard case .loaded(let content) = outcome else {
+            Issue.record("expected .loaded, got \(outcome)")
+            return
+        }
         #expect(content == "whole file contents\nsecond line")
     }
 
@@ -129,11 +150,14 @@ struct CodeViewerViewTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
-        let outcome = await CodeViewerLogic.loadWholeFile(checkout: checkout, path: "missing.swift", service: RepoContextService())
-        guard case .failed(let message) = outcome else { Issue.record("expected .failed, got \(outcome)"); return }
+        let outcome = await CodeViewerLogic.loadWholeFile(
+            checkout: checkout, path: "missing.swift", service: RepoContextService())
+        guard case .failed(let message) = outcome else {
+            Issue.record("expected .failed, got \(outcome)")
+            return
+        }
         #expect(!message.isEmpty)
     }
-
 
     @Test func showsBaseBadgeOnlyForBaseSide() {
         #expect(CodeViewerLogic.showsBaseBadge(CodeRef(path: "a", startLine: 1, endLine: 1, side: .base)))

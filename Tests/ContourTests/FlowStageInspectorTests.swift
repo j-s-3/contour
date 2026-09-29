@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct FlowStageInspectorTests {
@@ -24,11 +25,12 @@ struct FlowStageInspectorTests {
     }
 
     private func graph(flows: [FlowNode] = []) -> PRGraph {
-        var g = PRGraph(pr: PRSummary(
-            repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
-            branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
-            intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
-        ))
+        var g = PRGraph(
+            pr: PRSummary(
+                repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
+                branch: "b", baseBranch: "main", headSha: "head", baseSha: "base",
+                intent: Statement(text: "intent", provenance: .claim), filesChanged: 1, additions: 1, deletions: 0
+            ))
         g.flows = flows
         return g
     }
@@ -53,13 +55,19 @@ struct FlowStageInspectorTests {
         let flow = FlowNode(id: "f1", title: "Flow", steps: [step])
 
         let withResolvedSteps = FlowBehaviorNode(id: "n1", label: "Do thing", stepIds: ["s1"])
-        #expect(FlowDrillLevel.available(for: withResolvedSteps, in: flow, graph: graph(flows: [flow])).contains(.implementation))
+        #expect(
+            FlowDrillLevel.available(for: withResolvedSteps, in: flow, graph: graph(flows: [flow])).contains(
+                .implementation))
 
         let withComponentId = FlowBehaviorNode(id: "n1", label: "Do thing", componentId: "c1")
-        #expect(FlowDrillLevel.available(for: withComponentId, in: flow, graph: graph(flows: [flow])).contains(.implementation))
+        #expect(
+            FlowDrillLevel.available(for: withComponentId, in: flow, graph: graph(flows: [flow])).contains(
+                .implementation))
 
         let withNeither = FlowBehaviorNode(id: "n1", label: "Do thing")
-        #expect(!FlowDrillLevel.available(for: withNeither, in: flow, graph: graph(flows: [flow])).contains(.implementation))
+        #expect(
+            !FlowDrillLevel.available(for: withNeither, in: flow, graph: graph(flows: [flow])).contains(.implementation)
+        )
     }
 
     @Test func availableIncludesCodeOnlyWhenSomeRefExistsOnNodeOrItsSteps() {
@@ -72,7 +80,9 @@ struct FlowStageInspectorTests {
         let step = FlowStep(id: "s1", index: 0, title: "Step one", refs: [ref])
         let flowWithStepRefs = FlowNode(id: "f1", title: "Flow", steps: [step])
         let withStepRef = FlowBehaviorNode(id: "n1", label: "Do thing", stepIds: ["s1"])
-        #expect(FlowDrillLevel.available(for: withStepRef, in: flowWithStepRefs, graph: graph(flows: [flowWithStepRefs])).contains(.code))
+        #expect(
+            FlowDrillLevel.available(for: withStepRef, in: flowWithStepRefs, graph: graph(flows: [flowWithStepRefs]))
+                .contains(.code))
 
         let withNoRefs = FlowBehaviorNode(id: "n1", label: "Do thing")
         #expect(!FlowDrillLevel.available(for: withNoRefs, in: flow, graph: graph(flows: [flow])).contains(.code))
@@ -83,7 +93,10 @@ struct FlowStageInspectorTests {
         let step = FlowStep(id: "s1", index: 0, title: "Step one", refs: [ref])
         let flow = FlowNode(id: "f1", title: "Flow", steps: [step])
         let node = FlowBehaviorNode(id: "n1", label: "Do thing", substeps: ["a"], stepIds: ["s1"])
-        #expect(FlowDrillLevel.available(for: node, in: flow, graph: graph(flows: [flow])) == [.behavior, .steps, .implementation, .code])
+        #expect(
+            FlowDrillLevel.available(for: node, in: flow, graph: graph(flows: [flow])) == [
+                .behavior, .steps, .implementation, .code,
+            ])
     }
 
     @Test func everyFlowNodeKindHasItsOwnChipLabel() {

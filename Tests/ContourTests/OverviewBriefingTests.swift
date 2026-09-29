@@ -1,11 +1,14 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct OverviewBriefingTests {
     @Test func considerationsFromTheJudgmentStageWin() {
         var graph = ContourSampleData.publishTriggeredReindex
-        graph.pr.considerations = [Consideration(id: "c1", question: "Is a queue hop acceptable?", detail: "Publishing gets slower.")]
+        graph.pr.considerations = [
+            Consideration(id: "c1", question: "Is a queue hop acceptable?", detail: "Publishing gets slower.")
+        ]
         #expect(graph.thingsToThinkAbout.map(\.id) == ["c1"])
     }
 
@@ -18,7 +21,8 @@ struct OverviewBriefingTests {
 
     @Test func condensingLeadsWithTheQuestionAndDropsCodeLocations() {
         let statement = Statement(
-            text: "The fix reads only the first chunk (src/input.rs:273-274). Pipes can deliver short chunks. Is timing-dependent classification acceptable? More detail follows here.",
+            text:
+                "The fix reads only the first chunk (src/input.rs:273-274). Pipes can deliver short chunks. Is timing-dependent classification acceptable? More detail follows here.",
             provenance: .interpretation, confidence: .medium
         )
         let item = PRGraph.condense(statement, id: "x", kind: .concern)
@@ -41,7 +45,10 @@ struct OverviewBriefingTests {
 
     @Test func abbreviationsAndBareCitationsDontBreakHeadlines() {
         let item = PRGraph.condense(
-            Statement(text: "The fix is partial for stdin (e.g. `gpg -d ... | bat`). The test at src/input.rs:435-455 checks it.", provenance: .interpretation),
+            Statement(
+                text:
+                    "The fix is partial for stdin (e.g. `gpg -d ... | bat`). The test at src/input.rs:435-455 checks it.",
+                provenance: .interpretation),
             id: "z", kind: .concern
         )
         #expect(item.question == "The fix is partial for stdin (e.g. `gpg -d ... | bat`).")
@@ -60,7 +67,9 @@ struct OverviewBriefingTests {
 
     @Test func judgmentStageDecodesConsiderations() throws {
         let raw: [String: Any] = [
-            "considerations": [["id": "a", "question": "Q?", "detail": "D.", "kind": "question", "relatedIds": ["d1"]]],
+            "considerations": [
+                ["id": "a", "question": "Q?", "detail": "D.", "kind": "question", "relatedIds": ["d1"]]
+            ],
             "needsJudgment": [], "uncertainties": [], "questions": [],
         ]
         let result = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: raw)
@@ -69,9 +78,11 @@ struct OverviewBriefingTests {
     }
 
     @Test func stageOutcomeDecodesAndDegrades() throws {
-        let ok = try JSONDecoder().decode(BehaviorStage.self, from: Data(#"{"label": "Server rejects", "outcome": "failure"}"#.utf8))
+        let ok = try JSONDecoder().decode(
+            BehaviorStage.self, from: Data(#"{"label": "Server rejects", "outcome": "failure"}"#.utf8))
         #expect(ok.outcome == .failure)
-        let odd = try JSONDecoder().decode(BehaviorStage.self, from: Data(#"{"label": "Run", "outcome": "maybe"}"#.utf8))
+        let odd = try JSONDecoder().decode(
+            BehaviorStage.self, from: Data(#"{"label": "Run", "outcome": "maybe"}"#.utf8))
         #expect(odd.outcome == nil)
     }
 
@@ -140,8 +151,11 @@ struct OverviewBriefingTests {
     @Test func thingsToThinkAboutShowAtOnceWhenNothingMoreIsComing() {
         let graph = ContourSampleData.publishTriggeredReindex
         #expect(graph.thingsToThinkAbout(during: AnalysisState(isComplete: true))?.isEmpty == false)
-        #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .stale])) == graph.thingsToThinkAbout)
-        #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .failed("boom")])) == graph.thingsToThinkAbout)
+        #expect(
+            graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .stale])) == graph.thingsToThinkAbout)
+        #expect(
+            graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .failed("boom")]))
+                == graph.thingsToThinkAbout)
         #expect(graph.thingsToThinkAbout(during: AnalysisState(stages: [.judgment: .running(detail: nil)])) == nil)
     }
 }

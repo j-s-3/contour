@@ -1,5 +1,6 @@
-import Testing
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct DecisionsViewTests {
@@ -8,9 +9,10 @@ struct DecisionsViewTests {
     }
 
     private func decision(_ id: String, state: ReviewerState = .unreviewed) -> DecisionNode {
-        DecisionNode(id: id, title: "Decision \(id)",
-                     decision: Statement(text: "did \(id)", provenance: .fact),
-                     confidence: .medium, reviewerState: state)
+        DecisionNode(
+            id: id, title: "Decision \(id)",
+            decision: Statement(text: "did \(id)", provenance: .fact),
+            confidence: .medium, reviewerState: state)
     }
 
     @Test func questionsKeepsTheOriginalOrderWithNoArrival() {
@@ -75,77 +77,101 @@ struct DecisionsViewTests {
     }
 
     @Test func keyActionIgnoresCommandControlOrOptionModifiers() {
-        let action = DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "j",
-                                                    modifiersBlockShortcuts: true, noteFieldFocused: false,
-                                                    hasSelection: true, selectionIsToReview: true)
+        let action = DecisionsViewLogic.keyAction(
+            isArrowDown: false, isArrowUp: false, character: "j",
+            modifiersBlockShortcuts: true, noteFieldFocused: false,
+            hasSelection: true, selectionIsToReview: true)
         #expect(action == .ignored)
     }
 
     @Test func keyActionIgnoresEverythingWhileTheNoteFieldIsFocused() {
-        let action = DecisionsViewLogic.keyAction(isArrowDown: true, isArrowUp: false, character: "",
-                                                    modifiersBlockShortcuts: false, noteFieldFocused: true,
-                                                    hasSelection: true, selectionIsToReview: true)
+        let action = DecisionsViewLogic.keyAction(
+            isArrowDown: true, isArrowUp: false, character: "",
+            modifiersBlockShortcuts: false, noteFieldFocused: true,
+            hasSelection: true, selectionIsToReview: true)
         #expect(action == .ignored)
     }
 
     @Test func keyActionStepsOnArrowsWithoutRequiringASelection() {
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: true, isArrowUp: false, character: "",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: false, selectionIsToReview: false) == .step(1))
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: true, character: "",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: false, selectionIsToReview: false) == .step(-1))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: true, isArrowUp: false, character: "",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: false, selectionIsToReview: false) == .step(1))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: true, character: "",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: false, selectionIsToReview: false) == .step(-1))
     }
 
     @Test func keyActionIgnoresJAndKWithNoSelection() {
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "j",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: false, selectionIsToReview: false) == .ignored)
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "j",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: false, selectionIsToReview: false) == .ignored)
     }
 
     @Test func keyActionMapsJAndKToStep() {
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "j",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: false) == .step(1))
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "K",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: false) == .step(-1))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "j",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: false) == .step(1))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "K",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: false) == .step(-1))
     }
 
     @Test func keyActionIgnoresAQAndCWhenTheSelectionIsNotToReview() {
         for key in ["a", "q", "c"] {
-            let action = DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: key,
-                                                        modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                                        hasSelection: true, selectionIsToReview: false)
+            let action = DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: key,
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: false)
             #expect(action == .ignored)
         }
     }
 
     @Test func keyActionMapsAQAndCToTheirJudgment() {
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "a",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: true) == .judge(.accepted))
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "Q",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: true) == .judge(.questioned))
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "c",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: true) == .judge(.discuss))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "a",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: true) == .judge(.accepted))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "Q",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: true) == .judge(.questioned))
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "c",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: true) == .judge(.discuss))
     }
 
     @Test func keyActionMapsMAndSpaceToToggleExpandedEvenWhenNotToReview() {
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "m",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: false) == .toggleExpanded)
-        #expect(DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: " ",
-                                              modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                              hasSelection: true, selectionIsToReview: false) == .toggleExpanded)
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: "m",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: false) == .toggleExpanded)
+        #expect(
+            DecisionsViewLogic.keyAction(
+                isArrowDown: false, isArrowUp: false, character: " ",
+                modifiersBlockShortcuts: false, noteFieldFocused: false,
+                hasSelection: true, selectionIsToReview: false) == .toggleExpanded)
     }
 
     @Test func keyActionIgnoresAnyOtherCharacter() {
-        let action = DecisionsViewLogic.keyAction(isArrowDown: false, isArrowUp: false, character: "z",
-                                                    modifiersBlockShortcuts: false, noteFieldFocused: false,
-                                                    hasSelection: true, selectionIsToReview: true)
+        let action = DecisionsViewLogic.keyAction(
+            isArrowDown: false, isArrowUp: false, character: "z",
+            modifiersBlockShortcuts: false, noteFieldFocused: false,
+            hasSelection: true, selectionIsToReview: true)
         #expect(action == .ignored)
     }
 
@@ -170,8 +196,10 @@ struct DecisionsViewTests {
     }
 
     @Test func nextAfterAcceptingPrefersTheNextUnreviewedDecision() {
-        let sequence = [decision("a", state: .accepted), decision("b", state: .accepted),
-                         decision("c", state: .unreviewed), decision("d", state: .unreviewed)]
+        let sequence = [
+            decision("a", state: .accepted), decision("b", state: .accepted),
+            decision("c", state: .unreviewed), decision("d", state: .unreviewed),
+        ]
         #expect(DecisionsViewLogic.nextAfterAccepting(sequence: sequence, decisionId: "a") == "c")
     }
 
@@ -191,47 +219,59 @@ struct DecisionsViewTests {
 
     @Test func selectionAfterAddingToReviewSelectsTheDecisionItself() {
         let toReview = [decision("a"), decision("b")]
-        #expect(DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "c", addingToReview: true) == "c")
+        #expect(
+            DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "c", addingToReview: true)
+                == "c")
     }
 
     @Test func selectionAfterRemovingFromReviewMovesToTheNextOneToReview() {
         let toReview = [decision("a"), decision("b"), decision("c")]
-        #expect(DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "a", addingToReview: false) == "b")
+        #expect(
+            DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "a", addingToReview: false)
+                == "b")
     }
 
     @Test func selectionAfterRemovingTheLastOneToReviewFallsBackToAnyOtherRemaining() {
         let toReview = [decision("a"), decision("b"), decision("c")]
-        #expect(DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "c", addingToReview: false) == "a")
+        #expect(
+            DecisionsViewLogic.selectionAfterTogglingReview(toReview: toReview, decisionId: "c", addingToReview: false)
+                == "a")
     }
 
     @Test func selectionAfterRemovingTheOnlyDecisionToReviewIsNil() {
-        #expect(DecisionsViewLogic.selectionAfterTogglingReview(toReview: [decision("a")], decisionId: "a", addingToReview: false) == nil)
+        #expect(
+            DecisionsViewLogic.selectionAfterTogglingReview(
+                toReview: [decision("a")], decisionId: "a", addingToReview: false) == nil)
     }
 
     @Test func arrivalSelectionSelectsAndRevealsOtherWhenTheTargetIsAnOtherDecision() {
-        let plan = DecisionsViewLogic.arrivalSelection(decisionId: "x", decisionExists: true, isOtherDecision: true,
-                                                         existingSelectedId: nil, fallbackId: "a")
+        let plan = DecisionsViewLogic.arrivalSelection(
+            decisionId: "x", decisionExists: true, isOtherDecision: true,
+            existingSelectedId: nil, fallbackId: "a")
         #expect(plan.selectedId == "x")
         #expect(plan.revealOther)
     }
 
     @Test func arrivalSelectionSelectsWithoutRevealingWhenTheTargetIsAlreadyInTheList() {
-        let plan = DecisionsViewLogic.arrivalSelection(decisionId: "x", decisionExists: true, isOtherDecision: false,
-                                                         existingSelectedId: nil, fallbackId: "a")
+        let plan = DecisionsViewLogic.arrivalSelection(
+            decisionId: "x", decisionExists: true, isOtherDecision: false,
+            existingSelectedId: nil, fallbackId: "a")
         #expect(plan.selectedId == "x")
         #expect(!plan.revealOther)
     }
 
     @Test func arrivalSelectionKeepsTheExistingSelectionWhenNoTargetIsGiven() {
-        let plan = DecisionsViewLogic.arrivalSelection(decisionId: nil, decisionExists: false, isOtherDecision: false,
-                                                         existingSelectedId: "already-selected", fallbackId: "a")
+        let plan = DecisionsViewLogic.arrivalSelection(
+            decisionId: nil, decisionExists: false, isOtherDecision: false,
+            existingSelectedId: "already-selected", fallbackId: "a")
         #expect(plan.selectedId == "already-selected")
         #expect(!plan.revealOther)
     }
 
     @Test func arrivalSelectionFallsBackToTheFirstSequenceIdWhenNothingWasSelectedAndTheTargetDoesntExist() {
-        let plan = DecisionsViewLogic.arrivalSelection(decisionId: "gone", decisionExists: false, isOtherDecision: false,
-                                                         existingSelectedId: nil, fallbackId: "a")
+        let plan = DecisionsViewLogic.arrivalSelection(
+            decisionId: "gone", decisionExists: false, isOtherDecision: false,
+            existingSelectedId: nil, fallbackId: "a")
         #expect(plan.selectedId == "a")
         #expect(!plan.revealOther)
     }
@@ -258,8 +298,9 @@ struct DecisionsViewTests {
     }
 
     @Test func tradeoffHelpPrefersTheModelsExplanation() {
-        let tradeoff = DecisionTradeoff(dimensionA: "speed", dimensionB: "safety", chosenPosition: 1,
-                                         explanation: Statement(text: "Chose safety because of X", provenance: .claim))
+        let tradeoff = DecisionTradeoff(
+            dimensionA: "speed", dimensionB: "safety", chosenPosition: 1,
+            explanation: Statement(text: "Chose safety because of X", provenance: .claim))
         #expect(DecisionsViewLogic.tradeoffHelp(tradeoff) == "Chose safety because of X — right-click to ask about it")
     }
 
@@ -269,7 +310,8 @@ struct DecisionsViewTests {
     }
 
     @Test func beforeAfterPartsSplitsOnTheUnicodeArrowAndTrimsWhitespace() {
-        #expect(DecisionsViewLogic.beforeAfterParts(from: "Reader → Inspector → Printer")
+        #expect(
+            DecisionsViewLogic.beforeAfterParts(from: "Reader → Inspector → Printer")
                 == ["Reader", "Inspector", "Printer"])
     }
 
@@ -290,7 +332,8 @@ struct DecisionsViewTests {
     }
 
     private func brief(options: [DecisionOption] = [], answer: String = "the answer") -> DecisionBrief {
-        DecisionBrief(question: "Q?", shape: nil, options: options, answer: answer, insteadOf: nil, why: nil, tradeoff: nil)
+        DecisionBrief(
+            question: "Q?", shape: nil, options: options, answer: answer, insteadOf: nil, why: nil, tradeoff: nil)
     }
 
     @Test func otherDecisionsOpenByDefaultOnlyWhenNothingIsToReview() {
@@ -300,9 +343,14 @@ struct DecisionsViewTests {
     }
 
     @Test func sequenceAppendsOtherDecisionsOnlyOnceShown() {
-        let review = [decision("r1"), decision("r2")], other = [decision("o1")]
-        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: false).map(\.id) == ["r1", "r2"])
-        #expect(DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: true).map(\.id) == ["r1", "r2", "o1"])
+        let review = [decision("r1"), decision("r2")]
+        let other = [decision("o1")]
+        #expect(
+            DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: false).map(\.id) == ["r1", "r2"])
+        #expect(
+            DecisionsViewLogic.sequence(toReview: review, other: other, otherShown: true).map(\.id) == [
+                "r1", "r2", "o1",
+            ])
     }
 
     @Test func otherToggleTitlePluralizesAndFlipsWhenShown() {
@@ -316,8 +364,12 @@ struct DecisionsViewTests {
         #expect(first == .init(label: "1 of 3", canGoPrevious: false, canGoNext: true, offersOtherDecisions: false))
         let last = DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: false)
         #expect(last == .init(label: "3 of 3", canGoPrevious: true, canGoNext: false, offersOtherDecisions: true))
-        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: true).offersOtherDecisions)
-        #expect(!DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 0, otherShown: false).offersOtherDecisions)
+        #expect(
+            !DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 2, otherShown: true).offersOtherDecisions
+        )
+        #expect(
+            !DecisionsViewLogic.oneAtATimeStep(index: 2, count: 3, otherCount: 0, otherShown: false)
+                .offersOtherDecisions)
     }
 
     @Test func whyLabelIsPlainWhenNothingAboveItDrewAChoice() {
@@ -333,17 +385,22 @@ struct DecisionsViewTests {
     }
 
     @Test func chosenSummaryPrefersTheChosenOptionThenTheAnswer() {
-        let withDetail = brief(options: [DecisionOption(label: "A"), DecisionOption(label: "B", detail: "faster", chosen: true)])
+        let withDetail = brief(options: [
+            DecisionOption(label: "A"), DecisionOption(label: "B", detail: "faster", chosen: true),
+        ])
         #expect(DecisionsViewLogic.chosenSummary(withDetail) == "B — faster")
         let noDetail = brief(options: [DecisionOption(label: "B", chosen: true)])
         #expect(DecisionsViewLogic.chosenSummary(noDetail) == "B")
-        #expect(DecisionsViewLogic.chosenSummary(brief(options: [DecisionOption(label: "A")], answer: "Did X")) == "Did X")
+        #expect(
+            DecisionsViewLogic.chosenSummary(brief(options: [DecisionOption(label: "A")], answer: "Did X")) == "Did X")
     }
 
     @Test func reviewButtonHelpOffersClearingOnlyWhenOn() {
-        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: false, target: .accepted, title: "Looks good", shortcut: "A")
+        #expect(
+            DecisionsViewLogic.reviewButtonHelp(isOn: false, target: .accepted, title: "Looks good", shortcut: "A")
                 == "Looks good (A)")
-        #expect(DecisionsViewLogic.reviewButtonHelp(isOn: true, target: .accepted, title: "Looks good", shortcut: "A")
+        #expect(
+            DecisionsViewLogic.reviewButtonHelp(isOn: true, target: .accepted, title: "Looks good", shortcut: "A")
                 == "\(ReviewerState.accepted.label) — click to clear (A)")
     }
 
@@ -357,7 +414,8 @@ struct DecisionsViewTests {
         #expect(DecisionsViewLogic.tradeoffsTitle(count: 1) == "What it traded")
         #expect(DecisionsViewLogic.tradeoffsTitle(count: 3) == "What it traded (3)")
         #expect(DecisionsViewLogic.edgeTitle(from: "A", to: "B") == "A → B")
-        #expect(DecisionsViewLogic.drillDownFooter(level: "Design", confidence: "High")
+        #expect(
+            DecisionsViewLogic.drillDownFooter(level: "Design", confidence: "High")
                 == "Design-level choice · analysis confidence high")
     }
 

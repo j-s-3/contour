@@ -68,38 +68,43 @@ actor EnvironmentProbe {
 
     func probe(_ tool: ExternalTool) async -> ToolStatus {
         guard let path = operations.which(tool.rawValue) else {
-            return ToolStatus(tool: tool, path: nil, version: nil, authenticated: nil,
-                              detail: "Not installed")
+            return ToolStatus(
+                tool: tool, path: nil, version: nil, authenticated: nil,
+                detail: "Not installed")
         }
 
         let version = await self.version(of: tool, at: path)
 
         switch tool {
         case .git, .pi, .claude:
-            return ToolStatus(tool: tool, path: path, version: version, authenticated: nil,
-                              detail: version.map { "\($0) — \(path)" } ?? path)
+            return ToolStatus(
+                tool: tool, path: path, version: version, authenticated: nil,
+                detail: version.map { "\($0) — \(path)" } ?? path)
 
         case .gh:
             let authed = await isGitHubAuthenticated()
             return ToolStatus(
                 tool: tool, path: path, version: version, authenticated: authed,
-                detail: authed ? "Authenticated — \(version ?? path)"
-                               : "Installed but not authenticated. Run `gh auth login`."
+                detail: authed
+                    ? "Authenticated — \(version ?? path)"
+                    : "Installed but not authenticated. Run `gh auth login`."
             )
 
         case .acli:
             let authed = await isJiraAuthenticated()
             return ToolStatus(
                 tool: tool, path: path, version: version, authenticated: authed,
-                detail: authed ? "Authenticated — \(version ?? path)"
-                               : "Installed but not authenticated. Run `acli jira auth login`."
+                detail: authed
+                    ? "Authenticated — \(version ?? path)"
+                    : "Installed but not authenticated. Run `acli jira auth login`."
             )
         }
     }
 
     private func version(of tool: ExternalTool, at path: String) async -> String? {
         guard let raw = try? await operations.run(path, ["--version"]) else { return nil }
-        return raw
+        return
+            raw
             .components(separatedBy: "\n")
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines)

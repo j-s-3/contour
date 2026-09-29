@@ -20,7 +20,7 @@ actor CodeRefVerifier {
         if ref.side == .head { sides.append(.base) }
         for side in sides {
             guard let count = await lineCount(path: path, side: side),
-                  ref.startLine >= 1, ref.startLine <= count
+                ref.startLine >= 1, ref.startLine <= count
             else { continue }
             var resolved = ref
             resolved.path = path
@@ -54,10 +54,13 @@ actor CodeRefVerifier {
         case .behaviorChange(var r):
             for c in r.behaviorChanges.indices {
                 for s in r.behaviorChanges[c].before.indices {
-                    r.behaviorChanges[c].before[s].refs = await resolve(r.behaviorChanges[c].before[s].refs, into: &check).kept
+                    r.behaviorChanges[c].before[s].refs = await resolve(
+                        r.behaviorChanges[c].before[s].refs, into: &check
+                    ).kept
                 }
                 for s in r.behaviorChanges[c].after.indices {
-                    r.behaviorChanges[c].after[s].refs = await resolve(r.behaviorChanges[c].after[s].refs, into: &check).kept
+                    r.behaviorChanges[c].after[s].refs = await resolve(r.behaviorChanges[c].after[s].refs, into: &check)
+                        .kept
                 }
             }
             return (.behaviorChange(r), check)
@@ -133,8 +136,9 @@ actor CodeRefVerifier {
             let url = rootDir.appendingPathComponent(path).standardizedFileURL
             var isDirectory: ObjCBool = false
             if url.path.hasPrefix(rootDir.path + "/"),
-               FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
-               let data = try? Data(contentsOf: url) {
+                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+                let data = try? Data(contentsOf: url)
+            {
                 count = Self.lineCount(of: data)
             } else {
                 count = nil
@@ -178,8 +182,9 @@ struct RefCheck: Codable, Hashable, Sendable {
     }
 
     static func + (lhs: RefCheck, rhs: RefCheck) -> RefCheck {
-        RefCheck(checked: lhs.checked + rhs.checked, unresolvedCount: lhs.unresolvedCount + rhs.unresolvedCount,
-                 unresolved: Array((lhs.unresolved + rhs.unresolved).prefix(sampleLimit)))
+        RefCheck(
+            checked: lhs.checked + rhs.checked, unresolvedCount: lhs.unresolvedCount + rhs.unresolvedCount,
+            unresolved: Array((lhs.unresolved + rhs.unresolved).prefix(sampleLimit)))
     }
 }
 

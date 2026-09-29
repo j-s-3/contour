@@ -59,7 +59,9 @@ enum GraphLayoutEngine {
         )
         return ArchDiagramLayout(
             nodes: turned.nodes.map { .init(id: $0.id, frame: flip($0.frame)) },
-            edges: turned.edges.map { .init(id: $0.id, points: $0.points.map(flip), labelCenter: flip($0.labelCenter)) },
+            edges: turned.edges.map {
+                .init(id: $0.id, points: $0.points.map(flip), labelCenter: flip($0.labelCenter))
+            },
             boundaries: turned.boundaries.map { b in
                 var frame = flip(b.frame)
                 frame.origin.y -= boundaryLabelHeight - 8
@@ -70,7 +72,9 @@ enum GraphLayoutEngine {
         )
     }
 
-    static func bestFit(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec], available: CGSize) -> (ArchDiagramLayout, CGFloat) {
+    static func bestFit(nodes: [NodeSpec], edges: [EdgeSpec], groups: [GroupSpec], available: CGSize) -> (
+        ArchDiagramLayout, CGFloat
+    ) {
         func fit(_ l: ArchDiagramLayout) -> CGFloat {
             min(1, available.width / max(l.size.width, 1), available.height / max(l.size.height, 1))
         }
@@ -93,8 +97,7 @@ enum GraphLayoutEngine {
         func visit(_ id: String) {
             state[id] = 1
             for next in outgoing[id] ?? [] {
-                if state[next] == 1 { backEdges.insert("\(id)→\(next)") }
-                else if state[next] == nil { visit(next) }
+                if state[next] == 1 { backEdges.insert("\(id)→\(next)") } else if state[next] == nil { visit(next) }
             }
             state[id] = 2
         }
@@ -173,7 +176,8 @@ enum GraphLayoutEngine {
 
         var gapWidth = [CGFloat](repeating: minGap, count: max(columnCount - 1, 0))
         for e in live {
-            let a = layer[e.fromId] ?? 0, b = layer[e.toId] ?? 0
+            let a = layer[e.fromId] ?? 0
+            let b = layer[e.toId] ?? 0
             if b == a + 1 {
                 gapWidth[a] = min(maxGap, max(gapWidth[a], e.labelSize.width + 36))
             }
@@ -185,13 +189,18 @@ enum GraphLayoutEngine {
             columnX[l] = columnX[l - 1] + columnWidth[l - 1] + gapWidth[l - 1]
         }
 
-        enum Route { case straight, elbow, vertical, channel(band: Int, lane: Int) }
+        enum Route {
+            case straight, elbow, vertical
+            case channel(band: Int, lane: Int)
+        }
         var routes: [String: Route] = [:]
         var lanesPerBand: [Int: Int] = [:]
         var elbowsPerGap: [Int: [String]] = [:]
         for e in live {
-            let a = layer[e.fromId] ?? 0, b = layer[e.toId] ?? 0
-            let bandA = bandOf[groupOf[e.fromId]!]!, bandB = bandOf[groupOf[e.toId]!]!
+            let a = layer[e.fromId] ?? 0
+            let b = layer[e.toId] ?? 0
+            let bandA = bandOf[groupOf[e.fromId]!]!
+            let bandB = bandOf[groupOf[e.toId]!]!
             if b == a + 1 {
                 let sameRow = bandA == bandB && row[e.fromId] == row[e.toId]
                 routes[e.id] = sameRow ? .straight : .elbow
@@ -214,12 +223,15 @@ enum GraphLayoutEngine {
             let top = y + (framed ? boundaryPad + boundaryLabelHeight : 0)
             let rowCount = band.map { b in blocks[b].members.map { (row[$0] ?? 0) + 1 }.max() ?? 1 }.max() ?? 1
             var rowHeight = [CGFloat](repeating: 0, count: rowCount)
-            for b in band { for m in blocks[b].members { rowHeight[row[m] ?? 0] = max(rowHeight[row[m] ?? 0], sizes[m]!.height) } }
+            for b in band {
+                for m in blocks[b].members { rowHeight[row[m] ?? 0] = max(rowHeight[row[m] ?? 0], sizes[m]!.height) }
+            }
             var rowY = [CGFloat](repeating: top, count: rowCount)
             for r in 1..<max(rowCount, 1) where r < rowCount { rowY[r] = rowY[r - 1] + rowHeight[r - 1] + rowGap }
             for b in band {
                 for m in blocks[b].members {
-                    let l = layer[m] ?? 0, r = row[m] ?? 0
+                    let l = layer[m] ?? 0
+                    let r = row[m] ?? 0
                     let width = sizes[m]!.width
                     let x = columnX[l] + (columnWidth[l] - width) / 2
                     frames[m] = CGRect(x: x, y: rowY[r], width: width, height: rowHeight[r])
@@ -239,7 +251,8 @@ enum GraphLayoutEngine {
             let maxX = rects.map(\.maxX).max()! + boundaryPad
             let minY = rects.map(\.minY).min()! - boundaryPad - boundaryLabelHeight
             let maxY = rects.map(\.maxY).max()! + boundaryPad
-            placedBoundaries.append(.init(id: id, frame: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)))
+            placedBoundaries.append(
+                .init(id: id, frame: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)))
         }
 
         var placedEdges: [ArchDiagramLayout.PlacedEdge] = []
@@ -249,38 +262,51 @@ enum GraphLayoutEngine {
             switch route {
             case .straight:
                 let yMid = (f.midY + t.midY) / 2
-                let start = CGPoint(x: f.maxX, y: yMid), end = CGPoint(x: t.minX, y: yMid)
-                placedEdges.append(.init(id: e.id, points: [start, end],
-                                         labelCenter: CGPoint(x: (start.x + end.x) / 2, y: yMid)))
+                let start = CGPoint(x: f.maxX, y: yMid)
+                let end = CGPoint(x: t.minX, y: yMid)
+                placedEdges.append(
+                    .init(
+                        id: e.id, points: [start, end],
+                        labelCenter: CGPoint(x: (start.x + end.x) / 2, y: yMid)))
             case .elbow:
                 let siblings = elbowsPerGap[a] ?? [e.id]
                 let k = CGFloat(siblings.firstIndex(of: e.id) ?? 0)
                 let gapMid = columnX[a] + columnWidth[a] + gapWidth[a] / 2
                 let x = gapMid + (k - CGFloat(siblings.count - 1) / 2) * 14
-                let points = [CGPoint(x: f.maxX, y: f.midY), CGPoint(x: x, y: f.midY),
-                              CGPoint(x: x, y: t.midY), CGPoint(x: t.minX, y: t.midY)]
-                placedEdges.append(.init(id: e.id, points: points, labelCenter: CGPoint(x: x, y: (f.midY + t.midY) / 2)))
+                let points = [
+                    CGPoint(x: f.maxX, y: f.midY), CGPoint(x: x, y: f.midY),
+                    CGPoint(x: x, y: t.midY), CGPoint(x: t.minX, y: t.midY),
+                ]
+                placedEdges.append(
+                    .init(id: e.id, points: points, labelCenter: CGPoint(x: x, y: (f.midY + t.midY) / 2)))
             case .vertical:
                 let down = t.midY > f.midY
                 let start = CGPoint(x: f.midX, y: down ? f.maxY : f.minY)
                 let end = CGPoint(x: t.midX, y: down ? t.minY : t.maxY)
-                placedEdges.append(.init(id: e.id, points: [start, end],
-                                         labelCenter: CGPoint(x: start.x, y: (start.y + end.y) / 2)))
+                placedEdges.append(
+                    .init(
+                        id: e.id, points: [start, end],
+                        labelCenter: CGPoint(x: start.x, y: (start.y + end.y) / 2)))
             case .channel(let band, let lane):
                 let b = layer[e.toId] ?? 0
                 let offset = CGFloat(lane) * 8
                 let exitX = columnX[a] + columnWidth[a] + 16 + offset
                 let entryX = columnX[b] - 16 - offset
                 let channelY = bandBottom[band] + 16 + CGFloat(lane) * laneSpacing
-                let points = [CGPoint(x: f.maxX, y: f.midY), CGPoint(x: exitX, y: f.midY),
-                              CGPoint(x: exitX, y: channelY), CGPoint(x: entryX, y: channelY),
-                              CGPoint(x: entryX, y: t.midY), CGPoint(x: t.minX, y: t.midY)]
-                placedEdges.append(.init(id: e.id, points: points,
-                                         labelCenter: CGPoint(x: (exitX + entryX) / 2, y: channelY)))
+                let points = [
+                    CGPoint(x: f.maxX, y: f.midY), CGPoint(x: exitX, y: f.midY),
+                    CGPoint(x: exitX, y: channelY), CGPoint(x: entryX, y: channelY),
+                    CGPoint(x: entryX, y: t.midY), CGPoint(x: t.minX, y: t.midY),
+                ]
+                placedEdges.append(
+                    .init(
+                        id: e.id, points: points,
+                        labelCenter: CGPoint(x: (exitX + entryX) / 2, y: channelY)))
             }
         }
 
-        let placedNodes = nodes.compactMap { n in frames[n.id].map { ArchDiagramLayout.PlacedNode(id: n.id, frame: $0) } }
+        let placedNodes = nodes.compactMap { n in frames[n.id].map { ArchDiagramLayout.PlacedNode(id: n.id, frame: $0) }
+        }
         var extent = CGRect.null
         for n in placedNodes { extent = extent.union(n.frame) }
         for b in placedBoundaries { extent = extent.union(b.frame) }

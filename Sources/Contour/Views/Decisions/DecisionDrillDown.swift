@@ -36,10 +36,15 @@ struct DecisionDrillDown: View {
                 }
             }
             HStack(spacing: 14) {
-                Text(DecisionsViewLogic.drillDownFooter(level: decision.level.label, confidence: decision.confidence.label))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Button { actions.ask(.decision(decision.id)) } label: {
+                Text(
+                    DecisionsViewLogic.drillDownFooter(
+                        level: decision.level.label, confidence: decision.confidence.label)
+                )
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                Button {
+                    actions.ask(.decision(decision.id))
+                } label: {
                     Label("Ask about this…", systemImage: "sparkles").font(.caption)
                 }
                 .buttonStyle(.link)
@@ -58,7 +63,9 @@ struct DecisionDrillDown: View {
         }
     }
 
-    private func affectsLinks(_ affects: (components: [ComponentNode], edges: [ArchitectureEdge], flows: [FlowNode])) -> some View {
+    private func affectsLinks(_ affects: (components: [ComponentNode], edges: [ArchitectureEdge], flows: [FlowNode]))
+        -> some View
+    {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
             if !affects.components.isEmpty || !affects.edges.isEmpty {
                 GridRow {
@@ -92,7 +99,9 @@ struct DecisionDrillDown: View {
     }
 
     private func link(_ title: String, _ symbol: String, _ target: NavigationTarget) -> some View {
-        Button { actions.navigate(target) } label: {
+        Button {
+            actions.navigate(target)
+        } label: {
             Label(title, systemImage: symbol).font(.callout)
         }
         .buttonStyle(.link)

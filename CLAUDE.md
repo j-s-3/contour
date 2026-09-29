@@ -32,7 +32,19 @@ swift test --filter UnifiedDiffTests          # one suite
 swift test --filter UnifiedDiffTests/newAndDeletedFilesHaveOnlyOneSide   # one Swift Testing test
 swift test --filter PRLinkTests/testExtractsABareURL                     # one XCTest
 RUN_CONTOUR_INTEGRATION=1 swift test --filter IntegrationSmoke      # real pipeline against a public PR
+
+swift format --in-place --recursive --parallel Sources Tests Package.swift   # format
+swift format lint --strict --recursive --parallel Sources Tests Package.swift  # lint, as CI runs it
 ```
+
+### Format before pushing
+
+Always run the format command above before every push, then the lint command, and commit
+any changes it makes. CI's first step runs the lint with `--strict`, so unformatted code or
+any lint finding fails the build. `swift format` ships with the toolchain; its settings
+(4-space indent, 120-column lines, rule set) live in `.swift-format` at the repo root.
+Fix lint findings in the code rather than disabling rules or adding `swift-format-ignore`
+comments, which the no-comments convention forbids anyway.
 
 Integration tests need a working harness and network; `CONTOUR_HARNESS` and
 `CONTOUR_GITHUB_ACCESS` parameterize them. Regenerating the mock fixtures after a prompt

@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ReviewActions {
     var graph: PRGraph?
@@ -144,7 +144,9 @@ private struct ReviewContextMenuModifier<Extra: View>: ViewModifier {
     @ViewBuilder
     private var menu: some View {
         if let graph = actions.graph, let resolved = graph.resolve(subject) {
-            Button { actions.ask(subject) } label: {
+            Button {
+                actions.ask(subject)
+            } label: {
                 Label("Ask about this…", systemImage: "sparkles")
             }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)

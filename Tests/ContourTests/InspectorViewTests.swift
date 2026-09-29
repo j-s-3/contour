@@ -1,5 +1,6 @@
 import SwiftUI
 import Testing
+
 @testable import Contour
 
 struct InspectorViewTests {
@@ -12,10 +13,11 @@ struct InspectorViewTests {
         refs: [CodeRef] = [],
         onShowImplementation: (() -> Void)? = nil
     ) -> InspectorContent {
-        InspectorContent(title: "PagePublisher", kindLabel: "Component", purpose: purpose,
-                          usedBy: usedBy, implementedBy: implementedBy,
-                          changedByThisPR: changedByThisPR, changeClaim: changeClaim, refs: refs,
-                          onShowImplementation: onShowImplementation)
+        InspectorContent(
+            title: "PagePublisher", kindLabel: "Component", purpose: purpose,
+            usedBy: usedBy, implementedBy: implementedBy,
+            changedByThisPR: changedByThisPR, changeClaim: changeClaim, refs: refs,
+            onShowImplementation: onShowImplementation)
     }
 
     @Test func changedByThisPRTextFallsBackToYesWhenChangedWithNoClaim() {
@@ -37,8 +39,9 @@ struct InspectorViewTests {
     }
 
     private func content(title: String, kindLabel: String) -> InspectorContent {
-        InspectorContent(title: title, kindLabel: kindLabel, purpose: nil, usedBy: [], implementedBy: [],
-                          changedByThisPR: false, changeClaim: nil, refs: [], onShowImplementation: nil)
+        InspectorContent(
+            title: title, kindLabel: kindLabel, purpose: nil, usedBy: [], implementedBy: [],
+            changedByThisPR: false, changeClaim: nil, refs: [], onShowImplementation: nil)
     }
 
     @Test func kindLabelDisplayIsUpperCased() {

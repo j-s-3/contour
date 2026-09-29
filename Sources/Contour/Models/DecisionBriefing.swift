@@ -21,7 +21,8 @@ extension PRGraph {
 
     var otherDecisions: [DecisionNode] {
         let review = Set(decisionsToReview.map(\.id))
-        return decisions
+        return
+            decisions
             .filter { !review.contains($0.id) }
             .sorted { significance(of: $0) > significance(of: $1) }
     }
@@ -82,22 +83,25 @@ extension PRGraph {
             default: shape = explicit.count == 2 ? .binary : .options
             }
             let drawn = tradeoff.flatMap { Self.restates($0, explicit) ? nil : $0 }
-            return DecisionBrief(question: question, shape: shape, options: explicit, answer: answer,
-                                 insteadOf: insteadOf, why: why, tradeoff: drawn)
+            return DecisionBrief(
+                question: question, shape: shape, options: explicit, answer: answer,
+                insteadOf: insteadOf, why: why, tradeoff: drawn)
         }
 
         if let tradeoff {
             let leansB = tradeoff.chosenPosition >= 0.5
             let options = [
                 DecisionOption(label: tradeoff.dimensionA, chosen: !leansB),
-                DecisionOption(label: tradeoff.dimensionB, chosen: leansB)
+                DecisionOption(label: tradeoff.dimensionB, chosen: leansB),
             ]
-            return DecisionBrief(question: question, shape: .binary, options: options, answer: answer,
-                                 insteadOf: insteadOf, why: why, tradeoff: nil)
+            return DecisionBrief(
+                question: question, shape: .binary, options: options, answer: answer,
+                insteadOf: insteadOf, why: why, tradeoff: nil)
         }
 
-        return DecisionBrief(question: question, shape: nil, options: [], answer: answer,
-                             insteadOf: insteadOf, why: why, tradeoff: nil)
+        return DecisionBrief(
+            question: question, shape: nil, options: [], answer: answer,
+            insteadOf: insteadOf, why: why, tradeoff: nil)
     }
 
     func reviewDecisionId(for item: Consideration) -> String? {
@@ -117,7 +121,9 @@ extension PRGraph {
     }
 
     static func restates(_ t: DecisionTradeoff, _ options: [DecisionOption]) -> Bool {
-        func norm(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)) }
+        func norm(_ s: String) -> String {
+            s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        }
         let said = Set(options.flatMap { [$0.label] + [$0.detail].compactMap { $0 } }.map(norm))
         return said.contains(norm(t.dimensionA)) && said.contains(norm(t.dimensionB))
     }

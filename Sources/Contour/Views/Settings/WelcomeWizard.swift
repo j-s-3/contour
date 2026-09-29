@@ -45,19 +45,21 @@ struct WelcomeWizard: View {
             Text("Understand the change, not just the diff.")
                 .font(.title3)
                 .padding(.top, 10)
-            Text("""
-                 Contour reads a pull request, checks it out locally, and works out \
-                 what changed and why — the decisions made, the tradeoffs taken, the flows \
-                 affected — so review is about judgment rather than re-reading every line.
+            Text(
+                """
+                Contour reads a pull request, checks it out locally, and works out \
+                what changed and why — the decisions made, the tradeoffs taken, the flows \
+                affected — so review is about judgment rather than re-reading every line.
 
-                 Every statement is tagged as observed fact, author claim, or AI \
-                 interpretation, so you always know what's grounded in the code.
-                 """)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 440)
-                .padding(.top, 18)
+                Every statement is tagged as observed fact, author claim, or AI \
+                interpretation, so you always know what's grounded in the code.
+                """
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 440)
+            .padding(.top, 18)
             Spacer()
             Spacer().frame(height: 40)
         }
@@ -68,9 +70,11 @@ struct WelcomeWizard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("What's on this machine")
                     .font(.title2.weight(.semibold))
-                Text("Contour drives tools you've already installed and signed in to. It stores no credentials of its own.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Contour drives tools you've already installed and signed in to. It stores no credentials of its own."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
 
             ScrollView {
@@ -92,10 +96,13 @@ struct WelcomeWizard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Which harness should Contour use?")
                         .font(.callout.weight(.medium))
-                    Picker("", selection: Binding(
-                        get: { preferences.resolvedHarness },
-                        set: { preferences.storedHarness = $0 }
-                    )) {
+                    Picker(
+                        "",
+                        selection: Binding(
+                            get: { preferences.resolvedHarness },
+                            set: { preferences.storedHarness = $0 }
+                        )
+                    ) {
                         ForEach(preferences.installedHarnesses, id: \.self) { id in
                             Text(id.displayName).tag(Optional(id))
                         }
@@ -106,10 +113,13 @@ struct WelcomeWizard: View {
             }
 
             if preferences.jiraAvailable {
-                Toggle("Use Jira for issue lookup instead of GitHub issues", isOn: Binding(
-                    get: { preferences.resolvedTracker == .jira },
-                    set: { preferences.storedTracker = $0 ? .jira : .github }
-                ))
+                Toggle(
+                    "Use Jira for issue lookup instead of GitHub issues",
+                    isOn: Binding(
+                        get: { preferences.resolvedTracker == .jira },
+                        set: { preferences.storedTracker = $0 ? .jira : .github }
+                    )
+                )
                 .font(.callout)
             }
 
@@ -234,7 +244,9 @@ enum WelcomeWizardLogic {
         installedHarnesses.count > 1
     }
 
-    static func blocker(statuses: [ExternalTool: ToolStatus], installedHarnesses: [HarnessID], resolvedHarness: HarnessID?) -> String? {
+    static func blocker(
+        statuses: [ExternalTool: ToolStatus], installedHarnesses: [HarnessID], resolvedHarness: HarnessID?
+    ) -> String? {
         if statuses[.git]?.isInstalled == false {
             return "git is required — Contour checks the PR out locally so analysis reads real code."
         }
@@ -250,7 +262,8 @@ enum WelcomeWizardLogic {
     static func readySummary(resolvedHarness: HarnessID?, ghUsable: Bool, resolvedTracker: TrackerID) -> String {
         let harness = resolvedHarness?.displayName ?? "no harness"
         let github = ghUsable ? "gh (public and private PRs)" : "anonymous API (public PRs)"
-        return "Analyzing with \(harness), reading GitHub via \(github), and looking up issues in \(resolvedTracker.displayName)."
+        return
+            "Analyzing with \(harness), reading GitHub via \(github), and looking up issues in \(resolvedTracker.displayName)."
     }
 
     static func canFinish(urlText: String) -> Bool {

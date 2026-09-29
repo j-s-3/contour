@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Contour
 
 struct RequestChangesSheetTests {
@@ -12,7 +13,8 @@ struct RequestChangesSheetTests {
     @MainActor
     @Test func submitCallsOnSubmitBeforeDismissing() {
         var order: [String] = []
-        RequestChangesSheet.submit(comment: "x", onSubmit: { _ in order.append("submit") }, dismiss: { order.append("dismiss") })
+        RequestChangesSheet.submit(
+            comment: "x", onSubmit: { _ in order.append("submit") }, dismiss: { order.append("dismiss") })
         #expect(order == ["submit", "dismiss"])
     }
 

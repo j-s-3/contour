@@ -10,7 +10,9 @@ struct RepoCheckout: Sendable {
 enum RepoContextError: LocalizedError {
     case gitFailed(String)
     var errorDescription: String? {
-        switch self { case .gitFailed(let m): return m }
+        switch self {
+        case .gitFailed(let m): return m
+        }
     }
 }
 
@@ -24,24 +26,30 @@ struct RepoContextService {
     }()
 
     func checkout(_ context: RawPRContext) async throws -> RepoCheckout {
-        let dir = cacheRoot
+        let dir =
+            cacheRoot
             .appendingPathComponent("\(context.owner)-\(context.repo)", isDirectory: true)
 
         let alreadyExists = FileManager.default.fileExists(atPath: dir.path)
         if !alreadyExists {
             try FileManager.default.createDirectory(at: dir.parent, withIntermediateDirectories: true)
-            _ = try await Shell.run("git", [
-                "clone", "https://github.com/\(context.owner)/\(context.repo).git", dir.path
-            ])
+            _ = try await Shell.run(
+                "git",
+                [
+                    "clone", "https://github.com/\(context.owner)/\(context.repo).git", dir.path,
+                ])
         }
 
         let currentHead = try? await Shell.run("git", ["rev-parse", "HEAD"], cwd: dir)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if currentHead != context.headSha {
-            _ = try await Shell.run("git", ["fetch", "origin",
-                "refs/pull/\(context.number)/head:refs/pr/\(context.number)/head"
-            ], cwd: dir)
+            _ = try await Shell.run(
+                "git",
+                [
+                    "fetch", "origin",
+                    "refs/pull/\(context.number)/head:refs/pr/\(context.number)/head",
+                ], cwd: dir)
 
             do {
                 _ = try await Shell.run("git", ["fetch", "origin", context.baseRefName], cwd: dir)
@@ -88,6 +96,6 @@ struct RepoContextService {
     }
 }
 
-private extension URL {
-    var parent: URL { deletingLastPathComponent() }
+extension URL {
+    fileprivate var parent: URL { deletingLastPathComponent() }
 }

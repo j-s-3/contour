@@ -1,6 +1,7 @@
-import Testing
 import Foundation
 import SwiftUI
+import Testing
+
 @testable import Contour
 
 struct DiffViewTests {
@@ -15,28 +16,28 @@ struct DiffViewTests {
     }
 
     private let modifiedDiff = """
-    diff --git a/src/input.rs b/src/input.rs
-    index 1111111..2222222 100644
-    --- a/src/input.rs
-    +++ b/src/input.rs
-    @@ -1,3 +1,4 @@ use std::io;
-     fn a() {
-    -    old();
-    +    new();
-    +    more();
-     }
-    """
+        diff --git a/src/input.rs b/src/input.rs
+        index 1111111..2222222 100644
+        --- a/src/input.rs
+        +++ b/src/input.rs
+        @@ -1,3 +1,4 @@ use std::io;
+         fn a() {
+        -    old();
+        +    new();
+        +    more();
+         }
+        """
 
     private let deletedDiff = """
-    diff --git a/src/gone.rs b/src/gone.rs
-    deleted file mode 100644
-    index 1111111..0000000
-    --- a/src/gone.rs
-    +++ /dev/null
-    @@ -1,2 +0,0 @@
-    -fn a() {}
-    -fn b() {}
-    """
+        diff --git a/src/gone.rs b/src/gone.rs
+        deleted file mode 100644
+        index 1111111..0000000
+        --- a/src/gone.rs
+        +++ /dev/null
+        @@ -1,2 +0,0 @@
+        -fn a() {}
+        -fn b() {}
+        """
 
     @Test func landingTargetIsNilForANilReference() throws {
         let file = try parsedFile(modifiedDiff)
@@ -125,7 +126,8 @@ struct DiffViewTests {
     @Test func backgroundIsYellowWhenFocusedRegardlessOfKind() throws {
         let file = try parsedFile(modifiedDiff)
         let contextLine = try #require(file.hunks.first?.lines.first { $0.kind == .context })
-        let focus = CodeRef(path: "src/input.rs", startLine: contextLine.newLine ?? 0, endLine: contextLine.newLine ?? 0)
+        let focus = CodeRef(
+            path: "src/input.rs", startLine: contextLine.newLine ?? 0, endLine: contextLine.newLine ?? 0)
         #expect(DiffViewLogic.background(contextLine, in: file, focus: focus) == Color.yellow.opacity(0.22))
     }
 
@@ -145,13 +147,13 @@ struct DiffViewTests {
 
         let manyLines = (1...1000).map { "+line\($0)" }.joined(separator: "\n")
         let bigDiff = """
-        diff --git a/src/big.rs b/src/big.rs
-        index 1111111..2222222 100644
-        --- a/src/big.rs
-        +++ b/src/big.rs
-        @@ -0,0 +1,1000 @@
-        \(manyLines)
-        """
+            diff --git a/src/big.rs b/src/big.rs
+            index 1111111..2222222 100644
+            --- a/src/big.rs
+            +++ b/src/big.rs
+            @@ -0,0 +1,1000 @@
+            \(manyLines)
+            """
         let big = try parsedFile(bigDiff)
         #expect(DiffViewLogic.gutterWidth(big) > smallWidth)
     }
@@ -281,7 +283,6 @@ struct DiffViewTests {
         #expect(visible.overflow == Array(citations.suffix(2)))
     }
 
-
     @Test func collapseAllControlDescribesTheNextAction() {
         #expect(DiffViewLogic.collapseAllSymbol(collapsed: []) == "rectangle.compress.vertical")
         #expect(DiffViewLogic.collapseAllHelp(collapsed: []) == "Collapse all files")
@@ -327,7 +328,8 @@ struct DiffViewTests {
     }
 
     @Test func onlyTheNoNewlineMarkerIsMuted() {
-        let marker = DiffLine(id: 0, kind: .noNewlineMarker, text: "\\ No newline at end of file", oldLine: nil, newLine: nil)
+        let marker = DiffLine(
+            id: 0, kind: .noNewlineMarker, text: "\\ No newline at end of file", oldLine: nil, newLine: nil)
         let added = DiffLine(id: 1, kind: .added, text: "x", oldLine: nil, newLine: 1)
         #expect(DiffViewLogic.isMuted(marker))
         #expect(!DiffViewLogic.isMuted(added))

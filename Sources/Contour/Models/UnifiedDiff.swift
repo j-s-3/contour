@@ -64,8 +64,10 @@ enum UnifiedDiff {
         var files: [DiffFile] = []
         var file: DiffFile?
         var hunk: DiffHunk?
-        var oldLeft = 0, newLeft = 0
-        var oldNo = 0, newNo = 0
+        var oldLeft = 0
+        var newLeft = 0
+        var oldNo = 0
+        var newNo = 0
 
         func closeHunk() {
             if let h = hunk { file?.hunks.append(h) }
@@ -89,15 +91,21 @@ enum UnifiedDiff {
                 switch line.first {
                 case "+":
                     hunk?.lines.append(DiffLine(id: position, kind: .added, text: text, newLine: newNo))
-                    newNo += 1; newLeft -= 1
+                    newNo += 1
+                    newLeft -= 1
                     continue
                 case "-":
                     hunk?.lines.append(DiffLine(id: position, kind: .removed, text: text, oldLine: oldNo))
-                    oldNo += 1; oldLeft -= 1
+                    oldNo += 1
+                    oldLeft -= 1
                     continue
                 case " ", nil:
-                    hunk?.lines.append(DiffLine(id: position, kind: .context, text: text, oldLine: oldNo, newLine: newNo))
-                    oldNo += 1; newNo += 1; oldLeft -= 1; newLeft -= 1
+                    hunk?.lines.append(
+                        DiffLine(id: position, kind: .context, text: text, oldLine: oldNo, newLine: newNo))
+                    oldNo += 1
+                    newNo += 1
+                    oldLeft -= 1
+                    newLeft -= 1
                     continue
                 case "\\":
                     hunk?.lines.append(DiffLine(id: position, kind: .noNewlineMarker, text: String(line)))
@@ -117,11 +125,14 @@ enum UnifiedDiff {
             } else if line.hasPrefix("@@ "), let parsed = hunkHeader(line) {
                 if file == nil { startFile(oldPath: nil, newPath: nil) }
                 closeHunk()
-                hunk = DiffHunk(id: "\(file!.id):\(file!.hunks.count)", header: String(line),
-                                oldStart: parsed.oldStart, oldCount: parsed.oldCount,
-                                newStart: parsed.newStart, newCount: parsed.newCount)
-                oldNo = parsed.oldStart; newNo = parsed.newStart
-                oldLeft = parsed.oldCount; newLeft = parsed.newCount
+                hunk = DiffHunk(
+                    id: "\(file!.id):\(file!.hunks.count)", header: String(line),
+                    oldStart: parsed.oldStart, oldCount: parsed.oldCount,
+                    newStart: parsed.newStart, newCount: parsed.newCount)
+                oldNo = parsed.oldStart
+                newNo = parsed.newStart
+                oldLeft = parsed.oldCount
+                newLeft = parsed.newCount
             } else if line.hasPrefix("--- ") {
                 if file == nil || !(file!.hunks.isEmpty && hunk == nil) { startFile(oldPath: nil, newPath: nil) }
                 let path = markerPath(line.dropFirst(4))
@@ -160,7 +171,8 @@ enum UnifiedDiff {
     static func hunkHeader(_ line: Substring) -> (oldStart: Int, oldCount: Int, newStart: Int, newCount: Int)? {
         let parts = line.split(separator: " ", maxSplits: 3)
         guard parts.count >= 3, parts[1].hasPrefix("-"), parts[2].hasPrefix("+"),
-              let old = range(parts[1].dropFirst()), let new = range(parts[2].dropFirst()) else { return nil }
+            let old = range(parts[1].dropFirst()), let new = range(parts[2].dropFirst())
+        else { return nil }
         return (old.start, old.count, new.start, new.count)
     }
 
@@ -179,7 +191,8 @@ enum UnifiedDiff {
             return (strip(parts[0]), strip(parts[1]))
         }
         let half = (rest.count - 1) / 2
-        let a = rest.prefix(half), b = rest.suffix(half)
+        let a = rest.prefix(half)
+        let b = rest.suffix(half)
         if rest.count % 2 == 1, a.hasPrefix("a/"), b.hasPrefix("b/"), a.dropFirst(2) == b.dropFirst(2) {
             return (String(a.dropFirst(2)), String(b.dropFirst(2)))
         }
@@ -213,21 +226,29 @@ extension PRGraph {
     func diffCitations(in files: [DiffFile]) -> [String: [DiffCitation]] {
         var citers: [(DiffCitation, [CodeRef])] = []
         for d in decisions {
-            citers.append((DiffCitation(kind: .decision, title: d.title, target: .decisionDetail(d.id)),
-                           d.refs + d.tradeoffs.flatMap(\.refs)))
+            citers.append(
+                (
+                    DiffCitation(kind: .decision, title: d.title, target: .decisionDetail(d.id)),
+                    d.refs + d.tradeoffs.flatMap(\.refs)
+                ))
         }
         for flow in flows {
             for node in behavior(for: flow).nodes {
                 let stepRefs = flow.steps.filter { node.stepIds.contains($0.id) }.flatMap(\.refs)
-                citers.append((DiffCitation(kind: .flowStage, title: node.label,
-                                            target: .flowNodeDetail(flowId: flow.id, nodeId: node.id)),
-                               node.refs + stepRefs))
+                citers.append(
+                    (
+                        DiffCitation(
+                            kind: .flowStage, title: node.label,
+                            target: .flowNodeDetail(flowId: flow.id, nodeId: node.id)),
+                        node.refs + stepRefs
+                    ))
             }
         }
 
-        let byPath = Dictionary(grouping: files.flatMap { f in
-            [f.oldPath, f.newPath].compactMap { $0 }.map { ($0, f) }
-        }, by: \.0)
+        let byPath = Dictionary(
+            grouping: files.flatMap { f in
+                [f.oldPath, f.newPath].compactMap { $0 }.map { ($0, f) }
+            }, by: \.0)
         var out: [String: [DiffCitation]] = [:]
         for (citation, refs) in citers {
             for ref in refs {

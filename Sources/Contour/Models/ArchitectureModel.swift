@@ -70,14 +70,18 @@ extension PRGraph {
 
     private func implementationOwner(of id: String) -> ComponentNode? {
         guard let impl = component(id) else { return nil }
-        return architectureParts.first { $0.implementedBy.contains { $0.caseInsensitiveCompare(impl.title) == .orderedSame } }
+        return architectureParts.first {
+            $0.implementedBy.contains { $0.caseInsensitiveCompare(impl.title) == .orderedSame }
+        }
             ?? impl.dependsOnIds.lazy.compactMap(component).first { $0.level != .implementation }
     }
 
     func implementation(of id: String) -> (nodes: [ComponentNode], names: [String]) {
         guard let part = component(id) else { return ([], []) }
         var nodes = components.filter { $0.level == .implementation && $0.parentId == id }
-        if nodes.isEmpty { nodes = implementationComponents(for: id).filter { $0.parentId == nil || $0.parentId == id } }
+        if nodes.isEmpty {
+            nodes = implementationComponents(for: id).filter { $0.parentId == nil || $0.parentId == id }
+        }
         let named = Set(nodes.map { $0.title.lowercased() })
         return (nodes, part.implementedBy.filter { !named.contains($0.lowercased()) })
     }
@@ -95,7 +99,8 @@ extension PRGraph {
 
         let innerEdges = resolvedEdges.compactMap { e -> (String, String)? in
             guard let f = representative(e.fromId), let t = representative(e.toId),
-                  primaryIds.contains(f), primaryIds.contains(t), f != t else { return nil }
+                primaryIds.contains(f), primaryIds.contains(t), f != t
+            else { return nil }
             return (f, t)
         }
         let entry = primary.first { p in !innerEdges.contains { $0.1 == p.id } }?.id ?? primary.first?.id
@@ -129,18 +134,25 @@ extension PRGraph {
         let edges = order.compactMap { byPair[$0] }
 
         let connected = Set(edges.flatMap { [$0.fromId, $0.toId] })
-        let context = focus == nil ? [] : connected.subtracting(primaryIds).compactMap(component)
-            .sorted { (components.firstIndex(of: $0) ?? 0) < (components.firstIndex(of: $1) ?? 0) }
+        let context =
+            focus == nil
+            ? []
+            : connected.subtracting(primaryIds).compactMap(component)
+                .sorted { (components.firstIndex(of: $0) ?? 0) < (components.firstIndex(of: $1) ?? 0) }
 
         let visible = primaryIds.union(context.map(\.id))
         let drawnBoundaries: [SystemBoundary]
         if let focus {
-            drawnBoundaries = [SystemBoundary(id: "focus:\(focus.id)", label: focus.title, kind: .application,
-                                              componentIds: primary.map(\.id))]
+            drawnBoundaries = [
+                SystemBoundary(
+                    id: "focus:\(focus.id)", label: focus.title, kind: .application,
+                    componentIds: primary.map(\.id))
+            ]
         } else {
             drawnBoundaries = boundaries.compactMap { b in
                 let members = unique(b.componentIds.compactMap(representative)).filter(visible.contains)
-                return members.isEmpty ? nil : SystemBoundary(id: b.id, label: b.label, kind: b.kind, componentIds: members)
+                return members.isEmpty
+                    ? nil : SystemBoundary(id: b.id, label: b.label, kind: b.kind, componentIds: members)
             }
         }
         return ArchLevel(focus: focus, primary: primary, context: context, edges: edges, boundaries: drawnBoundaries)
@@ -166,7 +178,9 @@ extension PRGraph {
     func decisionAnchors(on level: ArchLevel) -> [ArchAnchor: [DecisionNode]] {
         var out: [ArchAnchor: [DecisionNode]] = [:]
         for d in decisionsToReview {
-            guard let anchor = anchor(for: d.componentIds, explicitEdges: edgeIds(embodying: d), on: level) else { continue }
+            guard let anchor = anchor(for: d.componentIds, explicitEdges: edgeIds(embodying: d), on: level) else {
+                continue
+            }
             out[anchor, default: []].append(d)
         }
         return out
@@ -190,13 +204,17 @@ extension PRGraph {
 
     private func anchor(for componentIds: [String], explicitEdges: [String], on level: ArchLevel) -> ArchAnchor? {
         for id in explicitEdges {
-            if let drawn = level.edges.first(where: { $0.id == id || $0.mergedIds.contains(id) }) { return .edge(drawn.id) }
+            if let drawn = level.edges.first(where: { $0.id == id || $0.mergedIds.contains(id) }) {
+                return .edge(drawn.id)
+            }
         }
-        let drawn = unique(componentIds.compactMap { id in
-            ancestry(of: drawablePart(for: id)?.id ?? id).first { level.contains($0.id) }?.id
-        })
+        let drawn = unique(
+            componentIds.compactMap { id in
+                ancestry(of: drawablePart(for: id)?.id ?? id).first { level.contains($0.id) }?.id
+            })
         if drawn.count >= 2,
-           let edge = level.edges.first(where: { drawn.contains($0.fromId) && drawn.contains($0.toId) }) {
+            let edge = level.edges.first(where: { drawn.contains($0.fromId) && drawn.contains($0.toId) })
+        {
             return .edge(edge.id)
         }
         return drawn.first.map { .node($0) }

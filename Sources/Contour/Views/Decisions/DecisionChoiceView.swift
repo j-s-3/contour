@@ -15,7 +15,8 @@ struct DecisionChoiceView: View {
     }
 
     private var binary: some View {
-        let a = brief.options[0], b = brief.options[1]
+        let a = brief.options[0]
+        let b = brief.options[1]
         return VStack(spacing: 7) {
             HStack(alignment: .bottom) {
                 label(a, index: 0).frame(maxWidth: .infinity, alignment: .leading)
@@ -80,7 +81,8 @@ struct DecisionChoiceView: View {
     }
 
     private var beforeAfter: some View {
-        let before = brief.options[0], after = brief.options[1]
+        let before = brief.options[0]
+        let after = brief.options[1]
         return VStack(alignment: .leading, spacing: 10) {
             structure(before, index: 0, title: "BEFORE")
             structure(after, index: 1, title: "AFTER")
@@ -106,7 +108,8 @@ struct DecisionChoiceView: View {
                         .foregroundStyle(option.chosen ? .primary : .secondary)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(tint.opacity(option.chosen ? 0.1 : 0.05), in: RoundedRectangle(cornerRadius: 5))
-                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(tint.opacity(option.chosen ? 0.45 : 0.25)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5).strokeBorder(tint.opacity(option.chosen ? 0.45 : 0.25)))
                 }
             }
             if let detail = option.detail {
@@ -147,7 +150,10 @@ struct DecisionChoiceView: View {
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .contentShape(Rectangle())
-            .help(option.chosen ? "What this PR chose — right-click to ask why" : "Not chosen — right-click to ask about it")
+            .help(
+                option.chosen
+                    ? "What this PR chose — right-click to ask why" : "Not chosen — right-click to ask about it"
+            )
             .reviewContextMenu(.decisionOption(decisionId: decisionId, index: index))
     }
 
@@ -169,7 +175,8 @@ struct DecisionChoiceView: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(alignment == .trailing ? .trailing : (alignment == .center ? .center : .leading))
+                    .multilineTextAlignment(
+                        alignment == .trailing ? .trailing : (alignment == .center ? .center : .leading))
             }
         }
     }

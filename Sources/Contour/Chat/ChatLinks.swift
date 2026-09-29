@@ -36,8 +36,10 @@ enum ChatLinks {
         case "code":
             guard let path = q("path"), let start = q("start").flatMap(Int.init) else { return nil }
             let end = q("end").flatMap(Int.init) ?? start
-            return .code(CodeRef(path: path, startLine: start, endLine: max(start, end),
-                                 side: RefSide(rawValue: q("side") ?? "") ?? .head))
+            return .code(
+                CodeRef(
+                    path: path, startLine: start, endLine: max(start, end),
+                    side: RefSide(rawValue: q("side") ?? "") ?? .head))
         case "node":
             guard let kind = q("kind"), let id = q("id"), let subject = subject(kind: kind, id: id) else { return nil }
             return .node(subject)
@@ -69,7 +71,7 @@ enum ChatLinks {
     ) -> String {
         var out = replace(nodePattern, in: text) { groups in
             guard let subject = subject(kind: groups[1], id: groups[2]),
-                  let name = title(subject), let url = url(kind: groups[1], id: groups[2])
+                let name = title(subject), let url = url(kind: groups[1], id: groups[2])
             else { return nil }
             return "[\(escape(name))](\(url.absoluteString))"
         }
@@ -88,15 +90,18 @@ enum ChatLinks {
         s.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
     }
 
-    private static func replace(_ regex: NSRegularExpression, in text: String, _ transform: ([String]) -> String?) -> String {
+    private static func replace(_ regex: NSRegularExpression, in text: String, _ transform: ([String]) -> String?)
+        -> String
+    {
         let ns = text as NSString
         var result = ""
         var cursor = 0
         for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let prefix = ns.substring(with: NSRange(location: 0, length: match.range.location))
-            let insideLinkTarget = prefix.range(of: "](", options: .backwards).map { r in
-                !prefix[r.upperBound...].contains(")")
-            } ?? false
+            let insideLinkTarget =
+                prefix.range(of: "](", options: .backwards).map { r in
+                    !prefix[r.upperBound...].contains(")")
+                } ?? false
             let suffix = ns.substring(from: match.range.location + match.range.length)
             let isLinkText = prefix.hasSuffix("[") && suffix.hasPrefix("](")
             let groups = (0..<match.numberOfRanges).map { i -> String in

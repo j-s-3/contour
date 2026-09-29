@@ -31,6 +31,11 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Lint (swift-format)
+        # swift-format ships with the toolchain; rules and layout live in .swift-format.
+        # --strict turns every finding, including unformatted code, into a failure.
+        run: swift format lint --strict --recursive --parallel Sources Tests Package.swift
+
       - name: Build
         run: swift build
 

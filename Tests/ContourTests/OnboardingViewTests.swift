@@ -1,25 +1,32 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import Contour
 
 struct OnboardingViewTests {
     @Test func subtitleAlwaysStartsWithRepoAndNumber() {
-        #expect(OnboardingViewLogic.subtitle(repo: "acme/shop", number: 42, detail: nil, date: nil, dateVerb: "opened") == "acme/shop #42")
+        #expect(
+            OnboardingViewLogic.subtitle(repo: "acme/shop", number: 42, detail: nil, date: nil, dateVerb: "opened")
+                == "acme/shop #42")
     }
 
     @Test func subtitleAppendsDetailWhenPresent() {
-        #expect(OnboardingViewLogic.subtitle(repo: "acme/shop", number: 42, detail: "jdoe", date: nil, dateVerb: "opened") == "acme/shop #42 · jdoe")
+        #expect(
+            OnboardingViewLogic.subtitle(repo: "acme/shop", number: 42, detail: "jdoe", date: nil, dateVerb: "opened")
+                == "acme/shop #42 · jdoe")
     }
 
     @Test func subtitleAppendsDateVerbAndRelativeDateWhenPresent() {
         let date = Date(timeIntervalSince1970: 0)
-        let subtitle = OnboardingViewLogic.subtitle(repo: "acme/shop", number: 42, detail: nil, date: date, dateVerb: "updated")
+        let subtitle = OnboardingViewLogic.subtitle(
+            repo: "acme/shop", number: 42, detail: nil, date: date, dateVerb: "updated")
         #expect(subtitle.hasPrefix("acme/shop #42 · updated "))
     }
 
     @Test func subtitleJoinsAllPartsInOrderWhenBothArePresent() {
         let date = Date(timeIntervalSince1970: 0)
-        let subtitle = OnboardingViewLogic.subtitle(repo: "acme/shop", number: 7, detail: "jdoe · draft", date: date, dateVerb: "updated")
+        let subtitle = OnboardingViewLogic.subtitle(
+            repo: "acme/shop", number: 7, detail: "jdoe · draft", date: date, dateVerb: "updated")
         #expect(subtitle.hasPrefix("acme/shop #7 · jdoe · draft · updated "))
     }
 
@@ -50,7 +57,9 @@ struct OnboardingViewTests {
             PipelineProgressEntry(stage: "Analyzing architecture", detail: ""),
             PipelineProgressEntry(stage: "Analyzing architecture", detail: "Reading GraphStore.swift"),
         ]
-        #expect(AnalyzingView.latestDetail(log: log, stage: .architecture) == "Analyzing architecture — Reading GraphStore.swift")
+        #expect(
+            AnalyzingView.latestDetail(log: log, stage: .architecture)
+                == "Analyzing architecture — Reading GraphStore.swift")
     }
 
     @Test func isDeclinedMatchesOnlyTheExactChangeCountTheReviewerDismissed() {
@@ -63,7 +72,8 @@ struct OnboardingViewTests {
     }
 
     @Test func offerFromReadableTextRecognizesAPullRequestLink() {
-        let offer = OnboardingViewLogic.offer(fromReadableClipboardText: "check out https://github.com/acme/shop/pull/42 please")
+        let offer = OnboardingViewLogic.offer(
+            fromReadableClipboardText: "check out https://github.com/acme/shop/pull/42 please")
         #expect(offer == .pullRequest("https://github.com/acme/shop/pull/42"))
     }
 
@@ -95,7 +105,8 @@ struct OnboardingViewTests {
     }
 
     @Test func resolvedPasteTextCanonicalizesARecognizedPullRequestLink() {
-        #expect(OnboardingViewLogic.resolvedPasteText("see github.com/acme/shop/pull/3 for details")
+        #expect(
+            OnboardingViewLogic.resolvedPasteText("see github.com/acme/shop/pull/3 for details")
                 == "https://github.com/acme/shop/pull/3")
     }
 
@@ -104,7 +115,11 @@ struct OnboardingViewTests {
     }
 
     @Test func visibleRequestsCapsAtTheLimit() {
-        let requests = (0..<8).map { ReviewRequest(url: "u\($0)", repo: "acme/shop", number: $0, title: "t\($0)", author: "a", isDraft: false, updatedAt: nil) }
+        let requests = (0..<8).map {
+            ReviewRequest(
+                url: "u\($0)", repo: "acme/shop", number: $0, title: "t\($0)", author: "a", isDraft: false,
+                updatedAt: nil)
+        }
         #expect(OnboardingViewLogic.visibleRequests(requests, limit: 5).count == 5)
         #expect(OnboardingViewLogic.visibleRequests(requests, limit: 5).map(\.number) == [0, 1, 2, 3, 4])
     }
@@ -116,7 +131,8 @@ struct OnboardingViewTests {
     @Test func shouldShowListsIsFalseOnlyWhenBothListsAreEmpty() {
         #expect(!OnboardingViewLogic.shouldShowLists(requests: [], recents: []))
 
-        let request = ReviewRequest(url: "u", repo: "acme/shop", number: 1, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        let request = ReviewRequest(
+            url: "u", repo: "acme/shop", number: 1, title: "t", author: "a", isDraft: false, updatedAt: nil)
         #expect(OnboardingViewLogic.shouldShowLists(requests: [request], recents: []))
 
         let recent = AnalysisCache.RecentPR(url: "u", repo: "acme/shop", number: 1, title: "t", lastOpened: Date())
