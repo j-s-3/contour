@@ -52,10 +52,14 @@ struct CommandPaletteView: View {
     }
 
     private func runFirst() {
-        if let first = filtered.first {
-            first.action()
-            isPresented = false
-        }
+        if Self.runFirst(filtered) { isPresented = false }
+    }
+
+    @discardableResult
+    static func runFirst(_ commands: [PaletteCommand]) -> Bool {
+        guard let first = commands.first else { return false }
+        first.action()
+        return true
     }
 
     private var allCommands: [PaletteCommand] { Self.allCommands(store: store) }

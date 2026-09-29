@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Contour
@@ -157,5 +158,89 @@ struct CommandPaletteViewTests {
         }
         Self.action(graph.scenarioTitle(for: flow), in: commands)?()
         #expect(store.current == .flowDetail(flow.id))
+    }
+
+    @Test @MainActor func runFirstRunsOnlyTheFirstCommandAndReportsWhetherOneRan() {
+        var ran: [String] = []
+        let commands = ["a", "b"].map { title in
+            PaletteCommand(title: title, subtitle: nil, symbol: "circle") { ran.append(title) }
+        }
+        #expect(CommandPaletteView.runFirst(commands))
+        #expect(ran == ["a"])
+        #expect(!CommandPaletteView.runFirst([]))
+        #expect(ran == ["a"])
+    }
+
+    @Test @MainActor func reanalyzeWithoutAPreviousPRDoesNothing() {
+        let store = GraphStore()
+        Self.action("Re-analyze (ignore cache)", in: CommandPaletteView.allCommands(store: store))?()
+        #expect(store.phase == .idle)
+    }
+
+    @Test @MainActor func stopAnalysisIsOfferedOnlyWhileAnalysisCanBeStopped() {
+        let titles = CommandPaletteView.allCommands(store: GraphStore()).map(\.title)
+        #expect(!titles.contains("Stop analysis"))
+    }
+
+    @MainActor
+    static func host(_ store: GraphStore, presented: Binding<Bool>) -> HeadlessWindow {
+        _ = NSApplication.shared
+        let host = NSHostingView(rootView: CommandPaletteView(store: store, isPresented: presented))
+        let window = HeadlessWindow(size: NSSize(width: 600, height: 500))
+        window.contentView = host
+        window.orderBack(nil)
+        for _ in 0..<3 {
+            host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        return window
+    }
+
+    @MainActor
+    private static func loadedStore() -> GraphStore {
+        let store = GraphStore()
+        store.handle(.graph(ContourSampleData.publishTriggeredReindex))
+        return store
+    }
+
+    @Test @MainActor func hostedPaletteRendersWithAndWithoutAGraph() {
+        var presented = true
+        let binding = Binding(get: { presented }, set: { presented = $0 })
+        for store in [GraphStore(), Self.loadedStore()] {
+            let window = Self.host(store, presented: binding)
+            #expect((window.contentView?.fittingSize.width ?? 0) > 0)
+            window.close()
+        }
+        #expect(presented)
+    }
+}
+
+@MainActor
+private func textField(in view: NSView?) -> NSTextField? {
+    guard let view else { return nil }
+    if let field = view as? NSTextField, field.isEditable { return field }
+    for subview in view.subviews {
+        if let found = textField(in: subview) { return found }
+    }
+    return nil
+}
+
+@Suite(.serialized)
+struct CommandPaletteViewInteractionTests {
+    @Test @MainActor func submittingTheSearchFieldRunsTheFirstCommandAndDismissesThePalette() throws {
+        var presented = true
+        let binding = Binding(get: { presented }, set: { presented = $0 })
+        let store = GraphStore()
+        store.navigate(to: .decisions)
+        let window = CommandPaletteViewTests.host(store, presented: binding)
+        defer { window.close() }
+        let field = try #require(textField(in: window.contentView))
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(window.fieldEditor(false, for: field))
+        editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        #expect(store.current == .summary)
+        #expect(!presented)
     }
 }
