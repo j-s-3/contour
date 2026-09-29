@@ -71,10 +71,16 @@ struct AnalysisService {
     }
 
     private let mockOverride: MockOptions?
+    private let dumpDirectory: URL?
 
-    init(harness: any Harness, mock: MockOptions? = nil) {
+    static var dumpDirectoryFromEnvironment: URL? {
+        ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    init(harness: any Harness, mock: MockOptions? = nil, dumpDirectory: URL? = Self.dumpDirectoryFromEnvironment) {
         self.harness = harness
         self.mockOverride = mock
+        self.dumpDirectory = dumpDirectory
     }
 
     func runStage(
@@ -160,7 +166,7 @@ struct AnalysisService {
         guard let parsed = Self.extractJSONObject(from: text) else {
             throw AnalysisServiceError.notJSON(harness: name, raw: text)
         }
-        Self.dumpIfRequested(parsed, stage: stage)
+        dumpIfRequested(parsed, stage: stage)
         return parsed
     }
 
@@ -189,9 +195,8 @@ struct AnalysisService {
         }
     }
 
-    private static func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
-        guard let dir = ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"] else { return }
-        let url = URL(fileURLWithPath: dir, isDirectory: true)
+    private func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
+        guard let url = dumpDirectory else { return }
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         guard
             let data = try? JSONSerialization.data(
