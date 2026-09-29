@@ -19,10 +19,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if needsOnboarding {
-                WelcomeWizard { firstURL in
-                    needsOnboarding = false
-                    Self.openFirstPR(firstURL) { store.load(prURL: $0) }
-                }
+                WelcomeWizard(onFinish: actions.finishOnboarding($needsOnboarding))
             } else {
                 mainBody
             }
@@ -40,7 +37,7 @@ struct ContentView: View {
         .focusedSceneValue(\.prSession, needsOnboarding ? nil : sessionActions)
         .onAppear {
             if !needsOnboarding, case .idle = store.phase {
-                Self.openFirstPR(ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"]) { store.load(prURL: $0) }
+                Self.openFirstPR(ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"], load: actions.load)
             }
         }
         .onChange(of: store.phase) { _, phase in
@@ -52,7 +49,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
-        .onOpenURL { url in Self.openLink(url, needsOnboarding: needsOnboarding) { store.load(prURL: $0) } }
+        .onOpenURL(perform: actions.openLink(needsOnboarding: needsOnboarding))
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
 
@@ -87,18 +84,15 @@ struct ContentView: View {
 
     static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
+    private var actions: ContentViewActions { ContentViewActions(store: store) }
+
     private var sessionActions: PRSessionActions {
         PRSessionActions(
             hasOpenPR: store.hasOpenPR,
             pullRequestURL: store.pullRequestURL,
-            openDifferent: openDifferentPR,
-            close: { store.close() }
+            openDifferent: actions.openDifferent(focusRequest: $urlFieldFocusRequest),
+            close: actions.close
         )
-    }
-
-    private func openDifferentPR() {
-        store.close()
-        urlFieldFocusRequest += 1
     }
 
     @ViewBuilder
@@ -108,25 +102,27 @@ struct ContentView: View {
             case .idle:
                 OnboardingView(
                     initialURL: store.lastPRURL, markNamespace: markNamespace,
-                    focusRequest: urlFieldFocusRequest
-                ) { url in store.load(prURL: url) }
+                    focusRequest: urlFieldFocusRequest,
+                    onSubmit: actions.load
+                )
             case .opening:
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
-                FailedView(message: message, onRetry: { store.reopen() }, onOpenDifferent: { store.close() })
+                FailedView(message: message, onRetry: actions.reopen, onOpenDifferent: actions.close)
             case .review:
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
                     OnboardingView(
                         initialURL: store.lastPRURL, markNamespace: markNamespace,
-                        focusRequest: urlFieldFocusRequest
-                    ) { url in store.load(prURL: url) }
+                        focusRequest: urlFieldFocusRequest,
+                        onSubmit: actions.load
+                    )
                 }
             }
         }
         .animation(.easeInOut(duration: 0.45), value: screen)
-        .opensDroppedPullRequests { url in store.load(prURL: url) }
+        .opensDroppedPullRequests(actions.load)
     }
 
     private var screen: Int { Self.screen(for: store.phase) }
@@ -153,10 +149,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .inspector(
-                isPresented: Binding(
-                    get: { store.conversations.isPresented },
-                    set: { store.conversations.isPresented = $0 }
-                )
+                isPresented: actions.conversationsPresented()
             ) {
                 ContextualChatView(store: store, graph: graph)
                     .inspectorColumnWidth(min: 340, ideal: 420, max: 580)
@@ -171,24 +164,20 @@ struct ContentView: View {
         .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
         .toolbarTitleMenu {
             let session = sessionActions
-            Button("Open on GitHub") { session.openOnGitHub() }
+            Button("Open on GitHub", action: actions.openOnGitHub(session))
                 .disabled(session.pullRequestURL == nil)
-            Button("Copy Link") { session.copyLink() }
+            Button("Copy Link", action: actions.copyLink(session))
                 .disabled(session.pullRequestURL == nil)
             Divider()
-            Button("Open a Different Pull Request…") { session.openDifferent() }
+            Button("Open a Different Pull Request…", action: session.openDifferent)
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
-                Button {
-                    store.goBack()
-                } label: {
+                Button(action: actions.goBack) {
                     Image(systemName: "chevron.left")
                 }
                 .disabled(!store.canGoBack)
-                Button {
-                    store.goForward()
-                } label: {
+                Button(action: actions.goForward) {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(!store.canGoForward)
@@ -196,31 +185,23 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 AnalysisIndicator(
                     state: store.analysis, log: store.progressLog, metrics: store.metrics,
-                    refCheck: graph.refCheckTotal, onStop: { store.stopAnalysis() }, onRetry: { store.retry($0) })
-                Button {
-                    showPalette = true
-                } label: {
+                    refCheck: graph.refCheckTotal, onStop: actions.stopAnalysis, onRetry: actions.retry)
+                Button(action: actions.turnOn($showPalette)) {
                     Image(systemName: "magnifyingglass")
                 }
                 .help("Command palette (⌘K)")
-                Button {
-                    store.copyReviewSummary()
-                } label: {
+                Button(action: actions.copyReviewSummary) {
                     Image(systemName: "doc.on.clipboard")
                 }
                 .help("Copy review summary as Markdown")
-                Button {
-                    store.openOnGitHub()
-                } label: {
+                Button(action: actions.openOnGitHub) {
                     Image(systemName: "arrow.up.forward.square")
                 }
                 .help("Open on GitHub (⌘⇧O)")
                 .disabled(store.pullRequestWebURL == nil)
                 approveButton(graph)
                 requestChangesButton(graph)
-                Button {
-                    withAnimation(Self.spring) { store.toggleConversations() }
-                } label: {
+                Button(action: actions.toggleConversations) {
                     Image(
                         systemName: store.conversations.isPresented
                             ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
@@ -231,9 +212,7 @@ struct ContentView: View {
     }
 
     private func approveButton(_ graph: PRGraph) -> some View {
-        Button {
-            confirmApprove = true
-        } label: {
+        Button(action: actions.turnOn($confirmApprove)) {
             reviewButtonLabel(.approve, symbol: "hand.thumbsup", submittedColor: .green)
         }
         .help(store.reviewUnavailableReason(.approve) ?? "Approve this pull request on GitHub")
@@ -242,37 +221,28 @@ struct ContentView: View {
             Text(verbatim: "Approve \(graph.pr.repo) #\(graph.pr.number)?"),
             isPresented: $confirmApprove
         ) {
-            Button("Approve") { store.submitReview(.approve) }
-            Button("Cancel", role: .cancel) {}
+            Button("Approve", action: actions.approve)
+            Button("Cancel", role: .cancel, action: actions.acknowledge)
         } message: {
             Text("This submits an approving review on GitHub as you, through gh.")
         }
         .alert(
             reviewFailureTitle,
-            isPresented: Binding(
-                get: { if case .failed = store.review { true } else { false } },
-                set: { if !$0 { store.dismissReviewFailure() } }
-            )
+            isPresented: actions.reviewFailurePresented()
         ) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel, action: actions.acknowledge)
         } message: {
             if case .failed(_, let message) = store.review { Text(message) }
         }
     }
 
     private func requestChangesButton(_ graph: PRGraph) -> some View {
-        Button {
-            composingChangeRequest = true
-        } label: {
+        Button(action: actions.turnOn($composingChangeRequest)) {
             reviewButtonLabel(.requestChanges, symbol: "hand.thumbsdown", submittedColor: .red)
         }
         .help(store.reviewUnavailableReason(.requestChanges) ?? "Request changes on GitHub")
         .disabled(!store.canSubmitReview(.requestChanges))
-        .sheet(isPresented: $composingChangeRequest) {
-            RequestChangesSheet(title: "Request changes on \(graph.pr.repo) #\(graph.pr.number)") {
-                store.submitReview(.requestChanges, comment: $0)
-            }
-        }
+        .sheet(isPresented: $composingChangeRequest, content: actions.requestChangesSheet(for: graph))
     }
 
     @ViewBuilder
@@ -381,9 +351,7 @@ struct ContentView: View {
         status: StageStatus, section: ReviewSection?,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        Button {
-            store.navigate(to: target)
-        } label: {
+        Button(action: actions.navigateAction(target)) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 1) {
                     Label(title, systemImage: symbol)
@@ -523,7 +491,7 @@ struct ContentView: View {
                     case .progress(let text):
                         SectionProgressPill(text: text)
                     case .stopped:
-                        SectionStoppedPill { store.retry(stage) }
+                        SectionStoppedPill(onRetry: actions.retryAction(stage))
                     case .none:
                         EmptyView()
                     }
@@ -534,10 +502,10 @@ struct ContentView: View {
             content()
         case .failed(let message):
             SectionFailedView(
-                section: section, message: message, onRetry: { store.retry(stage) },
-                onAsk: { withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) } })
+                section: section, message: message, onRetry: actions.retryAction(stage),
+                onAsk: actions.askAction(ask))
         case .stopped:
-            SectionStoppedView(section: section) { store.retry(stage) }
+            SectionStoppedView(section: section, onRetry: actions.retryAction(stage))
         case .pending:
             SectionPendingView(section: section, status: status, known: known)
         }
@@ -550,7 +518,7 @@ struct ContentView: View {
         case .summary:
             SummaryView(
                 graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
-                onRetry: { store.retry($0) }, navigate: { store.navigate(to: $0) }
+                onRetry: actions.retry, navigate: actions.navigate
             )
         case .architecture, .componentDetail(_), .edgeDetail(_):
             sectionContent(
@@ -570,9 +538,9 @@ struct ContentView: View {
                     graph: graph,
                     focus: decisionsFocus(graph),
                     discussed: store.conversations.discussedConsiderationIds,
-                    onSetState: { store.setReviewerState($1, forDecision: $0) },
-                    onSetNote: { store.setReviewerNote($1, forDecision: $0) },
-                    onSetToReview: { store.setToReview($1, forDecision: $0) }
+                    onSetState: actions.setReviewerState,
+                    onSetNote: actions.setReviewerNote,
+                    onSetToReview: actions.setToReview
                 )
             }
         case .flows, .flowDetail(_), .flowNodeDetail(_, _):
@@ -585,7 +553,7 @@ struct ContentView: View {
                     graph: graph,
                     focus: flowsFocus,
                     mode: $store.diagramMode,
-                    onOpenEvidence: { store.navigate(to: .evidence($0)) }
+                    onOpenEvidence: actions.openEvidence
                 )
             }
         case .files:
@@ -597,7 +565,7 @@ struct ContentView: View {
                 ContentUnavailableView("No diff available", systemImage: "doc.text")
             }
         case .evidence(let ref):
-            CodeViewerView(ref: ref, checkout: store.checkout) { store.goBack() }
+            CodeViewerView(ref: ref, checkout: store.checkout, onBack: actions.goBack)
         }
     }
 }
