@@ -39,6 +39,26 @@ final class ConversationStore {
     var isPresented = false
     private(set) var focusRequest = 0
 
+    typealias Responder =
+        @Sendable (
+            _ conversationId: UUID, _ contextDocument: String, _ history: [ChatMessage], _ question: String,
+            _ harnessID: HarnessID, _ checkout: RepoCheckout
+        ) -> AsyncThrowingStream<ConversationEvent, Error>
+
+    static let liveResponder: Responder = { conversationId, contextDocument, history, question, harnessID, checkout in
+        ConversationService(
+            harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
+            checkout: checkout
+        ).respond(
+            conversationId: conversationId, contextDocument: contextDocument, history: history, question: question)
+    }
+
+    @ObservationIgnored private let responder: Responder
+
+    init(responder: @escaping Responder = ConversationStore.liveResponder) {
+        self.responder = responder
+    }
+
     var active: Conversation? { conversations.first { $0.id == activeId } }
 
     var discussedConsiderationIds: Set<String> {
@@ -117,10 +137,7 @@ final class ConversationStore {
 
         let expansions = conversation.expansions
         let pinned = conversation.pinnedRefs
-        let service = ConversationService(
-            harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
-            checkout: checkout
-        )
+        let responder = self.responder
 
         conversation.activity = "reading the review context"
         conversation.task = Task { @MainActor [weak self, weak conversation] in
@@ -137,8 +154,8 @@ final class ConversationStore {
             )
             var sawToolSinceText = false
             do {
-                for try await event in service.respond(
-                    conversationId: conversation.id, contextDocument: document, history: history, question: question
+                for try await event in responder(
+                    conversation.id, document, history, question, harnessID, checkout
                 ) {
                     switch event {
                     case .activity(let detail):
