@@ -2,23 +2,13 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// `ContentView` is the `NavigationSplitView` shell (§4.1); per CLAUDE.md's guidance, its
-/// navigation-stack derivation and lens/tab selection logic is pulled out to static
-/// functions taking `store.phase`/`store.current`/`store.review` explicitly, so it's
-/// testable without a live view. The `body` itself — the split view, toolbar, sidebar rows —
-/// stays untested; no UI-testing infrastructure in this suite to host it.
 struct ContentViewTests {
-
-    // MARK: - screen
-
     @Test func screenMapsEveryPhaseToItsOwnNumber() {
         #expect(ContentView.screen(for: .idle) == 0)
         #expect(ContentView.screen(for: .opening) == 1)
         #expect(ContentView.screen(for: .failed("boom")) == 2)
         #expect(ContentView.screen(for: .review) == 3)
     }
-
-    // MARK: - sidebarSubtitle
 
     @Test func sidebarSubtitleIsNilWithoutASection() {
         #expect(ContentView.sidebarSubtitle(.done, nil) == nil)
@@ -41,8 +31,6 @@ struct ContentViewTests {
         #expect(ContentView.sidebarSubtitle(.done, .architecture) == nil)
     }
 
-    // MARK: - isActive
-
     @Test func isActiveMatchesTheSameLensDirectly() {
         #expect(ContentView.isActive(.summary, given: .summary))
         #expect(ContentView.isActive(.architecture, given: .architecture))
@@ -63,8 +51,6 @@ struct ContentViewTests {
         #expect(!ContentView.isActive(.architecture, given: .flowDetail("f")))
     }
 
-    // MARK: - architectureFocus / flowsFocus / diffFocus
-
     @Test func architectureFocusNamesTheSelectedNodeOrEdge() {
         #expect(ContentView.architectureFocus(for: .componentDetail("c")) == .node("c"))
         #expect(ContentView.architectureFocus(for: .edgeDetail("e")) == .edge("e"))
@@ -83,16 +69,12 @@ struct ContentViewTests {
         #expect(ContentView.diffFocus(for: .diff) == nil)
     }
 
-    // MARK: - decisionsFocus
-
     @Test func decisionsFocusResolvesADecisionDetailDirectly() {
         let graph = ContourSampleData.publishTriggeredReindex
         #expect(ContentView.decisionsFocus(for: .decisionDetail("index-on-publish"), graph: graph)
                 == .init(decisionId: "index-on-publish"))
     }
 
-    /// A consideration carries the Overview question that brought the reviewer here, resolved
-    /// back to whichever decision it belongs to.
     @Test func decisionsFocusResolvesAConsiderationToItsOwningDecision() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
@@ -111,8 +93,6 @@ struct ContentViewTests {
         #expect(ContentView.decisionsFocus(for: .summary, graph: graph) == nil)
     }
 
-    // MARK: - reviewFailureTitle
-
     @Test func reviewFailureTitleNamesRequestChangesSpecifically() {
         #expect(ContentView.reviewFailureTitle(for: .failed(.requestChanges, "network error")) == "Couldn't request changes")
     }
@@ -122,10 +102,6 @@ struct ContentViewTests {
         #expect(ContentView.reviewFailureTitle(for: .idle) == "Couldn't approve the pull request")
     }
 
-    // MARK: - reviewButtonPhase
-
-    /// Each verdict's button only reacts to *its own* verdict being in flight or submitted —
-    /// the other verdict's button stays idle even while a review is happening.
     @Test func reviewButtonPhaseTracksOnlyItsOwnVerdict() {
         #expect(ContentView.reviewButtonPhase(for: .submitting(.approve), verdict: .approve) == .submitting)
         #expect(ContentView.reviewButtonPhase(for: .submitting(.approve), verdict: .requestChanges) == .idle)
@@ -138,19 +114,12 @@ struct ContentViewTests {
         #expect(ContentView.reviewButtonPhase(for: .failed(.approve, "boom"), verdict: .approve) == .idle)
     }
 
-    // MARK: - sectionBranch / sectionOverlay
-
-    /// Content on screen always wins the branch, whatever the stage's status says — a
-    /// `stale` slice from a previous revision, or a stage that's still `running`, is shown
-    /// with its overlay rather than a failed/pending placeholder.
     @Test func sectionBranchPrefersContentWheneverThereIsAny() {
         #expect(ContentView.sectionBranch(hasContent: true, status: .pending) == .content(showsOverlay: true))
         #expect(ContentView.sectionBranch(hasContent: true, status: .stale) == .content(showsOverlay: true))
         #expect(ContentView.sectionBranch(hasContent: true, status: .failed("x")) == .content(showsOverlay: true))
     }
 
-    /// A `done` stage with nothing to show (e.g. zero decisions found) still renders the
-    /// lens's own `content()`, just without a progress/stopped pill floating over it.
     @Test func sectionBranchShowsContentWithoutOverlayWhenDoneButEmpty() {
         #expect(ContentView.sectionBranch(hasContent: false, status: .done) == .content(showsOverlay: false))
     }
@@ -175,10 +144,6 @@ struct ContentViewTests {
         #expect(ContentView.sectionOverlay(status: .stopped, progress: nil) == .stopped)
     }
 
-    // MARK: - sidebar row derivation
-
-    /// The Flows row only grows a count once the stage is `done`; while running or failed it
-    /// stays a bare label rather than showing a stale or zero count.
     @Test func flowsRowTitleAddsTheCountOnlyOnceDone() {
         #expect(ContentView.flowsRowTitle(status: .done, count: 3) == "Flows (3)")
         #expect(ContentView.flowsRowTitle(status: .done, count: 0) == "Flows (0)")
@@ -186,9 +151,6 @@ struct ContentViewTests {
         #expect(ContentView.flowsRowTitle(status: .pending, count: 3) == "Flows")
     }
 
-    /// The Decisions row's checkmark requires both stages done *and* every consideration
-    /// actually reviewed; a PR with zero considerations never counts as fully reviewed, and
-    /// a single unreviewed consideration blocks it even once both stages finish.
     @Test func decisionsRowIsFullyReviewedRequiresEverythingDoneAndReviewed() {
         #expect(ContentView.decisionsRowIsFullyReviewed(
             decisionsStatus: .done, judgmentStatus: .done, progress: (reviewed: 2, total: 2)))
@@ -207,10 +169,6 @@ struct ContentViewTests {
         #expect(ContentView.diffRowStatus(diffText: "diff --git a b") == .done)
     }
 
-    // MARK: - lensTarget
-
-    /// `CONTOUR_OPEN_LENS` only knows the three diagram/decision lenses; anything else,
-    /// including unset, leaves the review on the Overview.
     @Test func lensTargetResolvesTheThreeNamedLenses() {
         #expect(ContentView.lensTarget(named: "architecture") == .architecture)
         #expect(ContentView.lensTarget(named: "flows") == .flows)
@@ -219,10 +177,6 @@ struct ContentViewTests {
         #expect(ContentView.lensTarget(named: nil) == nil)
     }
 
-    // MARK: - openFirstPR / openLink
-
-    /// The wizard's optional first PR and the CONTOUR_OPEN_PR_URL hook: nothing to open for
-    /// nil or empty, otherwise exactly the URL given.
     @Test func openFirstPROpensOnlyANonEmptyURL() {
         var opened: [String] = []
         ContentView.openFirstPR(nil) { opened.append($0) }
@@ -231,8 +185,6 @@ struct ContentViewTests {
         #expect(opened == ["https://github.com/o/r/pull/1"])
     }
 
-    /// System-handed links are ignored during first-run setup and when they don't name a PR;
-    /// otherwise the PR opens, so a stray link can never replace a review by accident.
     @Test func openLinkRequiresFinishedSetupAndAPullRequestLink() throws {
         var opened: [String] = []
         let pr = try #require(URL(string: "https://github.com/o/r/pull/7"))
@@ -244,10 +196,6 @@ struct ContentViewTests {
         #expect(opened == ["https://github.com/o/r/pull/7"])
     }
 
-    // MARK: - reviewActions
-
-    /// The closures the lens views call are wired to the store: asking opens a conversation,
-    /// navigating pushes a target, and focusing publishes the subject for the shortcut.
     @Test @MainActor func reviewActionsDriveTheStore() {
         let graph = ContourSampleData.publishTriggeredReindex
         let store = GraphStore()

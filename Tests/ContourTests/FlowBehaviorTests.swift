@@ -2,11 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// Flows draw what happens at runtime and how the PR changed it — from the behavior model the
-/// flows stage writes, and for older graphs by condensing their story steps.
 struct FlowBehaviorTests {
-
-    /// The captured bat#3877 run, which predates the behavior model.
     private func fixtureGraph() throws -> PRGraph {
         let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
@@ -21,8 +17,6 @@ struct FlowBehaviorTests {
         graph.pr.considerations = judgment.considerations
         return graph
     }
-
-    // MARK: - Decoding
 
     @Test func aMalformedStageOrDanglingEdgeDropsOnlyItself() throws {
         let json = """
@@ -75,19 +69,12 @@ struct FlowBehaviorTests {
         #expect(behavior.visible(in: .delta).nodes.count == 4)
     }
 
-    // MARK: - Older graphs
-    //
-    // The fixtures are regenerated from real runs, so these find things by what they are —
-    // the file flow, the stdin flow, the step this PR added — rather than by captured ids.
-
     private func fileFlow(_ graph: PRGraph) throws -> FlowNode {
         try #require(graph.flows.first { $0.id.contains("file") })
     }
     private func stdinFlow(_ graph: PRGraph) throws -> FlowNode {
         try #require(graph.flows.first { $0.id.contains("stdin") })
     }
-    /// The review question that names the stdin flow: binary bytes arriving after a short
-    /// first read on a pipe.
     private func pipeQuestion(_ graph: PRGraph) throws -> Consideration {
         let stdin = try stdinFlow(graph)
         return try #require(graph.thingsToThinkAbout.first { $0.relatedIds.contains(stdin.id) })
@@ -125,15 +112,12 @@ struct FlowBehaviorTests {
         #expect(behavior.nodes.count == file.storySteps.count + 1)
         #expect(behavior.nodes.last?.kind == .outcome)
         #expect(behavior.edges.count == behavior.nodes.count - 1)
-        // Every implementation step lands under exactly one stage, in trace order.
         #expect(behavior.nodes.flatMap(\.stepIds) == file.steps.map(\.id))
-        // Opening the file is context; the step this PR added marks its stage as changed.
         #expect(behavior.nodes[1].change == .existing)
         let added = try #require(file.steps.first { $0.changeKind == .new })
         let addedStage = try #require(behavior.nodes.first { $0.stepIds.contains(added.id) })
         #expect(addedStage.change != .existing)
         #expect(addedStage.id != behavior.nodes[1].id)
-        // Classification lands on the classify stage, not the fallback before it.
         let classify = try #require(file.steps.first { $0.title.localizedCaseInsensitiveContains("classify") })
         let classifyStage = try #require(behavior.nodes.first { $0.stepIds.contains(classify.id) })
         #expect(classifyStage.label.localizedCaseInsensitiveContains("classif"))
@@ -144,10 +128,8 @@ struct FlowBehaviorTests {
         let file = try fileFlow(graph)
         let behavior = graph.behavior(for: file)
         let decisions = graph.annotations(for: file).filter { $0.kind == .decision }
-        // The decisions to review, and only those — other decisions stay out of the diagram.
         #expect(Set(decisions.map(\.targetId)) == Set(graph.decisionsToReview.map(\.id)))
         #expect(!graph.otherDecisions.isEmpty)
-        // Pinned to a changed stage, never to unchanged context.
         for annotation in decisions {
             #expect(behavior.node(annotation.nodeId)?.change != .existing)
         }
@@ -185,8 +167,6 @@ struct FlowBehaviorTests {
         #expect(graph.flowAppearances(ofDecision: decisionId).map(\.flow.id).contains(try stdinFlow(graph).id))
     }
 
-    // MARK: - Layout
-
     private func sampleLayout(_ mode: DiagramMode) throws -> (BehaviorDiagramLayout, FlowBehavior) {
         let graph = ContourSampleData.publishTriggeredReindex
         let flow = try #require(graph.flow("publish-index-flow"))
@@ -217,10 +197,8 @@ struct FlowBehaviorTests {
         let yes = try #require(layout.node("searchable")), no = try #require(layout.node("retry"))
         #expect(yes.frame.minY == no.frame.minY)
         #expect(!yes.frame.intersects(no.frame))
-        // The branch point sits centered over its two outcomes.
         let branch = try #require(layout.node("ok"))
         #expect(abs(branch.frame.midX - (yes.frame.midX + no.frame.midX) / 2) < 1)
-        // In Delta the removed and new paths run side by side too.
         #expect(try #require(layout.node("nightly")).frame.minY == (try #require(layout.node("queue"))).frame.minY)
 
         let boxes = layout.nodes.map(\.frame) + layout.annotations.map(\.frame)
@@ -251,7 +229,6 @@ struct FlowBehaviorTests {
         let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes)
         #expect(layout.annotations.count == cap)
         #expect(layout.overflow.first { $0.nodeId == "queue" }?.count == notes.count - cap)
-        // Nothing hangs into the next stage.
         let next = try #require(layout.node("rebuild"))
         #expect(layout.overflow.allSatisfy { $0.frame.maxY < next.frame.minY })
         #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
@@ -274,7 +251,6 @@ struct FlowBehaviorTests {
         let next = try #require(layout.node("rebuild"))
         #expect(layout.annotations.allSatisfy { $0.frame.maxY < next.frame.minY })
 
-        // Side-by-side branches move apart so their notes keep the width, and nothing overlaps.
         let compact = BehaviorDiagramLayoutEngine.layout(behavior, mode: .delta, annotations: notes)
         func gap(_ l: BehaviorDiagramLayout) throws -> CGFloat {
             try #require(l.node("retry")).frame.midX - (try #require(l.node("searchable"))).frame.midX
@@ -300,8 +276,6 @@ struct FlowBehaviorTests {
         #expect(layout.annotations.allSatisfy { $0.frame.width >= BehaviorDiagramLayoutEngine.annotationWidth })
     }
 
-    /// A branch that skips a stage with notes: the Flows screen's own diagram, where "Yes"
-    /// jumps past "Condense from story steps" and used to run through its notes.
     @Test func aConnectorSkippingAStageRunsClearOfItsNotes() throws {
         let behavior = FlowBehavior(
             nodes: [
@@ -358,8 +332,6 @@ struct FlowBehaviorTests {
         }
     }
 
-    // MARK: - Chat and prompts
-
     @Test func askingAboutAStageSendsItsNeighborhood() throws {
         let graph = ContourSampleData.publishTriggeredReindex
         let resolved = try #require(graph.resolve(.flowNode(flowId: "publish-index-flow", nodeId: "queue")))
@@ -377,16 +349,12 @@ struct FlowBehaviorTests {
     @Test func theFlowsStageIsAskedForBehaviorAndTheJudgmentStageForAnchors() {
         let graph = ContourSampleData.publishTriggeredReindex
         let flows = PromptBuilder.flowsPrompt(components: graph.components, entryHints: [])
-        // Decisions are pinned to stages afterwards (GraphLinker), so the flows stage no
-        // longer waits for them — or sees them.
         #expect(!flows.contains("- index-on-publish:"))
         #expect(!flows.contains("decisionIds"))
         #expect(flows.contains("\"behavior\""))
         #expect(flows.contains("4-8 conceptual stages"))
         #expect(PromptBuilder.judgmentPrompt(graphSoFar: "{}").contains("flowAnchors"))
     }
-
-    // MARK: - Convergence
 
     @Test func flowsThatHandOffToASharedStageAreFound() {
         var graph = ContourSampleData.publishTriggeredReindex

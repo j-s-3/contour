@@ -2,7 +2,6 @@ import XCTest
 @testable import Contour
 
 final class TrackerAndCacheTests: XCTestCase {
-
     private func makeContext(title: String, body: String = "", headRef: String = "main", commits: [CommitInfo] = []) -> RawPRContext {
         RawPRContext(
             url: "https://github.com/acme/shop/pull/1", owner: "acme", repo: "shop", number: 1,
@@ -39,24 +38,15 @@ final class TrackerAndCacheTests: XCTestCase {
     }
 
     func testJiraKeyIgnoresLowercase() {
-        // "v1-2" style version strings shouldn't false-positive as ticket keys.
         XCTAssertNil(jiraRef(makeContext(title: "bump to v1-2 release")))
     }
 
-    /// The Jira tracker reports its own kind, so the Summary chip and the ELI5 prompt can
-    /// say "Jira ticket" rather than guessing from the key's shape.
     func testJiraRefCarriesTrackerIdentity() {
         let ref = JiraTracker().reference(in: makeContext(title: "PROJ-1 do a thing"))
         XCTAssertEqual(ref?.tracker, .jira)
         XCTAssertEqual(ref?.displayKey, "PROJ-1")
     }
 
-    /// Real `acli` call against a real ticket — gated like IntegrationSmokeTests since it
-    /// needs network + a working acli auth session. Confirms the ADF description actually
-    /// flattens to readable plain text, not just that the regex matches a key.
-    ///
-    /// Needs a ticket key that exists on whatever Jira site `acli` is signed in to, so it
-    /// is skipped unless CONTOUR_JIRA_TEST_KEY names one.
     func testFetchRealJiraTicket() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_CONTOUR_INTEGRATION"] == "1",
                            "Set RUN_CONTOUR_INTEGRATION=1 to run this (network + acli call).")
@@ -89,16 +79,12 @@ final class TrackerAndCacheTests: XCTestCase {
         XCTAssertEqual(loaded?.graph.pr.title, "t")
         XCTAssertEqual(loaded?.diff, "diff text")
 
-        // A different pipeline version must miss even for the same SHAs.
         XCTAssertNil(cache.load(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 1000))
 
         cache.invalidate(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999)
         XCTAssertNil(cache.load(owner: "acme", repo: "shop", number: 42, headSha: "headsha123", baseSha: "basesha456", pipelineVersion: 999))
     }
 
-    /// A mock run's graph is the canned fixture, not an analysis of this PR. If it were
-    /// cached under the PR's real key, every later real load of that commit would show
-    /// the fixture.
     func testAnalysisCacheIsBypassedInMockMode() {
         let cache = AnalysisCache()
         let key = (owner: "acme", repo: "shop", number: 43, headSha: "headsha789", baseSha: "basesha012", pipelineVersion: 999)

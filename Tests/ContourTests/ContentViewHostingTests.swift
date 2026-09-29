@@ -3,25 +3,15 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// Hosts the real `ContentView` shell in an offscreen window so its `body`, sidebar,
-/// toolbar and lens switch actually execute. Before these tests the view was 0-28% covered
-/// because only its static helpers were reachable (#118). The store is driven with the same
-/// synthetic `PipelineEvent`s `GraphStore`'s own tests use, so there is no network, harness
-/// or checkout. The assertions are deliberately about the store surviving each render and
-/// the shell not trapping: pixel output is not pinned.
 @MainActor
 @Suite(.serialized)
 struct ContentViewHostingTests {
 
-    /// Mounts the shell in a real (but never shown) window and spins the run loop long
-    /// enough for SwiftUI to evaluate the body and lazily build the sidebar and toolbar.
     private func render(_ store: GraphStore, needsOnboarding: Bool = false) -> NSWindow {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: ContentView(store: store, needsOnboarding: needsOnboarding))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        // Closing an animated window that was never shown crashes AppKit in
-        // `_NSWindowTransformAnimation dealloc`; the tests own the window's lifetime.
         window.animationBehavior = .none
         window.isReleasedWhenClosed = false
         window.contentView = host
@@ -75,8 +65,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// Navigating through every lens (and the unavailable-file and evidence targets) of an
-    /// open review builds each detail view without trapping.
     @Test func rendersEveryLensOfAnOpenReview() {
         let store = reviewStore()
         #expect(store.phase == .review)
@@ -94,8 +82,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// Every branch `sectionContent` picks between: nothing yet and failed, stopped,
-    /// pending/running, and content with a progress pill.
     @Test func rendersEachSectionStateWithAndWithoutContent() {
         for status in [StageStatus.failed("x"), .stopped, .running(detail: "working"), .done] {
             for hasContent in [true, false] {
@@ -116,8 +102,6 @@ struct ContentViewHostingTests {
         }
     }
 
-    /// The review buttons swap to a spinner while their verdict is in flight and a filled
-    /// glyph once it is submitted; each verdict's button reacts only to its own state.
     @Test func rendersReviewButtonsInEachSubmissionState() {
         for review in [PRReview.State.submitting(.approve), .submitted(.approve),
                        .submitting(.requestChanges), .submitted(.requestChanges),
@@ -130,8 +114,6 @@ struct ContentViewHostingTests {
         }
     }
 
-    /// Once every consideration is judged and both stages are done, the sidebar's Decisions
-    /// row shows its completed checkmark.
     @Test func rendersTheDecisionsRowAsFullyReviewed() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [Consideration(id: "q1", question: "Why?", detail: "d", relatedIds: ["d1"])]
@@ -147,7 +129,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// The conversations inspector opens with the shell and follows `isPresented`.
     @Test func rendersTheConversationsInspector() {
         let store = reviewStore()
         store.toggleConversations()
@@ -159,8 +140,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// Entering full screen reasserts the sidebar, the fix for `NavigationSplitView` collapsing
-    /// it mid-transition; the handler must run without disturbing the review.
     @Test func fullScreenNotificationKeepsTheReviewOpen() {
         let store = reviewStore()
         let window = render(store)
@@ -170,7 +149,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// `CONTOUR_OPEN_LENS` lands the review on a lens the moment the PR opens.
     @Test func openLensEnvironmentVariableNavigatesOnceTheReviewOpens() {
         setenv("CONTOUR_OPEN_LENS", "flows", 1)
         defer { unsetenv("CONTOUR_OPEN_LENS") }
@@ -191,8 +169,6 @@ struct ContentViewHostingTests {
         settle(window.contentView!)
     }
 
-    /// A review whose graph is missing (the store says `.review` but has nothing to show)
-    /// falls back to the start screen rather than an empty split view.
     @Test func reviewPhaseWithoutAGraphFallsBackToTheStartScreen() {
         let store = GraphStore(phase: .review)
         let window = render(store)
@@ -200,8 +176,6 @@ struct ContentViewHostingTests {
         window.close()
     }
 
-    /// The hidden shortcut buttons behind the shell: ⌘K opens the palette sheet and ⌘⇧A asks
-    /// about wherever the reviewer is.
     @Test func keyboardShortcutsAskAndOpenThePalette() {
         let store = reviewStore()
         let window = render(store)

@@ -2,12 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// The Overview's facts line: CI rolled up from either kind of check in either source's
-/// spelling, reviews counted once per reviewer, and a line that omits what wasn't known.
 struct PRGlanceTests {
-
-    // MARK: - Checks
-
     @Test func checkRunsAndCommitStatusesInEitherSpelling() {
         #expect(PRGlance.checkOutcome(status: "COMPLETED", conclusion: "SUCCESS", state: nil) == .passed)
         #expect(PRGlance.checkOutcome(status: "completed", conclusion: "failure", state: nil) == .failed)
@@ -31,13 +26,11 @@ struct PRGlanceTests {
         #expect(PRGlance.rollUp([.ignored]) == nil)
     }
 
-    // MARK: - Reviews
-
     @Test func eachReviewerCountsOnceByTheirLatestStance() {
         let tally = PRGlance.tallyReviews([
-            ("ana", "CHANGES_REQUESTED"), ("ana", "APPROVED"),   // changed their mind
-            ("bo", "APPROVED"), ("bo", "COMMENTED"),              // a comment doesn't withdraw it
-            ("cy", "APPROVED"), ("cy", "DISMISSED"),              // a dismissal does
+            ("ana", "CHANGES_REQUESTED"), ("ana", "APPROVED"),
+            ("bo", "APPROVED"), ("bo", "COMMENTED"),
+            ("cy", "APPROVED"), ("cy", "DISMISSED"),
             ("di", "changes_requested")
         ])
         #expect(tally.approvals == 2)
@@ -48,8 +41,6 @@ struct PRGlanceTests {
         let tally = PRGlance.tallyReviews([("ana", "COMMENTED")])
         #expect(tally.approvals == 0 && tally.changesRequested == 0)
     }
-
-    // MARK: - The line
 
     private func summary(_ glance: PRGlance?) -> PRSummary {
         var pr = ContourSampleData.publishTriggeredReindex.pr
@@ -77,7 +68,6 @@ struct PRGlanceTests {
     }
 
     @Test func unknownFactsAreOmittedRatherThanGuessed() {
-        // The anonymous source can't see thread resolution, and this PR has no CI.
         let texts = summary(PRGlance(approvals: 1, changesRequested: 0)).glanceFacts().map(\.text)
         #expect(texts == ["12 files", "+148 \u{2212}37", "1 approval"])
     }
@@ -99,8 +89,6 @@ struct PRGlanceTests {
         pr.filesChanged = 1
         #expect(pr.glanceFacts().first?.text == "1 file")
     }
-
-    // MARK: - Assembly and caching
 
     @Test func refreshingACachedGraphPicksUpCurrentGlanceFacts() {
         var graph = ContourSampleData.publishTriggeredReindex
