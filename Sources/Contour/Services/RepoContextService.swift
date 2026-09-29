@@ -17,13 +17,24 @@ enum RepoContextError: LocalizedError {
 }
 
 struct RepoContextService {
-    private let cacheRoot: URL = {
+    private let cacheRoot: URL
+    private let remoteURL: @Sendable (RawPRContext) -> String
+
+    init(
+        cacheRoot: URL = RepoContextService.defaultCacheRoot(),
+        remoteURL: @escaping @Sendable (RawPRContext) -> String = { "https://github.com/\($0.owner)/\($0.repo).git" }
+    ) {
+        self.cacheRoot = cacheRoot
+        self.remoteURL = remoteURL
+    }
+
+    static func defaultCacheRoot() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Contour", isDirectory: true)
             .appendingPathComponent("repos", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
-    }()
+    }
 
     func checkout(_ context: RawPRContext) async throws -> RepoCheckout {
         let dir =
@@ -35,9 +46,7 @@ struct RepoContextService {
             try FileManager.default.createDirectory(at: dir.parent, withIntermediateDirectories: true)
             _ = try await Shell.run(
                 "git",
-                [
-                    "clone", "https://github.com/\(context.owner)/\(context.repo).git", dir.path,
-                ])
+                ["clone", remoteURL(context), dir.path])
         }
 
         let currentHead = try? await Shell.run("git", ["rev-parse", "HEAD"], cwd: dir)
