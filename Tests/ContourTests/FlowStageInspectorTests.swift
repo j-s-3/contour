@@ -2,15 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `FlowDrillLevel` is already a plain, directly-testable type beside the view (per
-/// CLAUDE.md's guidance for this file); `kindLabel` was pulled out of `FlowStageInspector`
-/// into a static function so it's testable without a view instance. This pins both: every
-/// drill level's label and ordering, `available(for:in:graph:)`'s branch conditions, and
-/// every `FlowNodeKind`'s chip label.
 struct FlowStageInspectorTests {
-
-    // MARK: - FlowDrillLevel.label
-
     @Test func everyDrillLevelHasItsOwnLabel() {
         #expect(FlowDrillLevel.behavior.label == "Behavior")
         #expect(FlowDrillLevel.steps.label == "Steps")
@@ -30,8 +22,6 @@ struct FlowStageInspectorTests {
             #expect(level.id == level.rawValue)
         }
     }
-
-    // MARK: - FlowDrillLevel.available
 
     private func graph(flows: [FlowNode] = []) -> PRGraph {
         var g = PRGraph(pr: PRSummary(
@@ -96,8 +86,6 @@ struct FlowStageInspectorTests {
         #expect(FlowDrillLevel.available(for: node, in: flow, graph: graph(flows: [flow])) == [.behavior, .steps, .implementation, .code])
     }
 
-    // MARK: - FlowStageInspector.kindLabel
-
     @Test func everyFlowNodeKindHasItsOwnChipLabel() {
         #expect(FlowStageInspector.kindLabel(for: .trigger) == "Trigger")
         #expect(FlowStageInspector.kindLabel(for: .step) == "Stage")
@@ -108,10 +96,6 @@ struct FlowStageInspectorTests {
         #expect(FlowStageInspector.kindLabel(for: .subflow) == "Shared flow")
     }
 
-    // MARK: - FlowStageInspectorLogic.refs
-
-    /// Pins that evidence is deduplicated and that the node's own refs sort ahead of the
-    /// refs traced through its implementation steps (order the "Code" rung relies on).
     @Test func refsCombinesNodeAndStepRefsAndDedupes() {
         let a = CodeRef(path: "A.swift", startLine: 1, endLine: 2)
         let b = CodeRef(path: "B.swift", startLine: 3, endLine: 4)
@@ -127,9 +111,6 @@ struct FlowStageInspectorTests {
         #expect(FlowStageInspectorLogic.refs(node: node, steps: []).isEmpty)
     }
 
-    // MARK: - FlowStageInspectorLogic.notes(forNodeId:)
-
-    /// Notes pinned to other stages in the same flow must not bleed into this stage's rung.
     @Test func notesForNodeIdKeepsOnlyThisStagesAnnotations() {
         let mine = FlowAnnotation(kind: .decision, targetId: "d1", nodeId: "n1", text: "Chose X")
         let theirs = FlowAnnotation(kind: .decision, targetId: "d2", nodeId: "n2", text: "Chose Y")
@@ -137,10 +118,6 @@ struct FlowStageInspectorTests {
         #expect(FlowStageInspectorLogic.notes([mine, theirs], forNodeId: "n3").isEmpty)
     }
 
-    // MARK: - FlowStageInspectorLogic.notes(kind:)
-
-    /// Decisions and review questions are shown under separate headings; this pins that the
-    /// split by kind doesn't cross-contaminate either list.
     @Test func notesByKindSeparatesDecisionsFromQuestions() {
         let decision = FlowAnnotation(kind: .decision, targetId: "d1", nodeId: "n1", text: "Chose X")
         let question = FlowAnnotation(kind: .question, targetId: "q1", nodeId: "n1", text: "Why not Y?")
@@ -150,11 +127,6 @@ struct FlowStageInspectorTests {
         #expect(FlowStageInspectorLogic.notes(notes, kind: .question) == [question])
     }
 
-    // MARK: - FlowStageInspectorLogic.neighbors
-
-    /// A stage's "In the flow" rung shows what led in (incoming edges' source stages) and
-    /// what it leads to (outgoing edges paired with their destination stages), each edge
-    /// carrying its branch label along for display.
     @Test func neighborsPairsOutgoingEdgesWithTheirDestinationStages() {
         let trigger = FlowBehaviorNode(id: "trigger", label: "Upload starts")
         let middle = FlowBehaviorNode(id: "middle", label: "Inspect content")
@@ -183,8 +155,6 @@ struct FlowStageInspectorTests {
         #expect(next.isEmpty)
     }
 
-    /// An edge pointing at a stage id that isn't in the behavior graph (a bad id from the
-    /// model) is dropped rather than surfaced as a neighbor with no data.
     @Test func neighborsDropsEdgesToUnresolvableStages() {
         let node = FlowBehaviorNode(id: "n1", label: "Stage")
         let behavior = FlowBehavior(nodes: [node], edges: [FlowBehaviorEdge(fromId: "n1", toId: "ghost")])
@@ -192,10 +162,6 @@ struct FlowStageInspectorTests {
         #expect(next.isEmpty)
     }
 
-    // MARK: - FlowStageInspectorLogic.levelAfterNodeChange
-
-    /// Selecting a new stage keeps the current rung when it still has something on it, so
-    /// jumping between two stages both showing "Implementation" doesn't reset the view.
     @Test func levelAfterNodeChangeKeepsCurrentLevelWhenStillAvailable() {
         let result = FlowStageInspectorLogic.levelAfterNodeChange(
             current: .implementation, available: [.behavior, .implementation]
@@ -203,8 +169,6 @@ struct FlowStageInspectorTests {
         #expect(result == .implementation)
     }
 
-    /// Selecting a stage with nothing on the current rung (e.g. jumping from a stage with
-    /// steps to one without) falls back to Behavior, which is always available.
     @Test func levelAfterNodeChangeFallsBackToBehaviorWhenCurrentLevelDisappears() {
         let result = FlowStageInspectorLogic.levelAfterNodeChange(current: .steps, available: [.behavior])
         #expect(result == .behavior)

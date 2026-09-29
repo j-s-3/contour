@@ -1,18 +1,11 @@
 import Foundation
 import os
 
-/// One human-readable progress line surfaced while the harness works — e.g. "reading
-/// OrderService.java" or "tracing checkout flow". Built from the harness's own tool-call
-/// events so the UI never shows a bare spinner (§10, §13).
 struct AnalysisProgress: Sendable {
     var stageName: String
     var detail: String
 }
 
-/// `errorDescription` is the technical account — raw response, stderr — and goes only to the
-/// technical log. What the reviewer sees is `reviewerReason`, via
-/// `PipelineStage.failureMessage(for:)`: they can't act on a model's half-written JSON, only
-/// on knowing which section failed and that Retry is there.
 enum AnalysisServiceError: LocalizedError {
     case emptyResponse(harness: String)
     case notJSON(harness: String, raw: String)
@@ -35,27 +28,12 @@ enum AnalysisServiceError: LocalizedError {
     }
 }
 
-/// Effort tier per stage, per §10: low thinking for mechanical classification, high
-/// thinking for the stages that require real judgment about the PR.
-///
-/// Deliberately does NOT pin a model/provider. Per §8/§16, Contour inherits whatever the
-/// chosen harness is already configured with — forcing a bare pattern like "haiku" or
-/// "sonnet" is ambiguous the moment more than one provider is configured (it matched an
-/// unauthenticated provider in exactly this way during development) and reintroduces the
-/// vendor coupling the design explicitly avoids. `modelPattern` is `nil` by default: omit
-/// the model flag entirely and let the harness's own default handle it. Settings can pin
-/// an explicit override per tier for users running multiple providers.
 enum AnalysisTier: Hashable {
-    case fast     // file→component mapping, entry-point detection
-    case strong   // decisions (with their tradeoffs), flows, needs-judgment synthesis
+    case fast
+    case strong
 
     var modelPattern: String? { AnalysisTier.modelOverrides[self] }
 
-    /// Set from Settings to pin specific models per tier. Empty by default.
-    ///
-    /// Lock-protected because it is written on the main actor (Settings) and read from
-    /// concurrent stage invocations; a bare `static var` here is shared mutable state that
-    /// Swift 6 rejects, and rightly so.
     static var modelOverrides: [AnalysisTier: String] {
         get { overridesLock.withLock { _modelOverrides } }
         set { overridesLock.withLock { _modelOverrides = newValue } }
@@ -64,8 +42,6 @@ enum AnalysisTier: Hashable {
     private static let overridesLock = NSLock()
     nonisolated(unsafe) private static var _modelOverrides: [AnalysisTier: String] = [:]
 
-    /// Both supported CLIs accept the same vocabulary here; only the flag name differs
-    /// (`pi --thinking` vs `claude --effort`), which is each harness's business.
     var thinking: String {
         switch self {
         case .fast: return "low"
@@ -74,32 +50,13 @@ enum AnalysisTier: Hashable {
     }
 }
 
-/// Runs analysis stages through whichever `Harness` the user selected.
-///
-/// This type owns what every harness shares; each `Harness` owns what differs. Every
-/// invocation:
-///   - runs with cwd set to the PR's local checkout, so file tools resolve real code
-///   - is restricted to read-only tools — no bash, no edit, no write
-///   - is single-shot and ephemeral, inheriting no session and no project-resident
-///     instructions, skills, or hooks from the checkout
-///   - is told, explicitly, to treat PR-derived text as untrusted DATA, not instructions
-/// This is the "AI analysis pipeline" backend from design doc §10.
 struct AnalysisService {
     let harness: any Harness
 
-    /// How mock mode behaves: normally read from the environment (`CONTOUR_MOCK_ANALYSIS`,
-    /// `CONTOUR_MOCK_LATENCY`, `CONTOUR_MOCK_FAIL_STAGE`, see README), but a test can pass
-    /// one explicitly so it never has to mutate process-wide environment variables that
-    /// other suites, running in parallel, read too — `AnalysisCache` bails out entirely
-    /// under `CONTOUR_MOCK_ANALYSIS=1`, so a suite that set it for seconds at a time would
-    /// break every cache test that happened to overlap with it.
     struct MockOptions: Sendable {
-        /// Multiplier on a realistic per-stage duration; nil returns each stage at once.
         var latencyScale: Double? = nil
-        /// A stage to fail the first time it runs in this process, to exercise Retry.
         var failStage: PipelineStage? = nil
 
-        /// The environment's settings, or nil when mock mode is off.
         static var fromEnvironment: MockOptions? {
             guard MockAnalysisFixtures.isEnabled else { return nil }
             let env = ProcessInfo.processInfo.environment
@@ -111,7 +68,6 @@ struct AnalysisService {
         }
     }
 
-    /// Set only by tests; nil means "consult the environment on every call", as before.
     private let mockOverride: MockOptions?
 
     init(harness: any Harness, mock: MockOptions? = nil) {
@@ -119,20 +75,6 @@ struct AnalysisService {
         self.mockOverride = mock
     }
 
-    /// Runs one analysis stage and returns its parsed JSON result plus a stream of
-    /// progress lines the caller can forward to the UI as they arrive.
-    ///
-    /// Retries once if the model returns unparseable JSON. Observed in practice: a stage
-    /// came back with a stray bracket (`}]}]],`) partway through an otherwise complete
-    /// response. With seven stages per run, a single malformed response would otherwise
-    /// throw away the whole pipeline — including the stages already paid for. One retry
-    /// only; a second failure is a real problem worth surfacing, not something to keep
-    /// spending tokens on.
-    ///
-    /// - Parameter streaming: when set, the stage runs with text streaming on and every
-    ///   element of that top-level array is handed to `onElement` as soon as the model
-    ///   finishes writing it — how decisions and flows appear one at a time. The returned
-    ///   object is still the authoritative, fully parsed answer.
     func runStage(
         prompt: String,
         cwd: URL,
@@ -140,7 +82,7 @@ struct AnalysisService {
         stage: PipelineStage,
         streaming: String? = nil,
         onElement: @escaping @Sendable ([String: Any]) -> Void = { _ in },
-        onProgress: @escaping (AnalysisProgress) -> Void
+        onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         do {
             return try await runStageOnce(prompt: prompt, cwd: cwd, tier: tier, stage: stage,
@@ -159,20 +101,13 @@ struct AnalysisService {
         stage: PipelineStage,
         streaming: String?,
         onElement: @escaping @Sendable ([String: Any]) -> Void,
-        onProgress: @escaping (AnalysisProgress) -> Void
+        onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
-        // Manual-testing escape hatch (see MockAnalysisFixtures): skip the real harness
-        // invocation entirely and return a canned response for this stage. The checkout
-        // still happened for real above this call, so the code viewer/Evidence lens keeps
-        // working — only the slow AI call is short-circuited.
         if let mock = mockOverride ?? MockOptions.fromEnvironment {
             onProgress(AnalysisProgress(stageName: "", detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
             let response = MockAnalysisFixtures.response(for: stage)
             try await Self.simulateLatency(of: stage, scale: mock.latencyScale, response: response,
                                            streaming: streaming, onElement: onElement)
-            // CONTOUR_MOCK_FAIL_STAGE=<stage> (e.g. "architecture") makes that one stage fail
-            // the first time it runs, to exercise a section's failure and a successful Retry
-            // without a real broken model call.
             if mock.failStage == stage,
                Self.mockFailures.withLock({ $0.insert(stage).inserted }) {
                 throw AnalysisServiceError.emptyResponse(harness: "mock (CONTOUR_MOCK_FAIL_STAGE)")
@@ -181,7 +116,6 @@ struct AnalysisService {
         }
 
         let name = harness.id.displayName
-        // Streaming needs the CLI's text deltas, which only its conversation form emits.
         let args = try streaming == nil
             ? harness.arguments(prompt: prompt, contextFile: PromptBuilder.contextFileName,
                                 tier: tier, systemPrompt: Self.groundingSystemPrompt)
@@ -221,10 +155,6 @@ struct AnalysisService {
         return parsed
     }
 
-    /// With `CONTOUR_MOCK_LATENCY=<scale>` set alongside `CONTOUR_MOCK_ANALYSIS=1`, each
-    /// canned stage takes roughly as long as a real one (times the scale), and a streamed
-    /// stage hands out its elements one at a time. Without it, mock stages return at once —
-    /// right for tests, but it hides exactly what progressive opening is about.
     private static let mockFailures = OSAllocatedUnfairLock<Set<PipelineStage>>(initialState: [])
 
     private static func simulateLatency(
@@ -243,7 +173,6 @@ struct AnalysisService {
         default: seconds = 0
         }
         let elements = streaming.flatMap { response[$0] as? [[String: Any]] } ?? []
-        // A streamed stage reads for a while before its first element, then writes them.
         let slices = elements.count + 1
         for i in 0..<slices {
             try await Task.sleep(for: .seconds(seconds * scale / Double(slices)))
@@ -251,10 +180,6 @@ struct AnalysisService {
         }
     }
 
-    /// With `CONTOUR_DUMP_STAGES=<dir>` set, writes each stage's decoded JSON to
-    /// `<dir>/<stage>.json`. This is how `MockAnalysisFixtures` gets regenerated from a
-    /// real run rather than hand-written — hand-written fixtures drift from what the
-    /// models actually emit, which is the whole failure the fixtures exist to catch.
     private static func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
         guard let dir = ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"] else { return }
         let url = URL(fileURLWithPath: dir, isDirectory: true)
@@ -265,9 +190,6 @@ struct AnalysisService {
         try? data.write(to: url.appendingPathComponent("\(stage).json"))
     }
 
-    /// Every stage inherits this. It sets the trust boundary the design doc insists on:
-    /// the harness may read the repo freely, but PR text (title/body/comments/commit
-    /// messages) is DATA to analyze, never instructions to follow.
     static let groundingSystemPrompt = """
     You are analyzing one GitHub pull request as a grounding engine for a code review tool. \
     Follow these rules strictly:
@@ -291,8 +213,6 @@ struct AnalysisService {
        markdown code fences, no prose before or after it, no trailing commentary.
     """
 
-    /// Models sometimes wrap JSON in code fences despite instructions. Strip those,
-    /// then find the outermost {...} object defensively.
     static func extractJSONObject(from text: String) -> [String: Any]? {
         var candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if candidate.hasPrefix("```") {
@@ -305,7 +225,6 @@ struct AnalysisService {
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return obj
         }
-        // Fallback: slice from first "{" to last "}".
         guard let firstBrace = candidate.firstIndex(of: "{"),
               let lastBrace = candidate.lastIndex(of: "}"),
               firstBrace < lastBrace else { return nil }

@@ -1,13 +1,6 @@
 import Testing
 @testable import Contour
 
-/// `RequestChangesSheet.swift`'s own logic is `submit` and `showsPlaceholder`; the
-/// comment-required validation that gates its button lives in `PRReview.isReady`, already
-/// covered by `PRReviewTests`, per CLAUDE.md's guidance for this file. Everything else in
-/// the file is declarative SwiftUI layout with no hosting environment under `swift test`
-/// (see `AppDelegateTests.swift`'s note on `ContourApp.body`/`ReviewCommands.body` for the
-/// same constraint), so those lines are accepted as unreachable from a unit test — per
-/// issue #116, that's the deliberate stopping point for this file, not an oversight.
 struct RequestChangesSheetTests {
     @MainActor
     @Test func submitPassesTheCommentToOnSubmit() {

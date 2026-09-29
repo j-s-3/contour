@@ -1,21 +1,8 @@
 import Foundation
 
-/// Mechanical CodeRef verification (§18 item 2): the grounding prompt tells the model to cite
-/// only code it actually read, and this is what checks that it did.
-///
-/// Every stage's refs are resolved against the checkout as the stage lands — the file exists
-/// and the range starts inside it, or for `base` refs, the file at `baseSha` does. A ref
-/// that doesn't resolve is dropped rather than shown, since one broken `path:start-end` undoes
-/// the trust every other ref builds, and `GraphLinker` would happily link decisions to flows
-/// through it. A statement whose refs *all* failed keeps its text but loses its standing: a
-/// `fact` becomes a low-confidence `interpretation` (see `Statement.demotedForUnverifiedRefs`).
-///
-/// An actor so file reads and `git show` run off the main actor, and so the per-file line
-/// counts it caches are shared by every stage of one run.
 actor CodeRefVerifier {
     private let rootDir: URL
     private let baseSha: String
-    /// Line count per `side:path`; nil when that file doesn't exist on that side.
     private var lineCounts: [String: Int?] = [:]
 
     init(rootDir: URL, baseSha: String) {
@@ -27,14 +14,6 @@ actor CodeRefVerifier {
         self.init(rootDir: checkout.rootDir, baseSha: checkout.baseSha)
     }
 
-    // MARK: - One ref
-
-    /// The ref as it resolves in the checkout, or nil when it doesn't.
-    ///
-    /// Two lenient corrections are made rather than failing a ref that plainly points at real
-    /// code: a range that runs past the end of the file is trimmed to it, and a `head` ref to a
-    /// file the PR deleted is moved to `base`. `side` defaults to `head` when the model omits
-    /// it, so without the second a deleted file's code could never be cited.
     func resolve(_ ref: CodeRef) async -> CodeRef? {
         guard let path = Self.normalized(ref.path) else { return nil }
         var sides: [RefSide] = [ref.side]
@@ -52,8 +31,6 @@ actor CodeRefVerifier {
         return nil
     }
 
-    /// Resolves a holder's refs: the ones that resolved, and whether it cited any at all but
-    /// none of them resolved — the case that demotes what it says.
     func resolve(_ refs: [CodeRef], into check: inout RefCheck) async -> (kept: [CodeRef], allFailed: Bool) {
         guard !refs.isEmpty else { return ([], false) }
         var kept: [CodeRef] = []
@@ -68,9 +45,6 @@ actor CodeRefVerifier {
         return (kept, kept.isEmpty)
     }
 
-    // MARK: - A stage's slice
-
-    /// The stage result with every ref resolved, plus the tally for the analysis details.
     func verify(_ result: StageResult) async -> (StageResult, RefCheck) {
         var check = RefCheck()
         switch result {
@@ -132,9 +106,6 @@ actor CodeRefVerifier {
         }
     }
 
-    /// A decision stands on its own refs plus its tradeoffs'. If every one of them failed, the
-    /// decision is low confidence and its statement no longer reads as fact; a tradeoff whose
-    /// own refs all failed has its explanation demoted likewise.
     private func verify(_ decision: inout DecisionNode, into check: inout RefCheck) async {
         let cited = decision.refs.count + decision.tradeoffs.reduce(0) { $0 + $1.refs.count }
         decision.refs = await resolve(decision.refs, into: &check).kept
@@ -153,8 +124,6 @@ actor CodeRefVerifier {
         }
     }
 
-    // MARK: - Files
-
     private func lineCount(path: String, side: RefSide) async -> Int? {
         let key = "\(side.rawValue):\(path)"
         if let cached = lineCounts[key] { return cached }
@@ -171,8 +140,6 @@ actor CodeRefVerifier {
                 count = nil
             }
         case .base:
-            // `cat-file blob` rather than `git show`, which the code viewer uses: for a
-            // directory `show` prints a tree listing, which would pass as a file.
             if let content = try? await Shell.run("git", ["cat-file", "blob", "\(baseSha):\(path)"], cwd: rootDir) {
                 count = Self.lineCount(of: Data(content.utf8))
             } else {
@@ -183,16 +150,12 @@ actor CodeRefVerifier {
         return count
     }
 
-    /// Lines as an editor numbers them: a trailing newline ends the last line rather than
-    /// starting an empty one.
     static func lineCount(of data: Data) -> Int {
         guard !data.isEmpty else { return 0 }
         let newlines = data.reduce(0) { $0 + ($1 == UInt8(ascii: "\n") ? 1 : 0) }
         return data.last == UInt8(ascii: "\n") ? newlines : newlines + 1
     }
 
-    /// A repo-relative path, or nil for one that can't be (empty, or climbing out of the repo).
-    /// Models sometimes write `./src/x.rs` or `/src/x.rs` for the same file.
     static func normalized(_ path: String) -> String? {
         var p = path.trimmingCharacters(in: .whitespaces)
         while p.hasPrefix("./") { p.removeFirst(2) }
@@ -202,12 +165,9 @@ actor CodeRefVerifier {
     }
 }
 
-/// How many of one stage's refs were checked and which didn't resolve — what the analysis
-/// details report as "3 of 41 references couldn't be verified".
 struct RefCheck: Codable, Hashable, Sendable {
     var checked = 0
     var unresolvedCount = 0
-    /// The first few unresolved refs as written (`path:start-end`), for the details popover.
     var unresolved: [String] = []
 
     static let sampleLimit = 20
@@ -224,9 +184,6 @@ struct RefCheck: Codable, Hashable, Sendable {
 }
 
 extension Statement {
-    /// What a statement is worth once none of the code it cites could be found: an observed
-    /// fact becomes a low-confidence interpretation. An author's claim stays a claim — its
-    /// truth never came from the code — and interpretations are merely lowered.
     func demotedForUnverifiedRefs() -> Statement {
         var s = self
         switch provenance {

@@ -3,13 +3,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `DiffView`'s body, file list, headers, hunk headers, line rows and its small private
-/// views are SwiftUI composition with no decisions left in them (those live in
-/// `DiffViewLogic`). This hosts the real view in a window-less `NSHostingView` over a diff
-/// exercising every branch: modified, added, deleted, renamed, binary and empty files, an
-/// empty diff, a focused reference, and a hunk cited by more decisions than fit inline (the
-/// "+N" menu). It pins that none of those combinations traps while building or laying out,
-/// which the pure-logic tests cannot see.
 @MainActor
 struct DiffViewRenderTests {
 

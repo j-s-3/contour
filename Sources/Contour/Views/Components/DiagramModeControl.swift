@@ -1,12 +1,7 @@
 import SwiftUI
 
-/// "Show: Before this PR | After this PR | What changed", and what's on screen now. Sits
-/// directly above the drawing it filters, not across the header from it, so the reviewer
-/// reads it as part of the diagram — and the sentence beside it says the drawing is only
-/// one of three views (issue #30). Flows and Architecture share it.
 struct DiagramModeControl: View {
     @Binding var mode: DiagramMode
-    /// What's drawn, for the "Showing the … before this PR" sentence.
     let subject: String
 
     var body: some View {
@@ -31,16 +26,12 @@ struct DiagramModeControl: View {
         }
     }
 
-    /// Only "What changed" gets the accent color: it's the one mode that isn't a plain
-    /// snapshot, so the "Showing …" sentence beside it should read as a callout, not a status.
     nonisolated static func isAccented(_ mode: DiagramMode) -> Bool {
         mode == .delta
     }
 }
 
 extension View {
-    /// B / A / D switch a diagram's mode while its screen has keyboard focus. Typing
-    /// elsewhere (the chat, a search field) never reaches here, and modified keys aren't ours.
     func diagramModeKeys(_ mode: Binding<DiagramMode>) -> some View {
         onKeyPress(phases: .down) { press in
             DiagramModeKeyHandling.handle(characters: press.characters, modifiers: press.modifiers, mode: mode)
@@ -48,8 +39,6 @@ extension View {
     }
 }
 
-/// Pulled out of `diagramModeKeys` (taking the raw key info explicitly rather than a live
-/// `KeyPress`) so the switch's key handling is directly testable.
 enum DiagramModeKeyHandling {
     static func handle(characters: String, modifiers: EventModifiers, mode: Binding<DiagramMode>) -> KeyPress.Result {
         guard modifiers.isDisjoint(with: [.command, .control, .option]),

@@ -80,9 +80,8 @@ the gap is closed incrementally: every change must leave the code it adds or mod
 - Fixtures under `Tests/ContourTests/Fixtures/` are captured real CLI output, never
   hand-written; `Fixtures/README.md` records provenance and must be updated when a fixture
   is added or re-captured.
-- Tests carry a doc comment saying what invariant they pin and why it mattered (see
-  `HarnessContractTests`). Both Swift Testing (`@Test`, `#expect`) and XCTest exist;
-  prefer Swift Testing for new suites.
+- Name tests so they say what invariant they pin. Both Swift Testing (`@Test`, `#expect`)
+  and XCTest exist; prefer Swift Testing for new suites.
 - When you touch a file that is under 90%, bring it up, or at minimum cover the paths your
   change adds. Do not exclude files from the coverage regex to make the number move.
 
@@ -169,8 +168,17 @@ can follow it), and `claude` inlines the context file and reports the answer on 
 
 ## Conventions
 
-- `Package.swift` pins `.swiftLanguageMode(.v5)` on the app target to keep Observation
-  and async UI code compiling; don't switch it without a migration.
+- **No code comments.** Swift sources and tests carry no `//`, `///` or `/* */` comments
+  (including `// MARK:`). Say it in names, types and structure instead, and put rationale in
+  the commit message or `DESIGN.md`. The one exception is the mandatory
+  `// swift-tools-version:` line in `Package.swift`.
+- `Package.swift` pins `.swiftLanguageMode(.v6)` on the app target: full strict
+  concurrency checking. A closure crossing into a `nonisolated`/`@concurrent` call (e.g.
+  `AnalysisService.runStage`'s `onProgress`) needs `@Sendable` on its type, matching the
+  existing `onElement` parameter; a class that must cross isolation needs a real
+  `Sendable` conformance or the existing `NSLock`-boxed `@unchecked Sendable`/
+  `nonisolated(unsafe)` pattern (`ShellProcess.swift`, `AnalysisService.swift`,
+  `MainThreadWatchdog.swift`), not a new idiom.
 - User-facing failure text is written in the reviewer's terms ("Couldn't map the
   architecture."); raw model output and CLI stderr go to the technical log only.
 - The web site under `site/` is deployed as-is by `pages.yml`; the Homebrew formula in

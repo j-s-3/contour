@@ -1,35 +1,18 @@
 import Foundation
 
-/// A decision or review question pinned to the point in a flow where it matters.
 struct FlowAnnotation: Hashable, Identifiable {
     enum Kind: Hashable { case decision, question }
 
     var kind: Kind
-    /// The decision id, or the consideration id.
     var targetId: String
-    /// The stage whose outgoing connection the annotation sits on.
     var nodeId: String
-    /// A few words: the chosen option for a decision, the question for a review question.
     var text: String
-    /// One sentence more, for the tooltip.
     var detail: String?
 
     var id: String { "\(kind)-\(targetId)-\(nodeId)" }
 }
 
-/// The Flows model, resolved from whatever the graph has.
-///
-/// New analyses carry `FlowNode.behavior` from the flows stage, decisions pinned to stages by
-/// `decisionIds`, and review questions pinned by `Consideration.flowAnchors`. Older cached
-/// graphs (and the captured mock fixtures) only have story steps and a call trace, so a
-/// linear behavior is condensed from those instead — the same approach as
-/// `thingsToThinkAbout` and `brief(for:)`.
 extension PRGraph {
-
-    // MARK: - Scenario
-
-    /// The flow's name as a scenario ("Open a file"). Older flows were titled as a call
-    /// chain ("bat <file> -> content type detection -> …"); only the trigger half is kept.
     func scenarioTitle(for flow: FlowNode) -> String {
         guard flow.behavior == nil else { return flow.title }
         let separators = ["->", "→", "=>"]
@@ -41,7 +24,6 @@ extension PRGraph {
         return trimmed.isEmpty ? flow.title : trimmed
     }
 
-    /// "Open a file: bat samples the input and classifies it" — one line for outlines.
     func flowOutline(_ flow: FlowNode) -> String {
         let behavior = behavior(for: flow)
         let story = behavior.summary
@@ -49,8 +31,6 @@ extension PRGraph {
         return story.isEmpty ? scenarioTitle(for: flow) : "\(scenarioTitle(for: flow)): \(story)"
     }
 
-    /// The scenario `offset` tabs away from `flowId`, wrapping at either end — what [ and ]
-    /// step to. An unknown id counts as the first scenario.
     func scenario(_ offset: Int, from flowId: String?) -> FlowNode? {
         guard !flows.isEmpty else { return nil }
         let current = flows.firstIndex { $0.id == flowId } ?? 0
@@ -58,18 +38,11 @@ extension PRGraph {
         return flows[((current + offset) % count + count) % count]
     }
 
-    // MARK: - Behavior
-
-    /// The behavior diagram for a flow: the analysis's own model when it has one, else one
-    /// condensed from the story steps.
     func behavior(for flow: FlowNode) -> FlowBehavior {
         if let behavior = flow.behavior, !behavior.nodes.isEmpty { return behavior }
         return condensedBehavior(for: flow)
     }
 
-    /// A linear behavior from an older flow: a trigger, then one stage per story step, each
-    /// classified by the implementation steps it most plausibly summarizes. Honest about what
-    /// it doesn't know — no branches, no before/after wording, no boundaries.
     func condensedBehavior(for flow: FlowNode) -> FlowBehavior {
         let labels: [String] = flow.storySteps.isEmpty
             ? flow.steps.prefix(8).map(\.title)
@@ -114,8 +87,6 @@ extension PRGraph {
         return FlowBehavior(nodes: nodes, edges: edges)
     }
 
-    /// A story step is new when everything under it is new, changed when anything under it
-    /// is new or changed, and otherwise existing context.
     static func condensedChange(_ kinds: [ChangeKind]) -> FlowChange {
         guard !kinds.isEmpty else { return .existing }
         if kinds.allSatisfy({ $0 == .new }) { return .new }
@@ -123,12 +94,6 @@ extension PRGraph {
         return .existing
     }
 
-    /// Assigns each implementation step to a story step, in order, by shared words — story
-    /// steps and implementation steps are written in the same order but at different
-    /// granularity, and older graphs never linked them.
-    ///
-    /// Solved as a monotonic alignment maximizing total overlap, so one stray shared word
-    /// can't drag every later step to the end; ties lean toward the proportional position.
     static func align(_ steps: [FlowStep], to labels: [String]) -> [[FlowStep]] {
         let m = labels.count, n = steps.count
         guard m > 0 else { return [] }
@@ -140,7 +105,6 @@ extension PRGraph {
             let expected = Double(i) * Double(m) / Double(n)
             return (0..<m).map { j in Double(labelWords[j].intersection(words).count) - 0.01 * abs(Double(j) - expected) }
         }
-        // best[i][j]: the best total for steps 0...i with step i under label j.
         var best = [score[0]]
         var from = [[Int]](repeating: Array(repeating: 0, count: m), count: n)
         for i in 1..<n {
@@ -161,8 +125,6 @@ extension PRGraph {
         return buckets
     }
 
-    /// Content words, crudely stemmed to five letters so "printer" meets "print" and
-    /// "buffered" meets "buffer".
     static func keywords(_ text: String) -> Set<String> {
         let stop: Set<String> = ["the", "and", "for", "with", "via", "into", "from", "that", "this",
                                  "only", "then", "when", "than", "its", "out", "whether", "any", "all"]
@@ -170,15 +132,10 @@ extension PRGraph {
         return Set(tokens.map(String.init).filter { $0.count >= 3 && !stop.contains($0) }.map { String($0.prefix(5)) })
     }
 
-    // MARK: - Decisions and questions in the flow
-
-    /// Decisions and review questions pinned to the stages of a flow.
     func annotations(for flow: FlowNode) -> [FlowAnnotation] {
         let behavior = behavior(for: flow)
         var out: [FlowAnnotation] = []
 
-        // Decisions: where the analysis pinned them, else — for condensed flows — on the
-        // first changed stage inside a component the decision shapes.
         var decisionNode: [String: String] = [:]
         let explicit = behavior.nodes.contains { !$0.decisionIds.isEmpty }
         if explicit {
@@ -195,7 +152,6 @@ extension PRGraph {
                 }
             }
         }
-        // Only decisions to review are drawn in the flow; the rest stay in Decisions.
         for d in decisions where decisionNode[d.id] != nil && isToReview(d) {
             let brief = brief(for: d)
             out.append(FlowAnnotation(
@@ -205,8 +161,6 @@ extension PRGraph {
             ))
         }
 
-        // Review questions: where the judgment stage anchored them, else next to the
-        // decision they're reviewed on, else on the first changed stage of a flow they name.
         let flowIds = Set(flows.map(\.id))
         for item in thingsToThinkAbout {
             let nodeId: String?
@@ -233,7 +187,6 @@ extension PRGraph {
         return out
     }
 
-    /// Where a decision shows up in the runtime behavior, for "Appears in" on the decision.
     func flowAppearances(ofDecision decisionId: String) -> [(flow: FlowNode, nodeId: String)] {
         flows.compactMap { flow in
             annotations(for: flow).first { $0.kind == .decision && $0.targetId == decisionId }
@@ -241,15 +194,10 @@ extension PRGraph {
         }
     }
 
-    // MARK: - Convergence
-
-    /// Flows that hand off into this one through a shared stage — "Upload asset" and
-    /// "Delete asset" both reaching "Reconcile repository".
     func flowsConverging(into flowId: String) -> [FlowNode] {
         flows.filter { f in f.id != flowId && behavior(for: f).nodes.contains { $0.subflowId == flowId } }
     }
 
-    /// The implementation steps a stage summarizes, in trace order.
     func implementationSteps(for node: FlowBehaviorNode, in flow: FlowNode) -> [FlowStep] {
         let ids = Set(node.stepIds)
         return flow.steps.filter { ids.contains($0.id) }

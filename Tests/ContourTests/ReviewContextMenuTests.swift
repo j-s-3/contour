@@ -4,24 +4,8 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `ReviewContextMenuLogic`'s "which items, how many" selection is the menu-enablement
-/// logic CLAUDE.md calls out for this file; `GraphStore.canSubmitReview`/
-/// `.reviewUnavailableReason` (tied to `Services/PRReview.swift`) are the other half,
-/// already plain functions needing no production change.
-///
-/// Follow-up (issue #117 reopened at 23.83%): pulled the rest of `ReviewContextMenuModifier`'s
-/// button-visibility/label decisions (`showsTradeoffQuestion`, `detailButton`, `diffRef`,
-/// `showInCodeTitle`, `codeRefMenuItems`) into `ReviewContextMenuLogic` the same way #171 did
-/// for the related-item menus, and added coverage for `ReviewActions`'s remaining branch and
-/// the `GraphStore` extension members this file also defines (`pullRequestWebURL`,
-/// `copyReviewSummary`, `openOnGitHub`'s no-op guard, the shortcut constants). `NSPasteboard`
-/// writes are driven for real, following `PRSessionCommandsTests`' precedent; `NSWorkspace
-/// .shared.open` is only ever exercised past its nil guard, for the same reason that suite
-/// gives (it would launch a real browser from CI). `.serialized` because `NSPasteboard
-/// .general` is a process-wide resource, like that suite's.
 @Suite(.serialized)
 struct ReviewContextMenuTests {
-
     private func minimalGraph(components: [ComponentNode] = [], decisions: [DecisionNode] = [],
                                flows: [FlowNode] = [], headSha: String = "h", baseSha: String = "b") -> PRGraph {
         let pr = PRSummary(
@@ -38,8 +22,6 @@ struct ReviewContextMenuTests {
                         componentIds: componentIds, decisionIds: decisionIds, flowIds: flowIds, refs: refs)
     }
 
-    // MARK: - ReviewContextMenuLogic.architectureParts
-
     @Test func architectureExcludesComponentRelationshipAndPullRequestKinds() {
         let graph = minimalGraph(components: [ComponentNode(id: "c", title: "C", changeKind: .unchanged)])
         for kind: SubjectKind in [.component, .relationship, .pullRequest] {
@@ -55,8 +37,6 @@ struct ReviewContextMenuTests {
         let subject = resolved(kind: .decision, componentIds: ["a", "a", "b", "missing"])
         #expect(Set(ReviewContextMenuLogic.architectureParts(for: subject, in: graph).map(\.id)) == ["a", "b"])
     }
-
-    // MARK: - ReviewContextMenuLogic.relatedDecisions
 
     @Test func relatedDecisionsExcludesDecisionAndTradeoffKinds() {
         let graph = minimalGraph(decisions: [
@@ -75,8 +55,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.relatedDecisions(for: subject, in: graph).map(\.id) == ["d"])
     }
 
-    // MARK: - ReviewContextMenuLogic.relatedFlows
-
     @Test func relatedFlowsExcludesFlowAndFlowStepKinds() {
         let graph = minimalGraph(flows: [FlowNode(id: "f", title: "F")])
         for kind: SubjectKind in [.flow, .flowStep] {
@@ -90,8 +68,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.relatedFlows(for: subject, in: graph).map(\.id) == ["f"])
     }
 
-    // MARK: - ReviewContextMenuLogic.githubURL
-
     @Test func menuGithubURLPrefersALinePermalinkOverThePullRequestFallback() {
         let actions = ReviewActions(graph: minimalGraph(), prURL: "https://github.com/acme/shop/pull/7")
         let subject = resolved(kind: .code, refs: [CodeRef(path: "a.swift", startLine: 1, endLine: 1)])
@@ -103,8 +79,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.githubURL(for: resolved(kind: .decision), actions: actions)?.absoluteString
                 == "https://github.com/acme/shop/pull/7")
     }
-
-    // MARK: - ReviewActions.repoWebBase
 
     @Test func repoWebBaseStripsThePullSuffixFromTheOpenedURL() {
         let actions = ReviewActions(graph: nil, prURL: "https://github.example.com/acme/widgets/pull/42")
@@ -119,8 +93,6 @@ struct ReviewContextMenuTests {
     @Test func repoWebBaseIsNilWithNeitherAURLNorAGraph() {
         #expect(ReviewActions(graph: nil, prURL: nil).repoWebBase == nil)
     }
-
-    // MARK: - ReviewActions.githubURL(for:)
 
     @Test func githubURLForRefUsesTheHeadOrBaseShaAccordingToTheRefsSide() {
         let actions = ReviewActions(graph: minimalGraph(headSha: "headsha", baseSha: "basesha"), prURL: nil)
@@ -141,10 +113,6 @@ struct ReviewContextMenuTests {
         #expect(actions.githubURL(for: CodeRef(path: "a.swift", startLine: 1, endLine: 1)) == nil)
     }
 
-    // MARK: - GraphStore.canSubmitReview / reviewUnavailableReason
-
-    /// Only the branches independent of whether `gh` is actually installed on the machine
-    /// running the test are asserted here, same constraint as `ReviewRequestsTests`.
     @MainActor
     @Test func canSubmitReviewIsFalseWithNoGraphLoaded() {
         #expect(!GraphStore().canSubmitReview(.approve))
@@ -156,9 +124,6 @@ struct ReviewContextMenuTests {
         #expect(GraphStore().reviewUnavailableReason(.approve) == "No pull request is open")
     }
 
-    /// With a graph loaded, `canSubmitReview` reduces to `PRReview.canReview`; asserted by
-    /// recomputing the same inputs rather than a hardcoded bool, since whether `gh` is on
-    /// the CI runner's PATH isn't something this suite controls.
     @MainActor
     @Test func canSubmitReviewWithAGraphMatchesPRReviewCanReviewForBothVerdicts() {
         let store = GraphStore()
@@ -168,9 +133,6 @@ struct ReviewContextMenuTests {
         }
     }
 
-    /// Same machine-independence concern as above: with a graph loaded and no review
-    /// submitted yet, the reason is either the "no gh" message or nil (an open PR, reviewable),
-    /// never the "no pull request"/"not open" messages, which is itself worth pinning.
     @MainActor
     @Test func reviewUnavailableReasonWithAnOpenGraphNeverBlamesTheMissingOrClosedPR() {
         let store = GraphStore()
@@ -183,16 +145,12 @@ struct ReviewContextMenuTests {
         }
     }
 
-    // MARK: - ReviewContextMenuLogic.showsTradeoffQuestion
-
     @Test func showsTradeoffQuestionOnlyForTradeoffKind() {
         #expect(ReviewContextMenuLogic.showsTradeoffQuestion(for: .tradeoff))
         for kind: SubjectKind in [.decision, .component, .flow, .code] {
             #expect(!ReviewContextMenuLogic.showsTradeoffQuestion(for: kind))
         }
     }
-
-    // MARK: - ReviewContextMenuLogic.detailButton
 
     @Test func detailButtonIsNilForATradeoffEvenWithADetailTarget() {
         let subject = ResolvedSubject(subject: .pullRequest, kind: .tradeoff, title: "T", lineage: [],
@@ -217,8 +175,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.detailButton(for: decision)?.target == .decisionDetail("d"))
     }
 
-    // MARK: - ReviewContextMenuLogic.diffRef
-
     @Test func diffRefIsTheRefOnlyForACodeKindResolvedFromACodeRefSubject() {
         let ref = CodeRef(path: "a.swift", startLine: 4, endLine: 4)
         let codeSubject = resolved(kind: .code)
@@ -236,15 +192,11 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.diffRef(for: codeSubject, subject: .decision("d")) == nil)
     }
 
-    // MARK: - ReviewContextMenuLogic.showInCodeTitle
-
     @Test func showInCodeTitleIsShowEvidenceForATradeoffAndShowInCodeOtherwise() {
         #expect(ReviewContextMenuLogic.showInCodeTitle(for: .tradeoff) == "Show Evidence")
         #expect(ReviewContextMenuLogic.showInCodeTitle(for: .decision) == "Show in Code")
         #expect(ReviewContextMenuLogic.showInCodeTitle(for: .code) == "Show in Code")
     }
-
-    // MARK: - ReviewContextMenuLogic.codeRefMenuItems
 
     @Test func codeRefMenuItemsCapsAtTwelveRefsToKeepTheSubmenuUsable() {
         let refs = (0..<20).map { CodeRef(path: "a.swift", startLine: $0, endLine: $0) }
@@ -259,8 +211,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewContextMenuLogic.codeRefMenuItems(for: subject) == refs)
     }
 
-    // MARK: - ReviewActions.pullRequestURL (graph fallback, no opened URL)
-
     @Test func pullRequestURLFallsBackToTheGraphsRepoAndNumberWithNoOpenedURL() {
         let actions = ReviewActions(graph: minimalGraph(), prURL: nil)
         #expect(actions.pullRequestURL?.absoluteString == "https://github.com/acme/shop/pull/7")
@@ -270,10 +220,6 @@ struct ReviewContextMenuTests {
         #expect(ReviewActions(graph: nil, prURL: nil).pullRequestURL == nil)
     }
 
-    // MARK: - Keyboard shortcuts
-
-    /// Pins the exact shortcuts CLAUDE.md and this file's own doc comments name: ⌘⇧A for
-    /// "Ask about this…", ⌘⇧O for "Open on GitHub".
     @Test func askShortcutIsCommandShiftA() {
         #expect(AskShortcut.key == KeyEquivalent("a"))
         #expect(AskShortcut.modifiers == [.command, .shift])
@@ -283,8 +229,6 @@ struct ReviewContextMenuTests {
         #expect(OpenOnGitHubShortcut.key == KeyEquivalent("o"))
         #expect(OpenOnGitHubShortcut.modifiers == [.command, .shift])
     }
-
-    // MARK: - GraphStore.pullRequestWebURL / copyReviewSummary / openOnGitHub
 
     @MainActor
     @Test func pullRequestWebURLIsNilWithNoGraphLoaded() {
@@ -320,9 +264,6 @@ struct ReviewContextMenuTests {
         #expect(NSPasteboard.general.string(forType: .string) == graph.reviewSummaryMarkdown)
     }
 
-    /// `openOnGitHub()` is only exercised past its nil guard here — calling it for real with
-    /// a graph loaded would invoke `NSWorkspace.shared.open` and launch a browser from CI,
-    /// the same caution `PRSessionCommandsTests` documents for the equivalent method there.
     @MainActor
     @Test func openOnGitHubDoesNothingWithNoGraphLoaded() {
         GraphStore().openOnGitHub()

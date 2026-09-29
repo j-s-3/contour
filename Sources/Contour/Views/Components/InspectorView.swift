@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// The one place code-level detail concentrates: paths, line numbers, class names.
-/// Every lens (Architecture, Decisions, Flows, Entry points) can hand this a selected
-/// node's projection and get Purpose / Used by / Implementation / Changed-by-this-PR /
-/// "Show implementation" / "Show diff" for free, instead of scattering that detail
-/// across every screen.
 struct InspectorContent {
     var title: String
     var kindLabel: String
@@ -16,26 +11,16 @@ struct InspectorContent {
     var refs: [CodeRef] = []
     var onShowImplementation: (() -> Void)?
 
-    /// What "CHANGED BY THIS PR" says: the author's own claim if there is one (even for an
-    /// unchanged node — "Untouched; listed for context" — since a claim always outranks the
-    /// plain yes/no), otherwise a plain yes/no from whether this node changed at all.
     var changedByThisPRText: String { changeClaim ?? (changedByThisPR ? "Yes" : "No") }
 
-    /// The header's kind eyebrow, upper-cased the way it renders.
     var kindLabelDisplay: String { kindLabel.uppercased() }
 
-    /// Whether the "USED BY" field has anything to show — the field is hidden entirely
-    /// rather than rendered empty.
     var showsUsedBy: Bool { !usedBy.isEmpty }
 
-    /// Whether the "IMPLEMENTATION" field has anything to show.
     var showsImplementedBy: Bool { !implementedBy.isEmpty }
 
-    /// Whether the "EVIDENCE" field has anything to show. "Show diff" reuses `primaryRef`,
-    /// so it hides under the same condition.
     var showsEvidence: Bool { !refs.isEmpty }
 
-    /// The ref "Show diff" opens: the first piece of evidence, if there is one.
     var primaryRef: CodeRef? { refs.first }
 }
 
@@ -112,13 +97,10 @@ struct InspectorView: View {
         }
     }
 
-    /// The "CHANGED BY THIS PR" icon: a filled checkmark when it did, a plain minus when
-    /// it didn't.
     nonisolated static func changedIconName(_ changed: Bool) -> String {
         changed ? "checkmark.circle.fill" : "minus.circle"
     }
 
-    /// The icon's tint, matching `changedIconName`.
     nonisolated static func changedIconTint(_ changed: Bool) -> Color {
         changed ? .green : .secondary
     }

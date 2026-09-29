@@ -1,14 +1,5 @@
 import SwiftUI
 
-// Progressive opening (§ progressive analysis): the review appears as soon as the PR has been
-// fetched and fills in while the reviewer works. These are the pieces that say how far along
-// that is — quietly. The best progress indicator is content appearing, so none of them ever
-// take focus, move the reviewer, or cover what they're reading.
-
-/// The one sparkle glyph every "still working" line uses, so they read as one voice.
-/// Pulses with a symbol effect rather than a repeating animation: a `repeatForever`
-/// animation started on appear also animates the view's own layout, which in a toolbar
-/// visibly flings the glyph in from wherever it was first laid out.
 struct WorkingMark: View {
     var body: some View {
         Image(systemName: "sparkle")
@@ -19,7 +10,6 @@ struct WorkingMark: View {
     }
 }
 
-/// "✦ Understanding the change…" — a placeholder line for content still being produced.
 struct WorkingLine: View {
     let text: String
     var font: Font = .callout
@@ -33,8 +23,6 @@ struct WorkingLine: View {
     }
 }
 
-/// Status glyph for a stage or section: ✓ done, spinner running, ⚠ failed, clock stale,
-/// ⏹ stopped, hollow circle not started.
 struct StageStatusGlyph: View {
     let status: StageStatus
 
@@ -60,12 +48,6 @@ struct StageStatusGlyph: View {
     }
 }
 
-// MARK: - Toolbar indicator
-
-/// "Analyzing PR… 3 remaining" beside the resolving Contour mark while the analysis fills
-/// in; "Analysis complete" (or "Opened saved analysis") when it finishes, fading to the bare
-/// mark a few seconds later. Clicking it opens the details, which is also where the
-/// analysis can be stopped.
 struct AnalysisIndicator: View {
     let state: AnalysisState
     let log: [PipelineProgressEntry]
@@ -88,7 +70,6 @@ struct AnalysisIndicator: View {
                 AnalysisDetailsView(state: state, log: log, metrics: metrics, refCheck: refCheck, onStop: onStop, onRetry: onRetry)
             }
             .task(id: state.isComplete) {
-                // Let the "complete" state be seen, then recede.
                 settled = false
                 guard state.isComplete, state.failedSections.isEmpty, state.stoppedSections.isEmpty else { return }
                 try? await Task.sleep(for: .seconds(4))
@@ -96,8 +77,6 @@ struct AnalysisIndicator: View {
             }
     }
 
-    /// The Contour mark from the opening screen, carried on into the toolbar: it resolves
-    /// ring by ring as stages settle, and is whole when the analysis is.
     @ViewBuilder
     private var label: some View {
         HStack(spacing: 6) {
@@ -114,8 +93,6 @@ struct AnalysisIndicator: View {
                         .monospacedDigit()
                 }
             case .stopped:
-                // Stopping is the reviewer's own, most recent act, so it's what the
-                // indicator reports even if a section had also failed.
                 StageStatusGlyph(status: .stopped)
                 Text("Analysis stopped").font(.callout)
             case .failed(let text):
@@ -135,9 +112,6 @@ struct AnalysisIndicator: View {
     }
 }
 
-/// What `AnalysisIndicator`'s label shows for a given state, decided once so the view body
-/// only has to draw it. `settled` is the indicator's own local fade-out timer: true once
-/// "Analysis complete" has had its few seconds on screen and is receding to the bare mark.
 enum AnalysisIndicatorLabel: Equatable {
     case analyzing(text: String, remaining: Int)
     case stopped
@@ -145,9 +119,6 @@ enum AnalysisIndicatorLabel: Equatable {
     case complete(text: String)
     case none
 
-    /// Stopping is the reviewer's own, most recent act, so it's reported even if a section
-    /// also failed; a failure otherwise outranks the transient "complete" message, which
-    /// itself only shows before `settled` fades it back to the bare mark.
     nonisolated static func compute(state: AnalysisState, settled: Bool) -> AnalysisIndicatorLabel {
         if !state.isComplete {
             let text = state.revalidatingFrom != nil ? "Updating analysis…" : "Analyzing PR…"
@@ -167,17 +138,11 @@ enum AnalysisIndicatorLabel: Equatable {
     }
 }
 
-// MARK: - Details popover
-
-/// What the indicator opens: the review sections and where each one is, then — for anyone
-/// who wants them — the pipeline's own stages, the timings, and the raw log.
 struct AnalysisDetailsView: View {
     let state: AnalysisState
     let log: [PipelineProgressEntry]
     let metrics: AnalysisMetrics?
     var refCheck: RefCheck?
-    /// Nil where stopping isn't offered; the button itself shows only while there's
-    /// analysis left to stop.
     var onStop: (() -> Void)?
     var onRetry: (PipelineStage) -> Void
 
@@ -257,17 +222,12 @@ struct AnalysisDetailsView: View {
                 }
             }
             Spacer(minLength: 8)
-            // A stopped context section is the checkout itself: its Retry reopens the PR.
             if let stage = retryStage, Self.showsRetryButton(stage: stage, status: status) {
                 Button("Retry") { onRetry(stage) }.controlSize(.small)
             }
         }
     }
 
-    /// Whether a section row with a retry-eligible stage (`AnalysisState.retryStage`) actually
-    /// shows the button: every analysis stage does once it's retryable, but a context
-    /// (plumbing) stage's Retry reopens the whole PR, so it only appears once that section has
-    /// genuinely stopped rather than merely having a retryable stage in the abstract.
     nonisolated static func showsRetryButton(stage: PipelineStage, status: StageStatus) -> Bool {
         PipelineStage.analysis.contains(stage) || status == .stopped
     }
@@ -276,8 +236,6 @@ struct AnalysisDetailsView: View {
         Self.subtitle(section, status)
     }
 
-    /// The second line under a section's status glyph. Pulled out of the view body so it's
-    /// directly testable, per the "views should be thin" principle.
     nonisolated static func subtitle(_ section: ReviewSection, _ status: StageStatus) -> String? {
         switch status {
         case .running(let detail): return detail ?? section.workingLabel
@@ -290,9 +248,6 @@ struct AnalysisDetailsView: View {
     }
 }
 
-/// Whether the code the analysis cites is really there (§18, `CodeRefVerifier`): "All 41
-/// references verified", or how many couldn't be and which. Those were dropped from the
-/// review, so this is the only place the reviewer learns the model cited code that isn't.
 struct RefCheckView: View {
     let check: RefCheck
 
@@ -339,23 +294,18 @@ struct RefCheckView: View {
         }
     }
 
-    /// The summary line: every reference verified, or how many of how many weren't.
     nonisolated static func headline(_ check: RefCheck) -> String {
         check.unresolvedCount == 0
             ? "All \(check.checked) code references verified"
             : "\(check.unresolvedCount) of \(check.checked) code references couldn't be verified"
     }
 
-    /// "and N more" once the sample of listed refs (`RefCheck.sampleLimit`) is smaller than
-    /// the true unresolved count; nil once every unresolved ref is already listed.
     nonisolated static func overflowText(_ check: RefCheck) -> String? {
         let extra = check.unresolvedCount - check.unresolved.count
         return extra > 0 ? "and \(extra) more" : nil
     }
 }
 
-/// The pipeline as the engine sees it — the old full-screen rail, now a detail. Stages run
-/// in parallel, so each carries its own status rather than a single position.
 struct PipelineStagesView: View {
     let state: AnalysisState
 
@@ -375,7 +325,6 @@ struct PipelineStagesView: View {
     }
 }
 
-/// Time to each milestone for this PR — the numbers progressive opening is judged by.
 struct MetricsView: View {
     let metrics: AnalysisMetrics
 
@@ -393,14 +342,11 @@ struct MetricsView: View {
         }
     }
 
-    /// "12.3s" once a milestone has landed, an em dash while it's still to come.
     nonisolated static func elapsedText(_ metrics: AnalysisMetrics, _ milestone: LatencyMilestone) -> String {
         metrics.elapsed(milestone).map { String(format: "%.1fs", $0) } ?? "—"
     }
 }
 
-/// The technical log: every step and tool call, verbatim. For diagnosing stalls and failed
-/// model calls, never the primary way to follow progress.
 struct AnalysisLogView: View {
     let log: [PipelineProgressEntry]
 
@@ -436,15 +382,9 @@ struct AnalysisLogView: View {
     }
 }
 
-// MARK: - In a section
-
-/// A lens whose analysis hasn't produced anything yet: what's known so far, and what's being
-/// worked on — never a blank screen or a disabled one.
 struct SectionPendingView: View {
     let section: ReviewSection
     let status: StageStatus
-    /// One line of what is already known, when there is something ("Input → Content
-    /// Inspection → Rendering").
     var known: String?
 
     var body: some View {
@@ -468,11 +408,6 @@ struct SectionPendingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// The working line's text: a running stage's own detail folds onto the section's working
-    /// label ("Understanding the change…" plus "2 files inspected" becomes "Understanding the
-    /// change — 2 files inspected", the ellipsis dropped since the detail continues the
-    /// sentence), "Waiting to start…" before anything has run, or the plain working label
-    /// otherwise.
     nonisolated static func workingText(section: ReviewSection, status: StageStatus) -> String {
         if case .running(let detail?) = status {
             return "\(section.workingLabel.dropLast()) — \(detail)"
@@ -481,10 +416,6 @@ struct SectionPendingView: View {
     }
 }
 
-/// A section whose analysis failed: says what didn't happen, and offers a retry and a
-/// conversation instead. The rest of the review is unaffected. `message` is the
-/// reviewer-facing line (`PipelineStage.failureMessage(for:)`); the raw response and stderr
-/// stay behind "Show log" in the analysis details, never here.
 struct SectionFailedView: View {
     let section: ReviewSection
     let message: String
@@ -521,8 +452,6 @@ struct SectionFailedView: View {
     }
 }
 
-/// A section the reviewer stopped before it produced anything: says so, and offers to
-/// resume just this section. The rest of the review is unaffected.
 struct SectionStoppedView: View {
     let section: ReviewSection
     var onRetry: () -> Void
@@ -543,8 +472,6 @@ struct SectionStoppedView: View {
     }
 }
 
-/// "⏹ Stopped · Retry" floating at the bottom of a lens that was stopped partway: what
-/// arrived before the stop stays, and this says there may have been more.
 struct SectionStoppedPill: View {
     var onRetry: () -> Void
 
@@ -565,9 +492,6 @@ struct SectionStoppedPill: View {
     }
 }
 
-/// "✦ 2 decisions found · still looking" floating at the bottom of a lens that already has
-/// content but isn't finished. It overlays rather than inserts, so nothing the reviewer is
-/// reading moves when it appears or goes.
 struct SectionProgressPill: View {
     let text: String
 
@@ -584,11 +508,8 @@ struct SectionProgressPill: View {
     }
 }
 
-/// Across the top of every lens while slices from an earlier revision are on screen, so
-/// nothing stale is read as a conclusion about the current code.
 struct RevalidationBanner: View {
     let head: String
-    /// False once nothing is running to replace it — the analysis was stopped.
     var updating = true
 
     var body: some View {

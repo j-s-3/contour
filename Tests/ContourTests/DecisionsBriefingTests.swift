@@ -2,13 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// The Decisions lens draws each decision as a question, its options, a short why, and the
-/// tradeoff it made — for new graphs from the fields the decisions stage writes, and for
-/// older graphs by condensing what they already have.
 struct DecisionsBriefingTests {
-
-    /// The captured bat#3877 run: four decisions, two of them system-level with substantial
-    /// tradeoffs, and Overview questions that point at them.
     private func fixtureGraph() throws -> PRGraph {
         let arch = try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture))
         let decisions = try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions))
@@ -38,11 +32,6 @@ struct DecisionsBriefingTests {
         Consideration(id: id, question: "Is \(decisionId) safe?", detail: "", relatedIds: [decisionId])
     }
 
-    // MARK: - Significance decides attention, not abstraction
-
-    /// The captured run predates significance, so it's inferred: the two decisions that move
-    /// hard along a real tradeoff are the ones to review. The long-first-line fallback has an
-    /// Overview question (about test coverage) but no tradeoff, so it stays with the others.
     @Test func capturedRunPromotesTheDecisionsWithSubstantialTradeoffs() throws {
         let graph = try fixtureGraph()
         #expect(graph.decisionsToReview.map(\.id) == ["inspect-multi-line-prefix", "use-already-buffered-bytes"])
@@ -52,8 +41,6 @@ struct DecisionsBriefingTests {
         #expect(graph.attentionReason(for: fallback).contains("Overview asks"))
     }
 
-    /// An implementation choice that matters is reviewed; an architectural one that doesn't
-    /// isn't.
     @Test func levelNeverDecidesVisibility() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = []
@@ -65,8 +52,6 @@ struct DecisionsBriefingTests {
         #expect(graph.otherDecisions.map(\.id) == ["helper-home"])
     }
 
-    /// An Overview concern about a decision raises its significance a step: enough to promote
-    /// a medium one, not enough to promote a low one.
     @Test func overviewConcernsRaiseSignificance() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("medium", significance: .medium), decision("low", significance: .low),
@@ -76,7 +61,6 @@ struct DecisionsBriefingTests {
         #expect(graph.otherDecisions.map(\.id) == ["low", "quiet"])
     }
 
-    /// Without an assessed significance, only a tradeoff that leans substantially promotes.
     @Test func inferredSignificanceFollowsTradeoffMagnitude() {
         var d = decision("d")
         #expect(PRGraph.inferredSignificance(d) == .low)
@@ -86,8 +70,6 @@ struct DecisionsBriefingTests {
         #expect(PRGraph.inferredSignificance(d) == .high)
     }
 
-    /// The reviewer controls the filter: Add to review and Not worth reviewing override the
-    /// analysis, and moving a decision back to where the analysis put it clears the override.
     @Test func reviewerCanMoveDecisionsEitherWay() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = []
@@ -102,10 +84,6 @@ struct DecisionsBriefingTests {
         #expect(graph.decisionsToReview.map(\.id) == ["a", "b"])
     }
 
-    // MARK: - One measure of review progress
-
-    /// The things to think about are the checklist: the denominator is the Overview's list,
-    /// whatever the number of decisions to review.
     @Test func reviewProgressCountsTheThingsToThinkAbout() throws {
         let graph = try fixtureGraph()
         #expect(graph.reviewProgress().total == graph.thingsToThinkAbout.count)
@@ -113,8 +91,6 @@ struct DecisionsBriefingTests {
         #expect(graph.reviewProgress().reviewed == 0)
     }
 
-    /// Judging a decision resolves every question reviewed on it; judging a decision no
-    /// question is reviewed on resolves nothing.
     @Test func judgingADecisionResolvesItsQuestions() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("a", significance: .high), decision("b", significance: .high)]
@@ -127,8 +103,6 @@ struct DecisionsBriefingTests {
         #expect(graph.reviewProgress().reviewed == 2)
     }
 
-    /// A question with no decision to judge it on is resolved by talking it through; one with
-    /// a decision to review isn't — its judgment is recorded on the decision.
     @Test func aConversationResolvesOnlyQuestionsWithNoDecisionToJudge() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("a", significance: .high), decision("b", significance: .low)]
@@ -139,8 +113,6 @@ struct DecisionsBriefingTests {
         #expect(graph.reviewProgress(discussed: discussed).reviewed == 2)
     }
 
-    /// Nothing is promoted to fill the list: when no choice stands out, the reviewer is told
-    /// so and the decisions found are listed under Other Decisions.
     @Test func whenNothingStandsOutNothingIsPromoted() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = []
@@ -175,10 +147,6 @@ struct DecisionsBriefingTests {
         #expect(roundTrip.significance == .high)
     }
 
-    // MARK: - The brief
-
-    /// A decision with a tradeoff but no options: the tradeoff's dimensions stand in, so the
-    /// choice is still drawn — and the same axis isn't drawn a second time as the tradeoff.
     @Test func withoutOptionsTheChoiceIsDrawnFromTheTradeoff() {
         var graph = ContourSampleData.publishTriggeredReindex
         var d = decision("d")
@@ -212,8 +180,6 @@ struct DecisionsBriefingTests {
         #expect(brief.tradeoff == traded)
     }
 
-    /// When the options already name the two qualities, the tradeoff line would only repeat
-    /// them, so the alternatives carry it alone.
     @Test func aTradeoffTheOptionsAlreadySayIsNotDrawnTwice() {
         var graph = ContourSampleData.publishTriggeredReindex
         var d = decision("d", options: [
@@ -225,7 +191,6 @@ struct DecisionsBriefingTests {
         #expect(graph.brief(for: d).tradeoff == nil)
     }
 
-    /// The primary tradeoff is drawn on the decision; secondary ones wait in the drill-down.
     @Test func thePrimaryTradeoffLeadsAndSecondaryOnesWait() {
         let secondary = DecisionTradeoff(dimensionA: "one sample source", dimensionB: "old behavior kept", prominence: .secondary)
         let primary = DecisionTradeoff(dimensionA: "detection completeness", dimensionB: "streaming behavior", prominence: .primary)
@@ -238,8 +203,6 @@ struct DecisionsBriefingTests {
         #expect(graph.brief(for: d).tradeoff == primary)
     }
 
-    /// A before/after diagram needs the old structure and the new, chosen one; anything else
-    /// degrades to a plain two-option line.
     @Test func beforeAfterNeedsTheNewStructureChosen() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [
@@ -250,8 +213,6 @@ struct DecisionsBriefingTests {
         #expect(graph.brief(for: graph.decisions[1]).shape == .binary)
     }
 
-    /// Not every choice is two-sided: three options can't be drawn as A ◀──▶ B, and an
-    /// ordered scale stays a scale.
     @Test func shapeFollowsTheChoice() {
         let three = [DecisionOption(label: "Read more"), DecisionOption(label: "Use the buffer", chosen: true),
                      DecisionOption(label: "Skip streams")]
@@ -266,7 +227,6 @@ struct DecisionsBriefingTests {
         #expect(graph.brief(for: graph.decisions[2]).shape == .options)
     }
 
-    /// Options with nothing marked chosen can't show what the PR did, so they're ignored.
     @Test func withNothingToDrawTheAnswerIsOneSentence() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.decisions = [decision("d", options: [DecisionOption(label: "A"), DecisionOption(label: "B")])]
@@ -277,9 +237,6 @@ struct DecisionsBriefingTests {
         #expect(brief.insteadOf == "Loop until 1 KB.")
     }
 
-    // MARK: - Overview ↔ Decisions
-
-    /// Each Overview question is reviewed on exactly one decision — the one "Review →" opens.
     @Test func overviewQuestionsLandOnTheirDecision() throws {
         let graph = try fixtureGraph()
         let onBlocking = graph.overviewQuestions(reviewedOn: "use-already-buffered-bytes").map(\.id)
@@ -298,8 +255,6 @@ struct DecisionsBriefingTests {
         #expect(affects.flows.map(\.id).contains("flow-cli-stdin-binary-detection"))
     }
 
-    // MARK: - Contextual chat
-
     @Test func anOptionCarriesItsDecisionTradeoffAndQuestions() throws {
         let graph = try fixtureGraph()
         let resolved = try #require(graph.resolve(.decisionOption(decisionId: "use-already-buffered-bytes", index: 1)))
@@ -316,9 +271,6 @@ struct DecisionsBriefingTests {
         #expect(graph.resolve(.decisionOption(decisionId: "use-already-buffered-bytes", index: 5)) == nil)
     }
 
-    /// Right-clicking a tradeoff asks about it inside its decision: the chat gets the choice,
-    /// the alternatives, the rationale, the Overview question, and the evidence behind the
-    /// tradeoff itself, and "Open details" is the decision.
     @Test func aTradeoffIsDiscussedAsPartOfItsDecision() throws {
         let graph = try fixtureGraph()
         let d = try #require(graph.decision("use-already-buffered-bytes"))
@@ -336,9 +288,6 @@ struct DecisionsBriefingTests {
         #expect(graph.resolve(.tradeoff(decisionId: d.id, index: 3)) == nil)
     }
 
-    /// The captured run, read the way a reviewer opening Decisions would: two decisions to
-    /// review, each drawn with the tradeoff that makes it worth reviewing; two other
-    /// decisions whose options already say what was traded.
     @Test func eachDecisionToReviewCarriesItsTradeoff() throws {
         let graph = try fixtureGraph()
         for d in graph.decisionsToReview {
@@ -352,8 +301,6 @@ struct DecisionsBriefingTests {
         #expect(blocking.primaryTradeoff?.chosenDimension == "streaming responsiveness")
         #expect(graph.otherDecisions.allSatisfy { $0.tradeoffs.isEmpty })
     }
-
-    // MARK: - Decoding
 
     @Test func newDecisionFieldsDecodeLeniently() throws {
         let json = #"""

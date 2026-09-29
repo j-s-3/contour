@@ -1,14 +1,5 @@
 import Foundation
 
-/// The Overview's "Things to think about" list, resolved from whatever the graph has.
-///
-/// New analyses carry `pr.considerations` — short, question-shaped items written to a
-/// budget by the judgment stage. Older cached graphs (and the captured mock fixtures) only
-/// have the verbose `needsJudgment`/`uncertainties` paragraphs plus the behavior change's
-/// `humanQuestion`, so those are condensed here instead: first sentence as the headline,
-/// code locations stripped, the rest kept as drill-down `explanation`. The analysis
-/// engine's own taxonomy (judgment vs. uncertainty) survives only as `kind`, which picks a
-/// glyph — it never dictates the layout.
 extension PRGraph {
     var thingsToThinkAbout: [Consideration] {
         if let considerations = pr.considerations, !considerations.isEmpty {
@@ -27,25 +18,12 @@ extension PRGraph {
         return out
     }
 
-    /// What the Overview lists at this point in the analysis, or nil while the section
-    /// should keep its placeholder.
-    ///
-    /// Before judgment lands the only item there could be is the behavior change's
-    /// `humanQuestion`, condensed. The judgment stage is told to restate that question as
-    /// its first consideration when it still matters, so showing it early would mean either
-    /// swapping it for the restatement (text moving under the reviewer's eyes) or listing
-    /// the same question twice. Holding the placeholder until judgment settles keeps the
-    /// list append-only: once an item is on screen, nothing later removes or reorders it.
-    /// A stale judgment slice is already on screen, so it keeps showing until replaced.
     func thingsToThinkAbout(during analysis: AnalysisState) -> [Consideration]? {
         let judgment = analysis.status(.judgment)
         guard analysis.isComplete || judgment.isSettled || judgment == .stale else { return nil }
         return thingsToThinkAbout
     }
 
-    /// Splits a paragraph into a scannable headline and a short supporting sentence.
-    /// A paragraph that asks a question leads with that question, since the question is
-    /// what the reviewer is being asked to think about.
     static func condense(_ statement: Statement, id: String, kind: ConsiderationKind) -> Consideration {
         let sentences = splitSentences(stripCodeLocations(statement.text))
         let questionIndex = sentences.firstIndex { $0.hasSuffix("?") }
@@ -63,10 +41,8 @@ extension PRGraph {
         )
     }
 
-    /// "(src/input.rs:272-290)" and friends belong in the code viewer, not a headline.
     static func stripCodeLocations(_ text: String) -> String {
         let parenthesized = #"\s*\((?:[^()]*?[\w./-]+\.[A-Za-z0-9]+:\d+[^()]*)\)"#
-        // "The unit test at src/input.rs:435-455 checks…" → "The unit test checks…"
         let bare = #"\s*(?:\b(?:at|in|from)\s+)?`?[\w./-]+\.[A-Za-z][A-Za-z0-9]*:\d+(?:[-–]\d+)?`?"#
         var stripped = text.replacingOccurrences(of: parenthesized, with: "", options: .regularExpression)
         stripped = stripped.replacingOccurrences(of: bare, with: "", options: .regularExpression)
@@ -74,11 +50,8 @@ extension PRGraph {
         return stripped.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
     }
 
-    /// Abbreviations that end in a period without ending the sentence.
     private static let abbreviations: Set<String> = ["e.g.", "i.e.", "etc.", "vs.", "cf.", "approx."]
 
-    /// Sentence split on terminal punctuation followed by whitespace. Deliberately naive:
-    /// decimal numbers and file extensions don't end in ". " so they survive.
     static func splitSentences(_ text: String) -> [String] {
         var sentences: [String] = []
         var current = ""
@@ -88,8 +61,8 @@ extension PRGraph {
             let lastWord = current.split(whereSeparator: \.isWhitespace).last.map { String($0).lowercased() } ?? ""
             let atBoundary = ".?!".contains(ch) && (i + 1 == chars.count || chars[i + 1].isWhitespace)
                 && !abbreviations.contains(lastWord.trimmingCharacters(in: CharacterSet(charactersIn: "(")))
-                && !lastWord.hasSuffix("..")                                   // an ellipsis
-                && current.filter({ $0 == "`" }).count % 2 == 0                // inside `inline code`
+                && !lastWord.hasSuffix("..")
+                && current.filter({ $0 == "`" }).count % 2 == 0
             if atBoundary {
                 let trimmed = current.trimmingCharacters(in: .whitespaces)
                 if !trimmed.isEmpty { sentences.append(trimmed) }
