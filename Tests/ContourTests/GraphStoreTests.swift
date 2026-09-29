@@ -416,4 +416,33 @@ struct GraphStoreTests {
         store.send("does this matter?", in: conversation)
         #expect(conversation.messages.isEmpty)
     }
+
+    // MARK: - toggleConversations / init
+
+    /// The toolbar's conversations button has three faces depending on what already exists:
+    /// start a thread about the current location, close the open inspector, or reopen the
+    /// thread that was closed. Getting the order wrong would discard a thread's inspector
+    /// each time it was toggled.
+    @Test @MainActor func toggleConversationsStartsClosesAndReopens() {
+        let store = GraphStore()
+        store.handle(.graph(sampleGraph))
+        store.toggleConversations()
+        #expect(store.conversations.isPresented)
+        #expect(store.conversations.active != nil)
+        store.toggleConversations()
+        #expect(!store.conversations.isPresented)
+        store.toggleConversations()
+        #expect(store.conversations.isPresented)
+        #expect(store.conversations.conversations.count == 1)
+    }
+
+    /// Tests start a store mid-flow: `.opening` lets a synthetic `.graph` open the review.
+    @Test @MainActor func initCanStartInAGivenPhaseAndReviewState() {
+        let store = GraphStore(phase: .opening, review: .submitted(.approve))
+        #expect(store.phase == .opening)
+        #expect(store.review == .submitted(.approve))
+        store.handle(.graph(sampleGraph))
+        #expect(store.phase == .review)
+    }
 }
+

@@ -4,12 +4,12 @@ import AppKit
 /// The window shell from §4.1: sidebar of lenses + files, main pane driven by the
 /// semantic navigation stack, inspector-free for MVP (cross-links live inline instead).
 struct ContentView: View {
-    @State private var store = GraphStore()
+    @State private var store: GraphStore
     @State private var showPalette = false
     @State private var confirmApprove = false
     @State private var composingChangeRequest = false
     /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
-    @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
+    @State private var needsOnboarding: Bool
     /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
     /// opted in (`WindowAccessor`), or at any time via the green button — is a known
     /// trigger for `NavigationSplitView` silently collapsing its sidebar column (the
@@ -23,8 +23,16 @@ struct ContentView: View {
     /// the start screen is already showing.
     @State private var urlFieldFocusRequest = 0
 
+    /// `store` and `needsOnboarding` are injectable so tests can host the shell around a
+    /// store driven with synthetic pipeline events; the app itself uses the defaults.
+    init(store: GraphStore = GraphStore(), needsOnboarding: Bool? = nil) {
+        _store = State(initialValue: store)
+        _needsOnboarding = State(initialValue: needsOnboarding ?? !Preferences.shared.hasCompletedOnboarding)
+    }
+
     var body: some View {
-        Group {            if needsOnboarding {
+        Group {
+            if needsOnboarding {
                 WelcomeWizard { firstURL in
                     needsOnboarding = false
                     if let firstURL { store.load(prURL: firstURL) }
@@ -58,13 +66,9 @@ struct ContentView: View {
         .onChange(of: store.phase) { _, phase in
             // Companion to CONTOUR_OPEN_PR_URL: land on a specific lens once the PR opens.
             guard phase == .review,
-                  let lens = ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"] else { return }
-            switch lens {
-            case "architecture": store.navigate(to: .architecture)
-            case "flows": store.navigate(to: .flows)
-            case "decisions": store.navigate(to: .decisions)
-            default: break
-            }
+                  let target = Self.lensTarget(named: ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"])
+            else { return }
+            store.navigate(to: target)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
@@ -79,6 +83,19 @@ struct ContentView: View {
         // Route incoming links to this window rather than opening a second one.
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
+
+    /// The lens `CONTOUR_OPEN_LENS` names; nil for an unset or unrecognized value.
+    nonisolated static func lensTarget(named name: String?) -> NavigationTarget? {
+        switch name {
+        case "architecture": return .architecture
+        case "flows": return .flows
+        case "decisions": return .decisions
+        default: return nil
+        }
+    }
+
+    /// The spring the conversation inspector and "ask" actions animate with.
+    private static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
     private var sessionActions: PRSessionActions {
         PRSessionActions(
@@ -163,16 +180,16 @@ struct ContentView: View {
         .environment(\.reviewActions, ReviewActions(
             graph: graph,
             prURL: store.lastPRURL,
-            ask: { subject in withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: subject) } },
+            ask: { subject in withAnimation(Self.spring) { store.ask(about: subject) } },
             askQuestion: { question, subject in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(question, about: subject) }
+                withAnimation(Self.spring) { store.ask(question, about: subject) }
             },
             navigate: { store.navigate(to: $0) },
             focus: { store.focusedSubject = $0 }
         ))
         .background(
             Button("") {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(about: store.subjectForCurrentLocation) }
+                withAnimation(Self.spring) { store.ask(about: store.subjectForCurrentLocation) }
             }
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
             .opacity(0)
@@ -215,17 +232,7 @@ struct ContentView: View {
                     .disabled(store.pullRequestWebURL == nil)
                 approveButton(graph)
                 requestChangesButton(graph)
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                        if store.conversations.isPresented {
-                            store.conversations.close()
-                        } else if store.conversations.active != nil {
-                            store.conversations.isPresented = true
-                        } else {
-                            store.ask(about: store.subjectForCurrentLocation)
-                        }
-                    }
-                } label: {
+                Button { withAnimation(Self.spring) { store.toggleConversations() } } label: {
                     Image(systemName: store.conversations.isPresented ? "bubble.left.and.text.bubble.right.fill" : "bubble.left.and.text.bubble.right")
                 }
                 .help("Conversations — ask about what you're looking at (⌘⇧A)")
@@ -558,7 +565,7 @@ struct ContentView: View {
             content()
         case .failed(let message):
             SectionFailedView(section: section, message: message, onRetry: { store.retry(stage) }) {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { store.ask(ask, about: .pullRequest) }
+                withAnimation(Self.spring) { store.ask(ask, about: .pullRequest) }
             }
         case .stopped:
             SectionStoppedView(section: section) { store.retry(stage) }

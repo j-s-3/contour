@@ -70,6 +70,13 @@ final class GraphStore {
 
     var current: NavigationTarget { path.last ?? .summary }
 
+    /// `phase` lets tests start in `.opening` and reach `.review` by feeding `handle(_:)`
+    /// synthetic events, without a harness, network or checkout behind `load(prURL:)`.
+    init(phase: SessionPhase = .idle, review: PRReview.State = .idle) {
+        self.phase = phase
+        self.review = review
+    }
+
     private var runTask: Task<Void, Never>?
 
     /// Read once per load rather than held, so a change in Settings takes effect on the
@@ -315,6 +322,19 @@ final class GraphStore {
     func ask(about subject: ReviewSubject) {
         noteEngagement()
         conversations.open(subject)
+    }
+
+    /// The toolbar's conversations button: closes an open inspector, reopens a thread that
+    /// exists, and otherwise starts one about wherever the reviewer is.
+    @MainActor
+    func toggleConversations() {
+        if conversations.isPresented {
+            conversations.close()
+        } else if conversations.active != nil {
+            conversations.isPresented = true
+        } else {
+            ask(about: subjectForCurrentLocation)
+        }
     }
 
     /// Opens the subject's thread and asks a specific question in it straight away — for

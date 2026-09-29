@@ -205,4 +205,16 @@ struct ContentViewTests {
         #expect(ContentView.diffRowStatus(diffText: nil) == .pending)
         #expect(ContentView.diffRowStatus(diffText: "diff --git a b") == .done)
     }
+
+    // MARK: - lensTarget
+
+    /// `CONTOUR_OPEN_LENS` only knows the three diagram/decision lenses; anything else,
+    /// including unset, leaves the review on the Overview.
+    @Test func lensTargetResolvesTheThreeNamedLenses() {
+        #expect(ContentView.lensTarget(named: "architecture") == .architecture)
+        #expect(ContentView.lensTarget(named: "flows") == .flows)
+        #expect(ContentView.lensTarget(named: "decisions") == .decisions)
+        #expect(ContentView.lensTarget(named: "diff") == nil)
+        #expect(ContentView.lensTarget(named: nil) == nil)
+    }
 }
