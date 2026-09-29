@@ -75,8 +75,10 @@ or schema change is a two-step process documented at the top of
 
 CI measures line coverage over `Sources/` (only `.build` and `Tests/` are excluded, so
 `Views/` and `Pipeline/MockAnalysisFixtures.swift` count) and posts the report to the job
-summary. On `main`, the `coverage-badge` job also writes the TOTAL line percentage to
-`coverage.json` on the `badges` branch, which the README badge renders through shields.io.
+summary. On `main`, the `badges` job also writes the TOTAL line percentage to
+`coverage.json` and the pass/fail result to `build.json` on the `badges` branch, which the
+README badges render through shields.io. It skips cancelled runs, so a `main` run superseded
+by a newer push never turns the Build badge red.
 Reproduce the report with:
 
 ```sh
