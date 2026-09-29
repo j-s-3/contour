@@ -40,6 +40,7 @@ enum HarnessError: LocalizedError {
 
 protocol Harness: Sendable {
     var id: HarnessID { get }
+    var executable: String { get }
 
     func arguments(
         prompt: String, contextFile: String, tier: AnalysisTier,
