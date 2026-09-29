@@ -35,6 +35,18 @@ final class MockURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private final class NonHTTPURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = URLResponse(url: request.url!, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 private func json(_ object: Any) -> Data { try! JSONSerialization.data(withJSONObject: object) }
 
 @Suite(.serialized)
@@ -281,5 +293,138 @@ struct AnonymousAPISourceTests {
         #expect(issue?.title == "Bug title")
         #expect(issue?.body == "desc")
         MockURLProtocol.handler = nil
+    }
+
+    private func minimalPR() -> Data {
+        json([
+            "title": "t", "state": "open",
+            "head": ["sha": "h", "ref": "f"], "base": ["sha": "b", "ref": "main"],
+        ])
+    }
+
+    private func utf16JSON(_ object: Any) -> Data {
+        let text = String(data: json(object), encoding: .utf8)!
+        return text.data(using: .utf16)!
+    }
+
+    private func fetchMinimal(
+        overrides: @escaping @Sendable (URLRequest) -> MockURLProtocol.Canned?
+    ) async throws -> RawPRContext {
+        let prData = minimalPR()
+        MockURLProtocol.handler = { request in
+            if let canned = overrides(request) { return canned }
+            if request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.v3.diff" {
+                return .init(status: 200, body: Data())
+            }
+            if request.url!.path == "/repos/acme/shop/pulls/5" { return .init(status: 200, body: prData) }
+            return .init(status: 200, body: json([[String: Any]]()))
+        }
+        defer { MockURLProtocol.handler = nil }
+        return try await AnonymousAPISource(session: mockSession()).fetchContext(
+            prURL: "https://github.com/acme/shop/pull/5")
+    }
+
+    @Test func missingOptionalFieldsFallBackToPlaceholders() async throws {
+        let commitsData = json([["sha": "c1"]])
+        let commentsData = json([["body": "anonymous note"]])
+        let reviewsData = json([["body": "anonymous review", "state": "COMMENTED"]])
+        let context = try await fetchMinimal { request in
+            switch request.url!.path {
+            case "/repos/acme/shop/pulls/5/commits": return .init(status: 200, body: commitsData)
+            case "/repos/acme/shop/issues/5/comments": return .init(status: 200, body: commentsData)
+            case "/repos/acme/shop/pulls/5/reviews": return .init(status: 200, body: reviewsData)
+            default: return nil
+            }
+        }
+        #expect(context.commits.count == 1)
+        #expect(context.commits.first?.sha == "c1")
+        #expect(context.commits.first?.message == "")
+        #expect(context.commits.first?.author == "unknown")
+        #expect(context.comments == ["someone: anonymous note"])
+        #expect(context.reviews == ["someone: anonymous review"])
+        #expect(context.author == "unknown")
+        #expect(context.body == "")
+        #expect(context.url == "https://github.com/acme/shop/pull/5")
+    }
+
+    @Test func fetchIssueFillsInABodyAndURLWhenTheResponseOmitsThem() async {
+        MockURLProtocol.handler = { _ in .init(status: 200, body: json(["title": "Only a title"])) }
+        defer { MockURLProtocol.handler = nil }
+        let issue = await AnonymousAPISource(session: mockSession()).fetchIssue(
+            owner: "acme", repo: "shop", number: "42")
+        #expect(issue?.title == "Only a title")
+        #expect(issue?.body == "")
+        #expect(issue?.url == "https://github.com/acme/shop/issues/42")
+    }
+
+    @Test func aNonUTF8ErrorBodyStillProducesAMalformedResponse() async {
+        MockURLProtocol.handler = { _ in .init(status: 500, body: Data([0xFF, 0xFE, 0xFD])) }
+        defer { MockURLProtocol.handler = nil }
+        do {
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected malformedResponse")
+        } catch GitHubServiceError.malformedResponse(let detail) {
+            #expect(detail.hasPrefix("HTTP 500"))
+        } catch { Issue.record("wrong error: \(error)") }
+    }
+
+    @Test func aNonUTF8ObjectResponseThatIsNotAnObjectIsAMalformedResponse() async {
+        let body = utf16JSON([1, 2, 3])
+        MockURLProtocol.handler = { _ in .init(status: 200, body: body) }
+        defer { MockURLProtocol.handler = nil }
+        do {
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected malformedResponse")
+        } catch GitHubServiceError.malformedResponse(let detail) {
+            #expect(detail.isEmpty)
+        } catch { Issue.record("wrong error: \(error)") }
+    }
+
+    @Test func anArrayEndpointReturningAnObjectIsAMalformedResponse() async {
+        let objectBody = json(["message": "not an array"])
+        let utf16Body = utf16JSON(["message": "not an array"])
+        for body in [objectBody, utf16Body] {
+            do {
+                _ = try await fetchMinimal { request in
+                    request.url!.path == "/repos/acme/shop/pulls/5/files" ? .init(status: 200, body: body) : nil
+                }
+                Issue.record("expected malformedResponse")
+            } catch GitHubServiceError.malformedResponse(_) {
+            } catch { Issue.record("wrong error: \(error)") }
+        }
+    }
+
+    @Test func aNonUTF8DiffBodyDegradesToAnEmptyDiff() async throws {
+        let context = try await fetchMinimal { request in
+            request.value(forHTTPHeaderField: "Accept") == "application/vnd.github.v3.diff"
+                ? .init(status: 200, body: Data([0xFF, 0xFE, 0xFD])) : nil
+        }
+        #expect(context.diff == "")
+    }
+
+    @Test func aNonHTTPResponseIsAMalformedResponse() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [NonHTTPURLProtocol.self]
+        do {
+            _ = try await AnonymousAPISource(session: URLSession(configuration: config)).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected malformedResponse")
+        } catch GitHubServiceError.malformedResponse(let detail) {
+            #expect(detail == "non-HTTP response")
+        } catch { Issue.record("wrong error: \(error)") }
+    }
+
+    @Test func aRateLimitResponseWithoutAResetHeaderHasNoResetDate() async {
+        MockURLProtocol.handler = { _ in .init(status: 429, headers: ["X-RateLimit-Remaining": "0"], body: Data()) }
+        defer { MockURLProtocol.handler = nil }
+        do {
+            _ = try await AnonymousAPISource(session: mockSession()).fetchContext(
+                prURL: "https://github.com/acme/shop/pull/5")
+            Issue.record("expected rateLimited")
+        } catch GitHubServiceError.rateLimited(let resetAt) {
+            #expect(resetAt == nil)
+        } catch { Issue.record("wrong error: \(error)") }
     }
 }
