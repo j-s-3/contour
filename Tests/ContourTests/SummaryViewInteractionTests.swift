@@ -22,10 +22,10 @@ struct SummaryViewInteractionTests {
         let window = HeadlessWindow(size: hosting.frame.size)
         window.contentView = hosting
         window.orderBack(nil)
-        NSApp.accessibilitySetValue(
-            true as NSNumber, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
-        NSApp.accessibilitySetValue(
-            true as NSNumber, forAttribute: NSAccessibility.Attribute(rawValue: "AXManualAccessibility"))
+        for attribute in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
+            _ = NSApp.perform(
+                NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: true as NSNumber, with: attribute)
+        }
         for _ in 0..<rounds {
             settle(hosting)
             for button in buttons(in: hosting) { _ = button.perform(NSSelectorFromString("accessibilityPerformPress")) }
