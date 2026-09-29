@@ -288,4 +288,101 @@ struct ReviewContextMenuTests {
     @Test func openOnGitHubDoesNothingWithNoGraphLoaded() {
         GraphStore().openOnGitHub()
     }
+
+    private func compactGraph() -> PRGraph {
+        let graph = minimalGraph(
+            components: [
+                ComponentNode(id: "c1", title: "C1", changeKind: .unchanged),
+                ComponentNode(id: "c2", title: "C2", changeKind: .unchanged),
+            ],
+            decisions: [
+                DecisionNode(
+                    id: "d1", title: "D1", decision: Statement(text: "x", provenance: .fact), confidence: .high,
+                    refs: [
+                        CodeRef(path: "a.swift", startLine: 1, endLine: 2),
+                        CodeRef(path: "b.swift", startLine: 3, endLine: 3),
+                    ], componentIds: ["c1", "c2"])
+            ],
+            flows: [FlowNode(id: "f1", title: "F1"), FlowNode(id: "f2", title: "F2")])
+        return graph
+    }
+
+    @Test func choiceOmitsZeroEntriesKeepsOneAsAButtonAndGroupsSeveralIntoASubmenu() {
+        let one = ReviewMenuEntry(title: "A", command: .navigate(.summary))
+        let two = ReviewMenuEntry(title: "B", command: .navigate(.architecture))
+        #expect(ReviewContextMenuLogic.choice(single: "S", multiple: "M", entries: []).isEmpty)
+        #expect(
+            ReviewContextMenuLogic.choice(single: "S", multiple: "M", entries: [one])
+                == [.button(ReviewMenuEntry(title: "S", command: .navigate(.summary)))])
+        #expect(
+            ReviewContextMenuLogic.choice(single: "S", multiple: "M", entries: [one, two]) == [
+                .submenu("M", [one, two])
+            ])
+    }
+
+    @Test func navigationItemsForADecisionListEveryLinkedPartFlowAndRef() throws {
+        let graph = compactGraph()
+        let resolved = try #require(graph.resolve(.decision("d1")))
+        let items = ReviewContextMenuLogic.navigationItems(for: resolved, subject: .decision("d1"), in: graph)
+        let titles = items.map { item -> String in
+            switch item {
+            case .button(let entry): entry.title
+            case .submenu(let title, _): title
+            }
+        }
+        #expect(titles.contains("Show in Architecture"))
+        #expect(titles.contains("Show in Code"))
+        #expect(!titles.contains("Show Related Decision"))
+    }
+
+    @Test func navigationItemsForACodeRefOfferDiffButNotShowInCode() throws {
+        let graph = compactGraph()
+        let ref = CodeRef(path: "a.swift", startLine: 1, endLine: 2)
+        let resolved = try #require(graph.resolve(.codeRef(ref)))
+        let items = ReviewContextMenuLogic.navigationItems(for: resolved, subject: .codeRef(ref), in: graph)
+        #expect(items.contains(.button(ReviewMenuEntry(title: "Show in Diff", command: .navigate(.diffLocation(ref))))))
+        #expect(!items.contains { if case .button(let e) = $0 { e.title == "Show in Code" } else { false } })
+    }
+
+    @Test func pullRequestNavigationGroupsMultipleFlowsAndSingleDecision() throws {
+        let graph = compactGraph()
+        let resolved = try #require(graph.resolve(.pullRequest))
+        let items = ReviewContextMenuLogic.navigationItems(for: resolved, subject: .pullRequest, in: graph)
+        #expect(
+            items.contains(
+                .button(ReviewMenuEntry(title: "Show Related Decision", command: .navigate(.decisionDetail("d1"))))))
+        #expect(
+            items.contains(
+                .submenu(
+                    "Show Related Flows",
+                    [
+                        ReviewMenuEntry(title: "F1", command: .navigate(.flowDetail("f1"))),
+                        ReviewMenuEntry(title: "F2", command: .navigate(.flowDetail("f2"))),
+                    ])))
+    }
+
+    @Test func performRoutesEachCommandToItsAction() {
+        var asked: [ReviewSubject] = []
+        var questions: [(String, ReviewSubject)] = []
+        var navigated: [NavigationTarget] = []
+        let actions = ReviewActions(
+            ask: { asked.append($0) }, askQuestion: { questions.append(($0, $1)) },
+            navigate: { navigated.append($0) })
+
+        actions.perform(.ask(.pullRequest))
+        actions.perform(.askTradeoff(.decision("d")))
+        actions.perform(.navigate(.summary))
+
+        #expect(asked == [.pullRequest])
+        #expect(questions.map(\.0) == ["Why did the PR choose this side of the tradeoff?"])
+        #expect(questions.map(\.1) == [.decision("d")])
+        #expect(navigated == [.summary])
+    }
+
+    @MainActor
+    @Test func performCopyURLPutsTheLinkOnThePasteboard() throws {
+        let url = try #require(URL(string: "https://github.com/acme/shop/pull/7"))
+        ReviewActions().perform(.copyURL(url))
+        #expect(NSPasteboard.general.string(forType: .string) == url.absoluteString)
+    }
 }
