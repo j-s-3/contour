@@ -5,11 +5,14 @@ struct CodeViewerView: View {
     let checkout: RepoCheckout?
     var onBack: () -> Void
 
-    @State private var lines: [(number: Int, text: String)] = []
-    @State private var contextLines = 6
-    @State private var showWholeFile = false
-    @State private var wholeFile: String = ""
-    @State private var errorMessage: String?
+    @State private var state: CodeViewerState
+
+    init(ref: CodeRef, checkout: RepoCheckout?, initialState: CodeViewerState = CodeViewerState(), onBack: @escaping () -> Void) {
+        self.ref = ref
+        self.checkout = checkout
+        self.onBack = onBack
+        _state = State(initialValue: initialState)
+    }
 
     private let repoContext = RepoContextService()
     @Environment(\.reviewActions) private var actions
@@ -18,13 +21,11 @@ struct CodeViewerView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if let errorMessage {
+            if let errorMessage = state.errorMessage {
                 ContentUnavailableView("Couldn't load this file", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if showWholeFile {
-                ScrollView { codeText(CodeViewerLogic.numberedLines(wholeFile)) }
             } else {
-                ScrollView { codeText(lines) }
+                ScrollView { codeText(state.visibleRows) }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -48,7 +49,7 @@ struct CodeViewerView: View {
                 .font(.system(.body, design: .monospaced))
                 .fontWeight(.medium)
 
-            if ref.side == .base {
+            if CodeViewerLogic.showsBaseBadge(ref) {
                 Text("base").font(.caption2).foregroundStyle(.secondary)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Color.secondary.opacity(0.15), in: Capsule())
@@ -69,19 +70,18 @@ struct CodeViewerView: View {
             .help("See these lines in the raw diff")
 
             Button {
-                contextLines += 8
+                state.expandContext()
                 Task { await load() }
             } label: {
                 Label("Expand context", systemImage: "arrow.up.and.down")
             }
             .buttonStyle(.plain)
-            .disabled(showWholeFile)
+            .disabled(state.expandContextDisabled)
 
             Button {
-                showWholeFile.toggle()
-                if showWholeFile { Task { await loadWholeFile() } }
+                if state.toggleWholeFile() { Task { await loadWholeFile() } }
             } label: {
-                Label(showWholeFile ? "Show excerpt" : "Open whole file", systemImage: "doc.text")
+                Label(state.wholeFileToggleTitle, systemImage: "doc.text")
             }
             .buttonStyle(.plain)
         }
@@ -111,29 +111,15 @@ struct CodeViewerView: View {
     }
 
     private func load() async {
-        switch await CodeViewerLogic.loadExcerpt(
-            checkout: checkout, ref: ref, contextLines: contextLines, service: repoContext
-        ) {
-        case .noCheckout:
-            errorMessage = "No local checkout available."
-        case .loaded(let ls):
-            lines = ls
-            errorMessage = nil
-        case .failed(let message):
-            errorMessage = message
-        }
+        let outcome = await CodeViewerLogic.loadExcerpt(
+            checkout: checkout, ref: ref, contextLines: state.contextLines, service: repoContext
+        )
+        state.apply(excerpt: outcome)
     }
 
     private func loadWholeFile() async {
-        switch await CodeViewerLogic.loadWholeFile(checkout: checkout, path: ref.path, service: repoContext) {
-        case .noCheckout:
-            break
-        case .loaded(let content):
-            wholeFile = content
-            errorMessage = nil
-        case .failed(let message):
-            errorMessage = message
-        }
+        let outcome = await CodeViewerLogic.loadWholeFile(checkout: checkout, path: ref.path, service: repoContext)
+        state.apply(wholeFile: outcome)
     }
 }
 
@@ -141,6 +127,8 @@ enum CodeViewerLogic {
     static func isInRef(_ lineNumber: Int, ref: CodeRef) -> Bool {
         lineNumber >= ref.startLine && lineNumber <= ref.endLine
     }
+
+    static func showsBaseBadge(_ ref: CodeRef) -> Bool { ref.side == .base }
 
     static func numberedLines(_ text: String) -> [(number: Int, text: String)] {
         text.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }
@@ -181,6 +169,49 @@ enum CodeViewerLogic {
             return .loaded(try await service.readWholeFile(in: checkout, path: path))
         } catch {
             return .failed(error.localizedDescription)
+        }
+    }
+}
+
+struct CodeViewerState {
+    var lines: [(number: Int, text: String)] = []
+    var contextLines = 6
+    var showWholeFile = false
+    var wholeFile = ""
+    var errorMessage: String?
+
+    var visibleRows: [(number: Int, text: String)] {
+        showWholeFile ? CodeViewerLogic.numberedLines(wholeFile) : lines
+    }
+
+    var expandContextDisabled: Bool { showWholeFile }
+
+    var wholeFileToggleTitle: String { showWholeFile ? "Show excerpt" : "Open whole file" }
+
+    mutating func expandContext() { contextLines += 8 }
+
+    mutating func toggleWholeFile() -> Bool {
+        showWholeFile.toggle()
+        return showWholeFile
+    }
+
+    mutating func apply(excerpt outcome: CodeViewerLogic.ExcerptOutcome) {
+        switch outcome {
+        case .noCheckout: errorMessage = "No local checkout available."
+        case .loaded(let ls):
+            lines = ls
+            errorMessage = nil
+        case .failed(let message): errorMessage = message
+        }
+    }
+
+    mutating func apply(wholeFile outcome: CodeViewerLogic.WholeFileOutcome) {
+        switch outcome {
+        case .noCheckout: break
+        case .loaded(let content):
+            wholeFile = content
+            errorMessage = nil
+        case .failed(let message): errorMessage = message
         }
     }
 }

@@ -133,4 +133,60 @@ struct CodeViewerViewTests {
         guard case .failed(let message) = outcome else { Issue.record("expected .failed, got \(outcome)"); return }
         #expect(!message.isEmpty)
     }
+
+
+    @Test func showsBaseBadgeOnlyForBaseSide() {
+        #expect(CodeViewerLogic.showsBaseBadge(CodeRef(path: "a", startLine: 1, endLine: 1, side: .base)))
+        #expect(!CodeViewerLogic.showsBaseBadge(CodeRef(path: "a", startLine: 1, endLine: 1)))
+    }
+
+    @Test func expandContextWidensByEight() {
+        var state = CodeViewerState()
+        #expect(state.contextLines == 6)
+        state.expandContext()
+        #expect(state.contextLines == 14)
+    }
+
+    @Test func toggleWholeFileSwitchesRowsTitleAndExpandAvailability() {
+        var state = CodeViewerState()
+        state.lines = [(3, "x")]
+        state.wholeFile = "a\nb"
+        #expect(state.visibleRows.map(\.number) == [3])
+        #expect(state.wholeFileToggleTitle == "Open whole file")
+        #expect(!state.expandContextDisabled)
+
+        let opened = state.toggleWholeFile()
+        #expect(opened)
+        #expect(state.visibleRows.map(\.text) == ["a", "b"])
+        #expect(state.wholeFileToggleTitle == "Show excerpt")
+        #expect(state.expandContextDisabled)
+
+        let closed = state.toggleWholeFile()
+        #expect(!closed)
+        #expect(state.visibleRows.map(\.number) == [3])
+    }
+
+    @Test func excerptOutcomesSetLinesAndErrorMessage() {
+        var state = CodeViewerState()
+        state.apply(excerpt: .noCheckout)
+        #expect(state.errorMessage == "No local checkout available.")
+        state.apply(excerpt: .failed("boom"))
+        #expect(state.errorMessage == "boom")
+        state.apply(excerpt: .loaded([(1, "a")]))
+        #expect(state.errorMessage == nil)
+        #expect(state.lines.map(\.text) == ["a"])
+    }
+
+    @Test func wholeFileOutcomesKeepExcerptOnNoCheckoutAndSurfaceFailures() {
+        var state = CodeViewerState()
+        state.errorMessage = "old"
+        state.apply(wholeFile: .noCheckout)
+        #expect(state.errorMessage == "old")
+        #expect(state.wholeFile.isEmpty)
+        state.apply(wholeFile: .failed("nope"))
+        #expect(state.errorMessage == "nope")
+        state.apply(wholeFile: .loaded("hello"))
+        #expect(state.errorMessage == nil)
+        #expect(state.wholeFile == "hello")
+    }
 }
