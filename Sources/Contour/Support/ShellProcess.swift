@@ -122,7 +122,7 @@ enum Shell {
         _ arguments: [String],
         cwd: URL? = nil,
         inactivityTimeout: Duration = .seconds(600)
-    ) -> AsyncThrowingStream<String, Error> {
+    ) -> AsyncThrowingStream<String, any Error> {
         AsyncThrowingStream { continuation in
             let process = Process()
             process.executableURL = resolveExecutable(executable)

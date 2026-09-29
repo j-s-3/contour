@@ -9,7 +9,7 @@ struct AnalysisProgress: Sendable {
 enum AnalysisServiceError: LocalizedError {
     case emptyResponse(harness: String)
     case notJSON(harness: String, raw: String)
-    case processFailed(harness: String, Error)
+    case processFailed(harness: String, any Error)
 
     var reviewerReason: String {
         switch self {
@@ -133,7 +133,7 @@ struct AnalysisService {
                 tier: tier, systemPrompt: Self.groundingSystemPrompt)
 
         var finalText: String?
-        var lastError: Error?
+        var lastError: any Error?
         var extractor = streaming.map(StreamingArrayExtractor.init(key:))
 
         do {

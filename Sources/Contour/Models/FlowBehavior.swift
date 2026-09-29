@@ -72,7 +72,7 @@ struct FlowBehaviorNode: Codable, Hashable, Sendable, Identifiable {
         case id, label, kind, detail, change, before, after, substeps, stepIds, componentId,
             subflowId, boundaryId, decisionIds, refs, provenance, confidence
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decode(String.self, forKey: .label)
@@ -111,7 +111,7 @@ struct FlowBehaviorEdge: Codable, Hashable, Sendable, Identifiable {
         self.change = change
     }
     enum CodingKeys: String, CodingKey { case fromId, toId, label, flow, change }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         fromId = try c.decode(String.self, forKey: .fromId)
         toId = try c.decode(String.self, forKey: .toId)
@@ -133,7 +133,7 @@ struct FlowBoundary: Codable, Hashable, Sendable, Identifiable {
         self.kind = kind
     }
     enum CodingKeys: String, CodingKey { case id, label, kind }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
@@ -159,7 +159,7 @@ struct FlowBehavior: Codable, Hashable, Sendable {
         self.boundaries = boundaries
     }
     enum CodingKeys: String, CodingKey { case summary, changeSummary, nodes, edges, boundaries }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         summary = try c.decodeIfPresent(String.self, forKey: .summary)
         changeSummary = try c.decodeIfPresent(String.self, forKey: .changeSummary)
@@ -194,7 +194,7 @@ struct FlowBehavior: Codable, Hashable, Sendable {
 
 struct FailableDecode<T: Decodable>: Decodable {
     var value: T?
-    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+    init(from decoder: any Decoder) throws { value = try? T(from: decoder) }
 }
 
 struct FlowAnchor: Codable, Hashable, Sendable {

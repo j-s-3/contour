@@ -28,7 +28,7 @@ enum HarnessEvent: Equatable, Sendable {
 }
 
 enum HarnessError: LocalizedError {
-    case contextFileUnreadable(String, underlying: Error)
+    case contextFileUnreadable(String, underlying: any Error)
 
     var errorDescription: String? {
         switch self {

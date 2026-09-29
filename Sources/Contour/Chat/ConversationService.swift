@@ -31,7 +31,7 @@ struct ConversationService {
         contextDocument: String,
         history: [ChatMessage],
         question: String
-    ) -> AsyncThrowingStream<ConversationEvent, Error> {
+    ) -> AsyncThrowingStream<ConversationEvent, any Error> {
         if MockAnalysisFixtures.isEnabled {
             return Self.mockResponse(contextDocument: contextDocument, question: question)
         }
@@ -113,8 +113,9 @@ struct ConversationService {
            blocks only for short, essential excerpts.
         """
 
-    static func mockResponse(contextDocument: String, question: String) -> AsyncThrowingStream<ConversationEvent, Error>
-    {
+    static func mockResponse(contextDocument: String, question: String) -> AsyncThrowingStream<
+        ConversationEvent, any Error
+    > {
         let selected =
             contextDocument
             .components(separatedBy: "\n")

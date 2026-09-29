@@ -2,14 +2,14 @@ import Foundation
 
 struct StageDecodingError: LocalizedError {
     var stageLabel: String
-    var underlying: Error
+    var underlying: any Error
     var rawJSON: String
 
     var errorDescription: String? {
         "\(stageLabel) stage returned JSON that didn't decode: \(Self.describe(underlying))\n\nRaw response (truncated):\n\(rawJSON.prefix(2000))"
     }
 
-    private static func describe(_ error: Error) -> String {
+    private static func describe(_ error: any Error) -> String {
         guard let decodingError = error as? DecodingError else { return "\(error)" }
         switch decodingError {
         case .keyNotFound(let key, let ctx):
@@ -46,7 +46,7 @@ enum StageDecoding {
         var behaviorChanges: [BehaviorChange]
 
         enum CodingKeys: String, CodingKey { case behaviorChanges }
-        init(from decoder: Decoder) throws {
+        init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             behaviorChanges = try c.decodeIfPresent([BehaviorChange].self, forKey: .behaviorChanges) ?? []
         }
@@ -60,7 +60,7 @@ enum StageDecoding {
         var architecture: ArchitectureAssessment?
 
         enum CodingKeys: String, CodingKey { case components, edges, boundaries, architectureImpact, architecture }
-        init(from decoder: Decoder) throws {
+        init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             components = try c.decodeIfPresent([ComponentNode].self, forKey: .components) ?? []
             edges = try c.decodeIfPresent([ArchitectureEdge].self, forKey: .edges) ?? []
@@ -75,7 +75,7 @@ enum StageDecoding {
         var decisions: [DecisionNode]
 
         enum CodingKeys: String, CodingKey { case decisions }
-        init(from decoder: Decoder) throws {
+        init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             decisions = try c.decodeIfPresent([DecisionNode].self, forKey: .decisions) ?? []
         }
@@ -86,7 +86,7 @@ enum StageDecoding {
         var flows: [FlowNode]
 
         enum CodingKeys: String, CodingKey { case entryPoints, flows }
-        init(from decoder: Decoder) throws {
+        init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             entryPoints = try c.decodeIfPresent([EntryPointNode].self, forKey: .entryPoints) ?? []
             flows = try c.decodeIfPresent([FlowNode].self, forKey: .flows) ?? []
@@ -101,7 +101,7 @@ enum StageDecoding {
         var changeMap: [ChangeMapEntry]?
 
         enum CodingKeys: String, CodingKey { case considerations, needsJudgment, uncertainties, questions, changeMap }
-        init(from decoder: Decoder) throws {
+        init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             considerations = try c.decodeIfPresent([Consideration].self, forKey: .considerations) ?? []
             needsJudgment = try c.decodeIfPresent([Statement].self, forKey: .needsJudgment) ?? []
