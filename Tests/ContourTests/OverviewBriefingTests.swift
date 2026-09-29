@@ -2,18 +2,13 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// The Overview's "Things to think about" must stay a list of five-second questions, even
-/// for graphs produced before the judgment stage wrote to that budget.
 struct OverviewBriefingTests {
-
     @Test func considerationsFromTheJudgmentStageWin() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.pr.considerations = [Consideration(id: "c1", question: "Is a queue hop acceptable?", detail: "Publishing gets slower.")]
         #expect(graph.thingsToThinkAbout.map(\.id) == ["c1"])
     }
 
-    /// Older graphs: the behavior change's human question leads, then judgment items as
-    /// concerns, then uncertainties as open questions.
     @Test func olderGraphsAreCondensedInOrder() {
         let graph = ContourSampleData.publishTriggeredReindex
         let items = graph.thingsToThinkAbout
@@ -80,8 +75,6 @@ struct OverviewBriefingTests {
         #expect(odd.outcome == nil)
     }
 
-    /// The captured fixtures predate `considerations`; the Overview must still produce a
-    /// short list from them rather than an empty section.
     @Test func mockFixturesStillYieldThingsToThinkAbout() throws {
         let behavior = try StageDecoding.decode(
             StageDecoding.BehaviorChangeResult.self, from: MockAnalysisFixtures.response(for: .behaviorChange)
@@ -98,8 +91,6 @@ struct OverviewBriefingTests {
         #expect(items.allSatisfy { !$0.question.contains("src/") })
     }
 
-    /// The captured fixtures come from a run that wrote `considerations` to budget; if a
-    /// regeneration ever loses them, mock mode would silently fall back to condensing.
     @Test func mockFixturesCarryBudgetedConsiderations() throws {
         let judgment = try StageDecoding.decode(
             StageDecoding.JudgmentResult.self, from: MockAnalysisFixtures.response(for: .judgment)
@@ -112,11 +103,6 @@ struct OverviewBriefingTests {
         #expect(behavior.behaviorChanges.first?.after.last?.outcome != nil)
     }
 
-    // MARK: - While the analysis runs
-
-    /// Regression: the behavior change's question used to show first and then vanish when
-    /// judgment landed with its own list. Replaying the stages in pipeline order, every
-    /// list the Overview shows must keep the previous one as its prefix.
     @Test func thingsToThinkAboutOnlyGrowWhileStagesLand() throws {
         func fixture<T: Decodable>(_ type: T.Type, _ stage: PipelineStage) throws -> T {
             try StageDecoding.decode(type, from: MockAnalysisFixtures.response(for: stage))
@@ -151,8 +137,6 @@ struct OverviewBriefingTests {
         #expect(shown == graph.pr.considerations?.map(\.id))
     }
 
-    /// A finished analysis, and an earlier revision's list while it is revalidated, show
-    /// what they have at once; only a list still to come holds the placeholder.
     @Test func thingsToThinkAboutShowAtOnceWhenNothingMoreIsComing() {
         let graph = ContourSampleData.publishTriggeredReindex
         #expect(graph.thingsToThinkAbout(during: AnalysisState(isComplete: true))?.isEmpty == false)

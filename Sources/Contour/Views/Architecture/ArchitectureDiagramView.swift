@@ -1,8 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// How a box or arrow is drawn. Only Delta distinguishes these; Before and After are
-/// coherent snapshots drawn quietly throughout.
 enum ArchEmphasis: Equatable {
     case context, changed, added, removed
 
@@ -25,28 +23,23 @@ enum ArchEmphasis: Equatable {
     }
 }
 
-/// Everything one box shows. Implementation counts and provenance live in the inspector.
 struct ArchBox: Identifiable, Equatable {
     var id: String
     var title: String
     var purpose: String?
     var emphasis: ArchEmphasis
-    /// The part's own before → after phrases. In Before/After only one side is set.
     var changeBefore: String?
     var changeAfter: String?
-    /// The design decision that explains this part, as its question.
     var decision: String?
     var decisionId: String?
     var moreDecisions: Int = 0
     var questions: Int = 0
-    /// A part outside the one being zoomed into: drawn small and quiet.
     var isNeighbor = false
     var hasInside = false
 
     var showsChange: Bool { changeBefore != nil || changeAfter != nil || emphasis != .context }
 }
 
-/// Everything one arrow shows.
 struct ArchArrow: Identifiable, Equatable {
     var id: String
     var fromId: String
@@ -64,23 +57,14 @@ struct ArchContainer: Identifiable, Equatable {
     var label: String
     var kind: BoundaryKind
     var memberIds: [String]
-    /// The part the reviewer zoomed into, drawn as the container of its own parts.
     var isFocus = false
 
-    /// External, trust and network boundaries are drawn with a dashed border, so a boundary
-    /// outside the system under review reads as "outside" at a glance.
     var isExternalBoundary: Bool { [.external, .trust, .network].contains(kind) }
 
-    /// The boundary's accent: a trust boundary is flagged orange regardless of focus;
-    /// otherwise the part being zoomed into stands out in the accent color.
     var tint: Color { kind == .trust ? .orange : (isFocus ? .accentColor : .secondary) }
 }
 
-/// Pure derivations behind the drawing — an arrow's stroke and arrowhead geometry, and the
-/// hover-state transition — factored out so they're tested directly rather than through
-/// `Canvas` drawing or a gesture callback.
 enum ArchDrawingLogic {
-    /// The line's color and width for one emphasis, before selection brightens it.
     static func strokeStyle(for emphasis: ArchEmphasis) -> (color: Color, width: CGFloat) {
         switch emphasis {
         case .context: return (Color.secondary.opacity(0.55), 1.4)
@@ -90,16 +74,12 @@ enum ArchDrawingLogic {
         }
     }
 
-    /// A removed relationship always reads as removed, even when it was also async.
     static func dashPattern(for arrow: ArchArrow) -> [CGFloat] {
         if arrow.emphasis == .removed { return [4, 4] }
         if arrow.isAsync { return [7, 5] }
         return []
     }
 
-    /// The arrowhead's three corners for a line ending at `tip`, aimed by the segment
-    /// arriving from `prev`: a symmetric triangle whose base sits `size` points back from
-    /// the tip along that direction.
     static func arrowheadTriangle(tip: CGPoint, from prev: CGPoint, size: CGFloat) -> (tip: CGPoint, left: CGPoint, right: CGPoint) {
         let angle = atan2(tip.y - prev.y, tip.x - prev.x)
         let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
@@ -108,17 +88,11 @@ enum ArchDrawingLogic {
         return (tip, left, right)
     }
 
-    /// The next hover anchor: entering sets it, leaving clears it only if this was the anchor
-    /// that was hovered — a fast pointer move onto a sibling must not clobber the sibling's
-    /// own hover, which already set `current` to something else by the time this fires.
     static func hoverUpdate(current: ArchAnchor?, anchor: ArchAnchor, isHovering: Bool) -> ArchAnchor? {
         isHovering ? anchor : (current == anchor ? nil : current)
     }
 }
 
-/// The architecture drawing (§4.3): a handful of labeled boxes and arrows, laid out by
-/// `GraphLayoutEngine` and fitted to the space available. It is sized to be read, not
-/// explored — it scrolls only when a drawing is too big to fit at a comfortable size.
 struct ArchitectureDiagramView: View {
     let boxes: [ArchBox]
     let arrows: [ArchArrow]
@@ -130,7 +104,6 @@ struct ArchitectureDiagramView: View {
 
     @State private var hovered: ArchAnchor?
 
-    /// Below this, the drawing scrolls instead of shrinking further.
     private let minimumScale: CGFloat = 0.62
 
     var body: some View {
@@ -160,14 +133,11 @@ struct ArchitectureDiagramView: View {
         }
     }
 
-    // MARK: - Drawing
-
     private func canvas(_ layout: ArchDiagramLayout) -> some View {
         ZStack(alignment: .topLeading) {
             Color.clear.contentShape(Rectangle()).onTapGesture { onSelect(nil) }
 
             ForEach(layout.boundaries) { placed in
-                // A container split into runs comes back as "id#0", "id#1".
                 let base = placed.id.split(separator: "#").first.map(String.init) ?? placed.id
                 if let container = containers.first(where: { $0.id == base }) {
                     containerView(container)
@@ -194,7 +164,6 @@ struct ArchitectureDiagramView: View {
 
             ForEach(layout.edges) { placed in
                 if let arrow = arrows.first(where: { $0.id == placed.id }) {
-                    // Sized by its own text (the layout reserved room for it), centered on the line.
                     labelView(arrow)
                         .fixedSize()
                         .position(placed.labelCenter)
@@ -203,8 +172,6 @@ struct ArchitectureDiagramView: View {
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
     }
-
-    // MARK: Boxes
 
     private func boxView(_ box: ArchBox) -> some View {
         let selected = selection == .node(box.id)
@@ -309,8 +276,6 @@ struct ArchitectureDiagramView: View {
         }
     }
 
-    // MARK: Arrows
-
     private func draw(_ arrow: ArchArrow, _ placed: ArchDiagramLayout.PlacedEdge, in context: inout GraphicsContext) {
         guard placed.points.count >= 2 else { return }
         let selected = selection == .edge(arrow.id)
@@ -333,7 +298,6 @@ struct ArchitectureDiagramView: View {
         context.fill(head, with: .color(stroke))
     }
 
-    /// An orthogonal polyline with softened corners.
     nonisolated static func roundedPath(_ points: [CGPoint]) -> Path {
         var path = Path()
         path.move(to: points[0])
@@ -394,8 +358,6 @@ struct ArchitectureDiagramView: View {
         .help(arrow.previousLabel.map { "\($0) → \(arrow.label)" } ?? arrow.label)
     }
 
-    // MARK: Containers
-
     private func containerView(_ container: ArchContainer) -> some View {
         let tint = container.tint
         return ZStack(alignment: .topLeading) {
@@ -415,10 +377,6 @@ struct ArchitectureDiagramView: View {
     }
 }
 
-// MARK: - Sizes
-
-/// Text sizes shared by the drawing and the layout, which measures boxes and labels before
-/// SwiftUI draws them so the layout can give every label the room it needs.
 enum ArchMetrics {
     static let boxWidth: CGFloat = 224
     static let neighborWidth: CGFloat = 176

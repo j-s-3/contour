@@ -7,11 +7,6 @@ final class PlaceholderTests: XCTestCase {
         XCTAssertNil(GitHubService.normalize("not a url"))
     }
 
-    /// Regression test using a captured real response from `pi` analyzing cli/cli#1
-    /// (see design doc §10) — proves the architecture-stage JSON schema this app asks
-    /// for actually round-trips through StageDecoding into real graph nodes, with real
-    /// CodeRefs, real provenance tags, and lenient decoding for the fields pi omitted
-    /// (blobSha, side on some refs).
     func testDecodeRealArchitectureResponse() throws {
         let url = Bundle.module.url(forResource: "architecture_response", withExtension: "json", subdirectory: "Fixtures")!
         let data = try Data(contentsOf: url)
@@ -28,15 +23,11 @@ final class PlaceholderTests: XCTestCase {
         XCTAssertFalse(prCommand?.refs.isEmpty ?? true)
         XCTAssertEqual(prCommand?.refs.first?.path, "command/pr.go")
 
-        // This component's ref omitted blobSha/side entirely — confirms lenient decoding.
         let clientComponent = result.components.first { $0.id == "github-api-client" }
         XCTAssertEqual(clientComponent?.refs.first?.side, .head)
         XCTAssertNil(clientComponent?.refs.first?.blobSha)
     }
 
-    /// Lenient decode of the behavior-change stage: confirms defaults kick in when the
-    /// AI omits `before`/`after`/`tag`/`componentIds`, mirroring the architecture-stage
-    /// lenient-decode test above.
     func testDecodeLenientBehaviorChange() throws {
         let json = """
         {
@@ -63,8 +54,6 @@ final class PlaceholderTests: XCTestCase {
         XCTAssertTrue(change.after[0].componentIds.isEmpty)
     }
 
-    /// Confirms a `PRGraph` constructed directly (mock/preview data, same shape the
-    /// pipeline assembles) round-trips the new hierarchy fields end to end.
     func testMockGraphExercisesHierarchyFields() throws {
         let graph = ContourSampleData.publishTriggeredReindex
         XCTAssertNotNil(graph.dominantBehaviorChange)

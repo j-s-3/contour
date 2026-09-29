@@ -3,13 +3,7 @@ import Foundation
 import SwiftUI
 @testable import Contour
 
-/// The in-app mark is drawn from a Swift port of `scripts/generate-logo.py`, so these
-/// pin it to the artwork the icon is rendered from.
 struct ContourMarkTests {
-
-    // MARK: - Parity with the logo artwork
-
-    /// Every coordinate of every ring's path in the committed icon SVG, in order.
     private static func svgRingCoordinates() throws -> [[Double]] {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -22,8 +16,6 @@ struct ContourMarkTests {
         }
     }
 
-    /// The same sequence the SVG path holds: the start point, then each Bézier's two
-    /// control points and end point.
     private static func swiftRingCoordinates(_ ring: ContourMarkGeometry.Ring) -> [Double] {
         var out: [CGFloat] = [ring.points[0].x, ring.points[0].y]
         for s in ContourMarkGeometry.bezierSegments(ring.points) {
@@ -38,27 +30,22 @@ struct ContourMarkTests {
         for (ring, expected) in zip(ContourMarkGeometry.rings, svg) {
             let actual = Self.swiftRingCoordinates(ring)
             #expect(actual.count == expected.count)
-            // The SVG is written to one decimal place.
             let worst = zip(actual, expected).map { abs($0 - $1) }.max() ?? .infinity
             #expect(worst <= 0.051, "ring \(ring.level) is off by up to \(worst)")
         }
     }
 
     @Test func peakMatchesTheIconArtwork() {
-        // <circle cx="594.8" cy="466.0" r="23.4" fill="#FFC857"/>
         #expect(abs(ContourMarkGeometry.peak.x - 594.8) < 0.051)
         #expect(abs(ContourMarkGeometry.peak.y - 466.0) < 0.051)
         #expect(abs(ContourMarkGeometry.peakRadius - 23.4) < 0.051)
     }
 
     @Test func darkPaletteIsTheIconPalette() {
-        // Outermost and innermost stroke colours in the SVG: #3FC1C9 and #FFC857.
         #expect(ContourMarkPalette.dark.outer == (0x3F, 0xC1, 0xC9))
         #expect(ContourMarkPalette.dark.inner == (0xFF, 0xC8, 0x57))
     }
 
-    /// The light-appearance palette uses deeper tones of the same two hues as dark, per
-    /// its doc comment, rather than the icon's own (pale-on-dark-tile) colours.
     @Test func lightPaletteUsesDeeperTonesOfTheSameHues() {
         #expect(ContourMarkPalette.light.outer == (0x1F, 0x95, 0x9E))
         #expect(ContourMarkPalette.light.inner == (0xE0, 0x98, 0x12))
@@ -69,7 +56,6 @@ struct ContourMarkTests {
         #expect(ContourMarkPalette.forScheme(.light).outer == ContourMarkPalette.light.outer)
     }
 
-    /// The line warms from the outer hue at the base to the inner (peak) hue at the summit.
     @Test func lineColorRunsFromOuterAtTheBaseToThePeakAtTheSummit() {
         let palette = ContourMarkPalette.dark
         let expectedOuter = Color(.sRGB, red: palette.outer.0 / 255, green: palette.outer.1 / 255, blue: palette.outer.2 / 255)
@@ -77,9 +63,6 @@ struct ContourMarkTests {
         #expect(palette.line(level: 1) == palette.peak)
     }
 
-    // MARK: - Geometry
-
-    /// The mark is documented as "about 1.4:1", wider than tall.
     @Test func boundsAreWiderThanTallMatchingTheDocumentedAspectRatio() {
         #expect(ContourMarkGeometry.bounds.width > 0 && ContourMarkGeometry.bounds.height > 0)
         #expect(ContourMarkGeometry.aspectRatio > 1.3 && ContourMarkGeometry.aspectRatio < 1.5)
@@ -90,22 +73,12 @@ struct ContourMarkTests {
         #expect(points.count == 12)
     }
 
-    // MARK: - ContourMarkView's pure draw-state helpers
-    //
-    // `draw(in:size:)` itself needs a live GraphicsContext, which tests can't construct, so
-    // the state it derives (compact threshold, stroke widths, ring visibility, peak
-    // geometry) is pulled out into nonisolated static helpers and pinned here instead.
-
-    /// The compact threshold is exclusive: exactly `compactHeight` (40) still gets the full
-    /// mark, matching `size.height < Self.compactHeight` in `draw`.
     @Test func isCompactOnlyBelowTheThreshold() {
         #expect(ContourMarkView.isCompact(height: 39.999) == true)
         #expect(ContourMarkView.isCompact(height: 40) == false)
         #expect(ContourMarkView.isCompact(height: 104) == false)
     }
 
-    /// Compact drops every other ring (an optical simplification at favicon size); the full
-    /// mark keeps them all, in the same outermost-first order as `ContourMarkGeometry.rings`.
     @Test func visibleRingIndicesDropsEveryOtherRingWhenCompact() {
         #expect(ContourMarkGeometry.ringCount == 7, "the expectations below are written for 7 rings")
         #expect(ContourMarkView.visibleRingIndices(compact: false) == [0, 1, 2, 3, 4, 5, 6])
@@ -124,8 +97,6 @@ struct ContourMarkTests {
         #expect(ContourMarkView.minStrokeWidth(compact: false, scale: 2) == 0.45)
     }
 
-    /// The floor only bites when the geometric width would be thinner than `minWidth`;
-    /// otherwise the ring keeps its own proportional width.
     @Test func strokeWidthNeverGoesBelowTheMinimum() {
         let proportional = ContourMarkGeometry.stroke * 1.0 * 1.25
         #expect(ContourMarkView.strokeWidth(widthFactor: 1.0, weight: 1.25, minWidth: 0) == proportional)
@@ -137,7 +108,6 @@ struct ContourMarkTests {
         #expect(ContourMarkView.traceAlpha(ringOpacity: 0.5) == 0.06)
     }
 
-    /// The peak dot is drawn bigger when compact so it still reads at favicon size.
     @Test func dotRadiusIsLargerWhenCompact() {
         #expect(ContourMarkView.dotRadius(compact: false) == ContourMarkGeometry.peakRadius)
         #expect(ContourMarkView.dotRadius(compact: true) == ContourMarkGeometry.peakRadius * 1.5)
@@ -148,8 +118,6 @@ struct ContourMarkTests {
         #expect(rect == CGRect(x: 5, y: 15, width: 10, height: 10))
     }
 
-    /// The halo is centred on the peak and sized off the geometry's own `haloRadius`, so the
-    /// two never drift apart.
     @Test func haloRectIsCenteredOnThePeakWithTheHaloRadius() {
         let expected = CGRect(x: ContourMarkGeometry.peak.x - ContourMarkGeometry.haloRadius,
                               y: ContourMarkGeometry.peak.y - ContourMarkGeometry.haloRadius,
@@ -164,8 +132,6 @@ struct ContourMarkTests {
         #expect(ContourMarkView.haloOpacity(peakStage: 1) == 0.18)
     }
 
-    /// Floored at `traceOpacity` (never fully invisible) and reaches full opacity only once
-    /// the peak has completely resolved.
     @Test func peakDotOpacityIsFlooredThenReachesFullOpacity() {
         #expect(ContourMarkView.peakDotOpacity(peakStage: 0) == 0.12)
         #expect(ContourMarkView.peakDotOpacity(peakStage: 1) == 1)
@@ -174,8 +140,6 @@ struct ContourMarkTests {
     @Test func heroHeightIsUsedOnTheWelcomeAndAnalysisScreens() {
         #expect(ContourMarkView.heroHeight == 104)
     }
-
-    // MARK: - Resolving the mark
 
     @Test func nothingIsResolvedAtZeroAndEverythingAtOne() {
         let none = ContourResolution.stages(0)
@@ -188,7 +152,6 @@ struct ContourMarkTests {
     }
 
     @Test func peakResolvesFirstThenRingsFromTheSummitOutward() {
-        // Order of resolution: peak, innermost ring (last index), ..., outermost (index 0).
         for r in stride(from: 0.0, through: 1.0, by: 0.01) {
             let s = ContourResolution.stages(r)
             let order = [s.peak] + s.rings.reversed()
@@ -199,7 +162,6 @@ struct ContourMarkTests {
     }
 
     @Test func consecutiveRingsOverlapSoTheDrawingNeverStops() {
-        // Somewhere in the range, more than one part is mid-resolve at once.
         let overlapping = stride(from: 0.0, through: 1.0, by: 0.01).contains { r in
             let s = ContourResolution.stages(r)
             return ([s.peak] + s.rings).filter { $0 > 0 && $0 < 1 }.count > 1

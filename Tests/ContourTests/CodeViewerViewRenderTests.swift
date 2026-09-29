@@ -3,10 +3,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `CodeViewerView`'s body, header and row builder are SwiftUI code whose decisions live in
-/// `CodeViewerLogic` / `CodeViewerState`. This hosts the real view in an `NSHostingView` in
-/// each state (excerpt, whole file, error banner, base-side ref) so every builder runs against
-/// realistic rows; it pins that none of those states traps while building or laying out.
 @MainActor
 struct CodeViewerViewRenderTests {
 
