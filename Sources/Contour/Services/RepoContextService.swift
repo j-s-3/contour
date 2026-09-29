@@ -56,7 +56,7 @@ struct RepoContextService {
                 "git",
                 [
                     "fetch", "origin",
-                    "refs/pull/\(context.number)/head:refs/pr/\(context.number)/head",
+                    "+refs/pull/\(context.number)/head:refs/pr/\(context.number)/head",
                 ], cwd: dir)
 
             do {
