@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// The focused code viewer from §7: exact lines, a little surrounding context, expand to
-/// whole file, diff toggle, and a guaranteed way back to wherever the reviewer came from
-/// in the conceptual review. This is supporting evidence, not the primary interface.
 struct CodeViewerView: View {
     let ref: CodeRef
     let checkout: RepoCheckout?
@@ -59,8 +56,6 @@ struct CodeViewerView: View {
 
             Spacer()
 
-            // "Why this line?" — asks about exactly this range, carrying the concepts it
-            // supports along as context.
             Button { actions.ask(.codeRef(ref)) } label: {
                 Label("Ask about these lines", systemImage: "sparkles")
             }
@@ -142,26 +137,15 @@ struct CodeViewerView: View {
     }
 }
 
-/// The line-range highlight resolution and whole-file line numbering CLAUDE.md calls out
-/// for this file, pulled out of `CodeViewerView`'s body so it's directly testable with
-/// fixture `CodeRef`s and source text.
 enum CodeViewerLogic {
-    /// Whether a line number falls within the reference's cited range — what gets the
-    /// highlight background.
     static func isInRef(_ lineNumber: Int, ref: CodeRef) -> Bool {
         lineNumber >= ref.startLine && lineNumber <= ref.endLine
     }
 
-    /// A whole file's text as 1-indexed rows, the same numbering `codeText` expects.
     static func numberedLines(_ text: String) -> [(number: Int, text: String)] {
         text.components(separatedBy: "\n").enumerated().map { ($0.offset + 1, $0.element) }
     }
 
-    /// What `load()` does with an excerpt read, minus the `@State` writes: the missing-checkout
-    /// guard and the do/catch that were previously buried in `CodeViewerView`'s private method.
-    /// `readLines` itself is already covered end-to-end by `RepoContextServiceTests` against a
-    /// real, local (no-network) git checkout; this pins the *branching* `CodeViewerView` layers
-    /// on top of it, testable the same way.
     enum ExcerptOutcome {
         case noCheckout
         case loaded([(number: Int, text: String)])
@@ -183,9 +167,6 @@ enum CodeViewerLogic {
         }
     }
 
-    /// The same split for "Open whole file": no checkout is a silent no-op (matching
-    /// `CodeViewerView`'s original behavior of leaving a previously-loaded excerpt on screen
-    /// rather than clearing it), success carries the file's text, failure carries the message.
     enum WholeFileOutcome {
         case noCheckout
         case loaded(String)

@@ -1,21 +1,7 @@
 import Testing
 @testable import Contour
 
-/// `ArchitectureView.swift` was at 0.00% coverage, then 16.11% after #160 pulled `boxes`/
-/// `arrows`/`containers` out to `static` functions taking `graph`/`mode` explicitly instead
-/// of reading `self.graph`/`self.mode`. This suite continues that extraction (per CLAUDE.md's
-/// "extract layout/selection/formatting logic" guidance) for the rest of the instance methods
-/// that were still reading `@State`/`@Environment` directly: `zoom(into:)`/`zoom(to:)`,
-/// `reveal(_:)`, `dropHiddenSelection()`, `publishFocus()` and the legend's badge derivation
-/// each now delegate to a `nonisolated static func` that takes the relevant state as
-/// parameters and returns what should change, leaving only the `path`/`selection`/`actions`
-/// mutation itself in the view. `arrows` also picked up the `nonisolated` #185 missed (it
-/// wasn't yet called from a nonisolated context when that pass ran). The view's `body`,
-/// header/breadcrumb builders, and the `@FocusState`/`@Binding`/animation glue that's left in
-/// `zoom(to:)`/`reveal(_:)`/`dropHiddenSelection()`/`publishFocus()` stay untested — no
-/// UI-testing infrastructure in this suite to host them.
 struct ArchitectureViewTests {
-
     private func minimalGraph(components: [ComponentNode], boundaries: [SystemBoundary] = [],
                                edges: [ArchitectureEdge] = [], decisions: [DecisionNode] = [],
                                considerations: [Consideration]? = nil) -> PRGraph {
@@ -27,8 +13,6 @@ struct ArchitectureViewTests {
         )
         return PRGraph(pr: pr, components: components, decisions: decisions, architectureEdges: edges, boundaries: boundaries)
     }
-
-    // MARK: - boxes: before/after filtering
 
     @Test func boxesExcludeNewPartsInBeforeModeAndRemovedPartsInAfterMode() {
         let graph = minimalGraph(components: [
@@ -42,8 +26,6 @@ struct ArchitectureViewTests {
         #expect(Set(ArchitectureView.boxes(level, graph: graph, mode: .delta).map(\.id)) == Set(["new-part", "removed-part"]))
     }
 
-    // MARK: - boxes: emphasis only applies in delta mode
-
     @Test func emphasisReflectsChangeKindOnlyInDeltaMode() {
         let graph = minimalGraph(components: [ComponentNode(id: "p", title: "P", changeKind: .new)])
         let level = graph.architectureLevel(path: [])
@@ -51,8 +33,6 @@ struct ArchitectureViewTests {
         #expect(ArchitectureView.boxes(level, graph: graph, mode: .delta).first?.emphasis == .added)
         #expect(ArchitectureView.boxes(level, graph: graph, mode: .after).first?.emphasis == .context)
     }
-
-    // MARK: - boxes: the change phrase follows the selected mode
 
     @Test func changePhraseFollowsTheSelectedMode() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .changed,
@@ -70,8 +50,6 @@ struct ArchitectureViewTests {
         #expect(after?.changeBefore == nil && after?.changeAfter == "new")
     }
 
-    // MARK: - boxes: hasInside
-
     @Test func hasInsideIsTrueOnlyForATopLevelPartWithChildren() {
         let parent = ComponentNode(id: "parent", title: "Parent", changeKind: .unchanged)
         let child = ComponentNode(id: "child", title: "Child", changeKind: .unchanged, parentId: "parent")
@@ -83,8 +61,6 @@ struct ArchitectureViewTests {
         #expect(boxes.first { $0.id == "parent" }?.hasInside == true)
         #expect(boxes.first { $0.id == "leaf" }?.hasInside == false)
     }
-
-    // MARK: - containers
 
     @Test func containersIncludeOnlyMembersActuallyDrawn() {
         let a = ComponentNode(id: "a", title: "A", changeKind: .unchanged)
@@ -104,8 +80,6 @@ struct ArchitectureViewTests {
         let level = graph.architectureLevel(path: [])
         #expect(ArchitectureView.containers(level, graph: graph, mode: .delta).isEmpty)
     }
-
-    // MARK: - ChangeKind / EdgeChange / ArchitecturalImpact
 
     @Test func everyChangeKindMapsToItsArchEmphasis() {
         #expect(ChangeKind.new.emphasis == .added)
@@ -128,8 +102,6 @@ struct ArchitectureViewTests {
         #expect(ArchitecturalImpact.moderate.color == .orange)
         #expect(ArchitecturalImpact.significant.color == .red)
     }
-
-    // MARK: - legendInfo
 
     @Test func legendInfoIsNilOutsideDeltaMode() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .new)
@@ -184,8 +156,6 @@ struct ArchitectureViewTests {
         #expect(ArchitectureView.legendInfo(level, graph: graph, mode: .delta)?.hasQuestion == true)
     }
 
-    // MARK: - zoomTarget
-
     @Test func zoomTargetReturnsAncestryWhenThePartHasChildren() {
         let parent = ComponentNode(id: "parent", title: "Parent", changeKind: .unchanged)
         let child = ComponentNode(id: "child", title: "Child", changeKind: .unchanged, parentId: "parent")
@@ -199,13 +169,10 @@ struct ArchitectureViewTests {
         #expect(ArchitectureView.zoomTarget(into: "leaf", graph: graph) == nil)
     }
 
-    // MARK: - selectionAfterZoom
-
     @Test func selectionAfterZoomKeepsThePreviousFocusWhenStillDrawnAtTheNewPath() {
         let parent = ComponentNode(id: "parent", title: "Parent", changeKind: .unchanged)
         let child = ComponentNode(id: "child", title: "Child", changeKind: .unchanged, parentId: "parent")
         let graph = minimalGraph(components: [parent, child])
-        // Zooming out from "parent" back to the top level, where "parent" is still a drawn box.
         #expect(ArchitectureView.selectionAfterZoom(from: ["parent"], to: [], graph: graph) == .node("parent"))
     }
 
@@ -213,8 +180,6 @@ struct ArchitectureViewTests {
         let a = ComponentNode(id: "a", title: "A", changeKind: .unchanged)
         let b = ComponentNode(id: "b", title: "B", changeKind: .unchanged)
         let graph = minimalGraph(components: [a, b])
-        // Zooming from "a" into "b": "a" isn't inside "b" and no edge connects them, so it
-        // isn't drawn at the new level at all.
         #expect(ArchitectureView.selectionAfterZoom(from: ["a"], to: ["b"], graph: graph) == nil)
     }
 
@@ -222,8 +187,6 @@ struct ArchitectureViewTests {
         let graph = minimalGraph(components: [ComponentNode(id: "a", title: "A", changeKind: .unchanged)])
         #expect(ArchitectureView.selectionAfterZoom(from: [], to: [], graph: graph) == nil)
     }
-
-    // MARK: - revealTarget
 
     @Test func revealTargetForANodeZoomsToItsAncestryAndSelectsIt() {
         let parent = ComponentNode(id: "parent", title: "Parent", changeKind: .unchanged)
@@ -245,8 +208,6 @@ struct ArchitectureViewTests {
         let childB = ComponentNode(id: "childB", title: "B", changeKind: .unchanged, parentId: "parent")
         let edge = ArchitectureEdge(id: "e1", fromId: "childA", toId: "childB", label: "uses")
         let graph = minimalGraph(components: [parent, childA, childB], edges: [edge])
-        // Both endpoints collapse to "parent" at the top level, so this arrow only becomes its
-        // own edge once the reviewer is zoomed into "parent".
         let target = ArchitectureView.revealTarget(.edge("e1"), graph: graph)
         #expect(target?.path == ["parent"])
         #expect(target?.selection == .edge("e1"))
@@ -267,8 +228,6 @@ struct ArchitectureViewTests {
         #expect(ArchitectureView.revealTarget(.edge("ghost"), graph: graph) == nil)
     }
 
-    // MARK: - selectionAfterHidingCheck
-
     @Test func selectionAfterHidingCheckIsNilWhenNothingIsSelected() {
         let graph = minimalGraph(components: [])
         let level = graph.architectureLevel(path: [])
@@ -283,7 +242,6 @@ struct ArchitectureViewTests {
     }
 
     @Test func selectionAfterHidingCheckDropsANodeHiddenByTheMode() {
-        // A newly-added part is excluded from Before mode's boxes.
         let part = ComponentNode(id: "p", title: "P", changeKind: .new)
         let graph = minimalGraph(components: [part])
         let level = graph.architectureLevel(path: [])
@@ -298,8 +256,6 @@ struct ArchitectureViewTests {
         let level = graph.architectureLevel(path: [])
         #expect(ArchitectureView.selectionAfterHidingCheck(.edge("e1"), level: level, graph: graph, mode: .before) == nil)
     }
-
-    // MARK: - focusSubject
 
     @Test func focusSubjectForANodeSelectionIsItsComponent() {
         #expect(ArchitectureView.focusSubject(selection: .node("p"), path: []) == .component("p"))

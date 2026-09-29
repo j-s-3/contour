@@ -1,100 +1,47 @@
 import Foundation
 
-/// What the pipeline tells the review as it goes. The review opens on the first `.graph`
-/// and fills in from every later one; nothing waits for `.complete`.
 enum PipelineEvent: Sendable {
-    /// A technical log line, kept behind "Show log".
     case log(PipelineProgressEntry)
     case status(PipelineStage, StageStatus)
-    /// A new snapshot of the (linked) graph. Snapshots only ever gain or replace whole
-    /// slices; the store carries the reviewer's own marks across them.
     case graph(PRGraph)
     case diff(String)
     case checkout(RepoCheckout)
-    /// The graph on screen holds slices from an analysis of this earlier head; nil once
-    /// none remain.
     case revalidating(fromHead: String?)
     case fromCache
-    /// Every analysis stage has settled, successfully or not.
     case complete
-    /// Fetching or checking out failed: there's no PR to show at all.
     case fatal(String)
 }
 
-/// Orchestrates the pipeline from §10 as a dependency graph rather than a sequence, so the
-/// reviewer gets the review as soon as there's something to review (§ progressive opening):
-///
-///     fetch ──► PR shell on screen (title, metadata, raw diff)
-///       │
-///     checkout ──► cache? ──► exact hit: everything on screen, run only what's missing
-///       │                └──► earlier revision: shown, marked stale, replaced slice by slice
-///       ├── issue lookup ──► understanding (intent + plain-language)   ┐ tier 1
-///       ├── behavior change (the before/after hero)                     ┘
-///       ├── decisions (streamed, most consequential first)               tier 2
-///       ├── architecture ──► flows (streamed)                            tier 3
-///       └────────────────────────────────────────────► judgment         needs all of it
-///
-/// Only architecture → flows and everything → judgment are real dependencies. Decisions
-/// used to wait on architecture and flows on decisions, but only to be handed ids for
-/// cross-linking; those links are now derived locally from the code both sides cite
-/// (`GraphLinker`), which takes two strong-tier calls off the critical path.
-///
-/// Every analysis stage fails on its own: the slice stays empty, the section says so and
-/// offers a retry, and everything else carries on. Only fetch and checkout are fatal.
-///
-/// The reviewer can stop it at any point (`stop()`): what landed stays, and each stage that
-/// hadn't is marked stopped and offers the same Retry, so it resumes one section at a time.
 actor AnalysisPipeline {
     private let repoContext = RepoContextService()
     private let cache: AnalysisCache
 
-    /// All three pluggable choices are resolved once per run rather than read per stage,
-    /// so changing a setting mid-analysis can't produce a graph built half one way and
-    /// half the other.
     private let harnessID: HarnessID
     private let trackerID: TrackerID
     private let github: GitHubService
 
-    /// Bump this whenever a prompt or JSON schema changes shape — it's baked into the
-    /// cache filename, so old cache entries from a previous schema are never mistakenly
-    /// decoded against the new one; they just miss and re-run (§13).
     static let pipelineVersion = 13
 
     nonisolated let events: AsyncStream<PipelineEvent>
     private let continuation: AsyncStream<PipelineEvent>.Continuation
 
-    // Per-run state. One pipeline analyzes one PR once, plus any retries.
     private var ctx: RawPRContext?
     private var checkout: RepoCheckout?
     private var analysis: AnalysisService?
     private var verifier: CodeRefVerifier?
     private var ticket: TicketInfo?
     private var ticketLookedUp = false
-    /// Unlinked: links are derived on every publish, so a retried stage re-derives them.
     private var graph: PRGraph?
     private var statuses: [PipelineStage: StageStatus] = [:]
-    /// Stages whose slice on screen came from an earlier revision.
     private var stale: Set<PipelineStage> = []
     private var staleHead: String?
-    /// Stages whose slice was produced for this exact revision.
     private var completed: Set<PipelineStage> = []
     private var runTask: Task<Void, Never>?
-    /// Retries run outside `runTask`, so stopping has to reach them separately.
     private var retryTasks: [PipelineStage: Task<Void, Never>] = [:]
 
-    /// Test-only seams (`Tests/ContourTests/PipelineConcurrencyTests.swift`). All three stay
-    /// nil in production, where `run()` behaves exactly as before: a real `GitHubService`
-    /// fetch, a real `RepoContextService` checkout, and a real `AnalysisCache.latestRevision`
-    /// lookup. Tests use them to drive this actor's real scheduling, cancellation and
-    /// cache-restoration logic against the mock harness, with no network and no git checkout
-    /// — `AnalysisCache` is itself bypassed entirely under `CONTOUR_MOCK_ANALYSIS=1` (see its
-    /// doc comment), so `previousRevisionOverride` is the only way to exercise
-    /// stale-while-revalidate under the mock harness.
     private let prSourceOverride: (any PRSource)?
     private let checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)?
     private let previousRevisionOverride: AnalysisCache.Entry?
-    /// Mock analysis for this pipeline alone, instead of the process-wide environment
-    /// switch (see `AnalysisService.MockOptions`).
     private let mockOverride: AnalysisService.MockOptions?
 
     init(harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
@@ -114,42 +61,25 @@ actor AnalysisPipeline {
         (events, continuation) = AsyncStream.makeStream(of: PipelineEvent.self)
     }
 
-    /// Starts the run. Events arrive on `events` until `cancel()`; the stream stays open
-    /// after `.complete` so a retried stage can still report.
-    ///
-    /// - Parameter forceRefresh: bypass any cached analysis for this exact revision and
-    ///   re-run every stage. Used by the "Re-analyze (ignore cache)" command.
     func start(prURL: String, forceRefresh: Bool = false) {
         runTask?.cancel()
         runTask = Task { await run(prURL: prURL, forceRefresh: forceRefresh) }
     }
 
-    /// Test/bench-only seam (`BenchTests`, issue #60): runs the pipeline against a
-    /// pre-built context and checkout, skipping the real GitHub fetch and git clone —
-    /// the two network-bound steps a repeatable, offline latency measurement has no
-    /// business timing. Everything from here on (context-file write, cache lookup, stage
-    /// dispatch, verification, graph assembly, linking, publish) is the exact path a real
-    /// run takes, with `CONTOUR_MOCK_ANALYSIS=1` standing in for the model calls.
     func start(offlineContext ctx: RawPRContext, checkout: RepoCheckout, forceRefresh: Bool = true) {
         runTask?.cancel()
         runTask = Task { await runOffline(ctx: ctx, checkout: checkout, forceRefresh: forceRefresh) }
     }
 
-    /// Ends the run for good: nothing more is reported, and the stream closes.
     func cancel() {
         cancelInFlight()
         continuation.finish()
     }
 
-    /// "Stop analysis": ends everything in flight — cancelling a task tears down its
-    /// harness subprocess — and marks every stage that hadn't settled as stopped. What
-    /// already landed stays on screen, and unlike `cancel()` the stream stays open, so each
-    /// stopped stage can be resumed on its own with `retry(_:)`.
     func stop() {
         cancelInFlight()
         let changes = AnalysisState.stopping(statuses)
         guard !changes.isEmpty else { return }
-        // An interrupted issue lookup found nothing; let a resumed Understanding try again.
         if changes[.ticket] != nil { ticketLookedUp = false }
         for stage in PipelineStage.allCases { if let status = changes[stage] { setStatus(stage, status) } }
         let stopped = PipelineStage.allCases.filter { changes[$0] == .stopped }
@@ -158,14 +88,8 @@ actor AnalysisPipeline {
         finishIfSettled()
     }
 
-    /// Re-runs one failed or stopped stage — the per-section Retry.
     func retry(_ stage: PipelineStage) {
         guard analysis != nil, PipelineStage.analysis.contains(stage), statuses[stage]?.canRetry == true else { return }
-        // A previous retry of this same stage can still be in flight (Retry clicked more than
-        // once before the first attempt had a chance to flip the stage's status away from
-        // failed/stopped): cancel it before starting a fresh one, so at most one run of a
-        // stage is ever active and the newest call wins rather than racing the graph both
-        // would otherwise write into.
         retryTasks[stage]?.cancel()
         retryTasks[stage] = Task {
             if stage == .understanding { await lookUpTicket() }
@@ -181,8 +105,6 @@ actor AnalysisPipeline {
         for task in retryTasks.values { task.cancel() }
         retryTasks = [:]
     }
-
-    // MARK: - The run
 
     private func run(prURL: String, forceRefresh: Bool) async {
         do {
@@ -211,13 +133,9 @@ actor AnalysisPipeline {
             setStatus(.checkingOut, .done)
             try Task.checkCancellation()
 
-            // Built here rather than at init because the harness needs the checkout root to
-            // resolve the context file it hands the model.
             analysis = AnalysisService(harness: HarnessFactory.make(harnessID, contextDirectory: checkout.rootDir),
                                        mock: mockOverride)
 
-            // Written before the cache check, not after: contextual chat reads this file too,
-            // and it has to be there when the analysis itself came from the cache.
             let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
             try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
 
@@ -228,7 +146,6 @@ actor AnalysisPipeline {
                 return
             }
             await runStages(toRun)
-            // Stopped partway: `stop()` has already settled every stage and reported it.
             guard !Task.isCancelled else { return }
             finishIfSettled()
         } catch is CancellationError {
@@ -239,9 +156,6 @@ actor AnalysisPipeline {
         }
     }
 
-    /// The tail of `run(prURL:forceRefresh:)` — everything from the fetched context and a
-    /// ready checkout onward — with the fetch and the real `git clone`/checkout dropped.
-    /// See `start(offlineContext:checkout:forceRefresh:)`.
     private func runOffline(ctx: RawPRContext, checkout: RepoCheckout, forceRefresh: Bool) async {
         do {
             self.ctx = ctx
@@ -280,7 +194,6 @@ actor AnalysisPipeline {
         }
     }
 
-    /// Puts whatever a previous run left on screen at once, and returns what's still to do.
     private func restoreFromCache(_ ctx: RawPRContext, forceRefresh: Bool) -> Set<PipelineStage> {
         setStatus(.cacheCheck, .running(detail: nil))
         log(.cacheCheck, "looking for a previous analysis of this exact commit")
@@ -323,10 +236,8 @@ actor AnalysisPipeline {
         return toRun
     }
 
-    /// Runs the stages in dependency order with everything independent in parallel.
     private func runStages(_ toRun: Set<PipelineStage>) async {
         await withTaskGroup(of: Void.self) { group in
-            // Tier 1: what the PR is for, and the before/after hero.
             group.addTask {
                 if toRun.contains(.understanding) {
                     await self.lookUpTicket()
@@ -338,11 +249,9 @@ actor AnalysisPipeline {
             if toRun.contains(.behaviorChange) {
                 group.addTask { await self.execute(.behaviorChange) }
             }
-            // Tier 2: the decisions the reviewer has to judge.
             if toRun.contains(.decisions) {
                 group.addTask { await self.execute(.decisions) }
             }
-            // Tier 3: the system around the change. Flows need the architecture's parts.
             if toRun.contains(.architecture) || toRun.contains(.flows) {
                 group.addTask {
                     if toRun.contains(.architecture) { await self.execute(.architecture) }
@@ -350,15 +259,11 @@ actor AnalysisPipeline {
                 }
             }
         }
-        // Judgment synthesizes everything above, so it goes last — with whatever there is,
-        // even if a stage before it failed.
         if toRun.contains(.judgment) {
             await execute(.judgment)
         }
     }
 
-    /// Best-effort issue lookup: never fails the pipeline. Leaves `ticket` nil when there's
-    /// no reference, when the tracker isn't set up, or when the lookup errors.
     private func lookUpTicket() async {
         guard !ticketLookedUp, let ctx, !Task.isCancelled else { return }
         ticketLookedUp = true
@@ -382,16 +287,12 @@ actor AnalysisPipeline {
         }
     }
 
-    // MARK: - One stage
-
     private func execute(_ stage: PipelineStage) async {
         guard let analysis, let checkout, let verifier, !Task.isCancelled else { return }
         setStatus(stage, .running(detail: nil))
         do {
             let result = try await perform(stage, analysis: analysis, cwd: checkout.rootDir)
             guard !Task.isCancelled else { return }
-            // Checked before the slice lands, so no ref the checkout can't back is shown as
-            // final or used to link decisions to flows.
             let (verified, check) = await verifier.verify(result)
             guard !Task.isCancelled else { return }
             if check.unresolvedCount > 0 {
@@ -407,12 +308,8 @@ actor AnalysisPipeline {
             save()
         } catch {
             guard !Task.isCancelled else { return }
-            // A failed stage shows nothing rather than a half-streamed or previous-revision
-            // slice that would read as a conclusion about this code.
             graph?.clear(stage)
             stale.remove(stage)
-            // The technical account (raw response, stderr) goes to the log; the section
-            // gets a line the reviewer can act on.
             log(stage, "failed: \(error.localizedDescription)")
             setStatus(stage, .failed(stage.failureMessage(for: error)))
             publish()
@@ -421,7 +318,7 @@ actor AnalysisPipeline {
 
     private func perform(_ stage: PipelineStage, analysis: AnalysisService, cwd: URL) async throws -> StageResult {
         let label = stage.rawValue
-        let progress: (AnalysisProgress) -> Void = { [continuation] p in
+        let progress: @Sendable (AnalysisProgress) -> Void = { [continuation] p in
             continuation.yield(.log(PipelineProgressEntry(stage: label, detail: p.detail)))
         }
         func run(_ prompt: String, _ tier: AnalysisTier) async throws -> [String: Any] {
@@ -468,12 +365,9 @@ actor AnalysisPipeline {
         }
     }
 
-    /// Runs a stage whose array elements are shown as the model writes them. Elements pass
-    /// through an ordered channel and are all applied before this returns, so none can land
-    /// after — and duplicate — the stage's final, authoritative result.
     private func streamed<Element: Decodable & Sendable & Identifiable>(
         _ stage: PipelineStage, key: String, as: Element.Type, analysis: AnalysisService, cwd: URL,
-        prompt: String, tier: AnalysisTier, progress: @escaping (AnalysisProgress) -> Void
+        prompt: String, tier: AnalysisTier, progress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] where Element.ID == String {
         let (elements, sink) = AsyncStream.makeStream(of: Element.self)
         let applier = Task { for await element in elements { self.appendStreamed(element, to: stage) } }
@@ -489,20 +383,12 @@ actor AnalysisPipeline {
             await applier.value
             return raw
         } catch {
-            // Every element already queued lands (or is dropped by `appendStreamed`'s own
-            // `isRunning` guard) before this call returns on failure exactly as on success —
-            // otherwise `applier` outlives this call and can append a stale element from an
-            // aborted attempt into a later retry of the same stage, once its own status is
-            // `.running` again.
             sink.finish()
             await applier.value
             throw error
         }
     }
 
-    /// Appends one streamed element to its slice — unless the slice on screen is from an
-    /// earlier revision, which stays whole until this revision's replaces it outright rather
-    /// than being mixed with it.
     private func appendStreamed<Element: Identifiable>(_ element: Element, to stage: PipelineStage) where Element.ID == String {
         guard statuses[stage]?.isRunning == true, var g = graph else { return }
         let count: Int
@@ -526,8 +412,6 @@ actor AnalysisPipeline {
             publish()
         }
     }
-
-    // MARK: - Reporting
 
     private func setStatus(_ stage: PipelineStage, _ status: StageStatus) {
         statuses[stage] = status
@@ -558,8 +442,6 @@ actor AnalysisPipeline {
         continuation.yield(.complete)
     }
 
-    /// Saved as each stage lands, holding only what was produced for this revision, so an
-    /// interrupted run resumes rather than restarts and never caches a stale slice as current.
     private func save() {
         guard let ctx, var snapshot = graph else { return }
         for stage in stale { snapshot.clear(stage) }
@@ -568,8 +450,6 @@ actor AnalysisPipeline {
                    completedStages: completed)
     }
 
-    /// The GitHub tracker needs to know which repo a bare `#123` refers to, which is only
-    /// known once the PR has been fetched.
     private static func tracker(_ id: TrackerID, source: any PRSource, context: RawPRContext) -> any IssueTracker {
         switch id {
         case .github: return GitHubIssueTracker(source: source).scoped(to: context)

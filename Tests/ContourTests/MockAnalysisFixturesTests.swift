@@ -1,12 +1,7 @@
 import Testing
 @testable import Contour
 
-/// Guards against the mock fixtures (used for `CONTOUR_MOCK_ANALYSIS=1` manual testing,
-/// see `MockAnalysisFixtures`) silently drifting out of sync with the real stage schemas
-/// in `StageDecoding` — a shape mismatch here would otherwise only surface as a confusing
-/// decode error the next time someone actually flips the env var on.
 struct MockAnalysisFixturesTests {
-
     @Test func allStagesDecodeCleanly() throws {
         let behavior = MockAnalysisFixtures.response(for: .behaviorChange)
         _ = try StageDecoding.decode(StageDecoding.BehaviorChangeResult.self, from: behavior)
@@ -35,10 +30,6 @@ struct MockAnalysisFixturesTests {
         _ = try StageDecoding.decode(StageDecoding.JudgmentResult.self, from: judgment)
     }
 
-    /// Every componentId/decisionId/flowId/entryPointId referenced by one stage's
-    /// fixture must actually exist among the IDs another stage's fixture defines — otherwise
-    /// the synthetic graph would silently render dangling cross-links, defeating the whole
-    /// point of a realistic manual-testing fixture (§6, cross-linking).
     @Test func crossLinkedIdsResolve() throws {
         let arch = try StageDecoding.decode(
             StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture)
@@ -70,8 +61,6 @@ struct MockAnalysisFixturesTests {
             }
         }
 
-        // Edges and boundaries must reference real parts, and every edge must say what crosses
-        // it. A PR is not required to add a relationship: most change none.
         #expect(!arch.edges.isEmpty, "architecture fixture should define labeled edges")
         for component in arch.components {
             if let parent = component.parentId { #expect(componentIds.contains(parent), "component \(component.id) has missing parent \(parent)") }
