@@ -35,7 +35,18 @@ RUN_CONTOUR_INTEGRATION=1 swift test --filter IntegrationSmoke      # real pipel
 
 swift format --in-place --recursive --parallel Sources Tests Package.swift   # format
 swift format lint --strict --recursive --parallel Sources Tests Package.swift  # lint, as CI runs it
+
+swiftlint lint --strict                       # bug-pattern rules only (.swiftlint.yml), as CI runs it
+scripts/periphery.sh                          # unused code (.periphery.yml), as CI runs it
+swift test --sanitize=address --skip BenchmarkTests --skip BenchTests   # Address Sanitizer, as CI runs it
+scripts/swiftlint-analyze.sh                  # unused imports etc.; slow (10+ min), not in CI
 ```
+
+`brew install periphery swiftlint` provides the two tools. Both targets build with
+`treatAllWarnings(as: .error)`, so any compiler warning fails the build, and the app target
+enables the `ExistentialAny` and `MemberImportVisibility` upcoming features. Periphery can't
+be silenced per declaration without a comment, so fix what it reports (remove the code, or
+restructure so the use is visible) rather than adding a baseline.
 
 ### Format before pushing
 
