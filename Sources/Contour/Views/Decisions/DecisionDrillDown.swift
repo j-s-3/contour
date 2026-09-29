@@ -1,10 +1,29 @@
 import SwiftUI
 
+struct DecisionDrillDownActions {
+    let decisionId: String
+    let actions: ReviewActions
+
+    func openEvidence(_ ref: CodeRef) { actions.navigate(.evidence(ref)) }
+    func open(_ target: NavigationTarget) { actions.navigate(target) }
+    func ask() { actions.ask(.decision(decisionId)) }
+
+    static func edgeLabel(_ edge: ArchitectureEdge, in graph: PRGraph) -> String {
+        let from = graph.component(edge.fromId)?.title ?? edge.fromId
+        let to = graph.component(edge.toId)?.title ?? edge.toId
+        return DecisionsViewLogic.edgeTitle(from: from, to: to)
+    }
+}
+
 struct DecisionDrillDown: View {
     let decision: DecisionNode
     let graph: PRGraph
 
-    @Environment(\.reviewActions) private var actions
+    @Environment(\.reviewActions) private var environmentActions
+
+    private var drill: DecisionDrillDownActions {
+        DecisionDrillDownActions(decisionId: decision.id, actions: environmentActions)
+    }
 
     var body: some View {
         let affects = graph.affects(decision)
@@ -32,7 +51,7 @@ struct DecisionDrillDown: View {
             }
             if !decision.refs.isEmpty {
                 section("Evidence") {
-                    WrapChips(decision.refs) { ref in CodeRefChip(ref: ref) { actions.navigate(.evidence(ref)) } }
+                    WrapChips(decision.refs) { ref in CodeRefChip(ref: ref, action: { drill.openEvidence(ref) }) }
                 }
             }
             HStack(spacing: 14) {
@@ -42,9 +61,7 @@ struct DecisionDrillDown: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-                Button {
-                    actions.ask(.decision(decision.id))
-                } label: {
+                Button(action: drill.ask) {
                     Label("Ask about this…", systemImage: "sparkles").font(.caption)
                 }
                 .buttonStyle(.link)
@@ -58,7 +75,7 @@ struct DecisionDrillDown: View {
                 .reviewContextMenu(.tradeoff(decisionId: decision.id, index: index))
             if let explanation = tradeoff.explanation { line(explanation) }
             if !tradeoff.refs.isEmpty {
-                WrapChips(tradeoff.refs) { ref in CodeRefChip(ref: ref) { actions.navigate(.evidence(ref)) } }
+                WrapChips(tradeoff.refs) { ref in CodeRefChip(ref: ref, action: { drill.openEvidence(ref) }) }
             }
         }
     }
@@ -76,9 +93,7 @@ struct DecisionDrillDown: View {
                                 .reviewContextMenu(.component(c.id))
                         }
                         ForEach(affects.edges) { e in
-                            let from = graph.component(e.fromId)?.title ?? e.fromId
-                            let to = graph.component(e.toId)?.title ?? e.toId
-                            link(DecisionsViewLogic.edgeTitle(from: from, to: to), "arrow.right", .edgeDetail(e.id))
+                            link(DecisionDrillDownActions.edgeLabel(e, in: graph), "arrow.right", .edgeDetail(e.id))
                                 .reviewContextMenu(.relationship(e.id))
                         }
                     }
@@ -99,9 +114,7 @@ struct DecisionDrillDown: View {
     }
 
     private func link(_ title: String, _ symbol: String, _ target: NavigationTarget) -> some View {
-        Button {
-            actions.navigate(target)
-        } label: {
+        Button(action: { drill.open(target) }) {
             Label(title, systemImage: symbol).font(.callout)
         }
         .buttonStyle(.link)
