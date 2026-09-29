@@ -3,12 +3,6 @@ import SwiftUI
 import AppKit
 @testable import Contour
 
-/// `FlowStageInspector`'s body and rung builders are SwiftUI view code with no logic left to
-/// extract (selection and formatting live in `FlowStageInspectorLogic`). This suite hosts the
-/// real view in an `NSHostingView` and lays it out for every stage of the sample flow at every
-/// drill level, so each rung's builder actually runs against realistic graph data. It pins
-/// that no combination of stage and rung traps while building or laying out, which is the
-/// regression the pure-logic tests cannot see (a rung reaching for a field the graph lacks).
 @MainActor
 struct FlowStageInspectorRenderTests {
 
