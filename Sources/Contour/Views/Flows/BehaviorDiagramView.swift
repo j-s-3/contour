@@ -494,7 +494,7 @@ private struct StageBox: View {
     }
 }
 
-private struct Lozenge: InsettableShape {
+struct Lozenge: InsettableShape {
     var inset: CGFloat = 0
     func path(in rect: CGRect) -> Path {
         let r = rect.insetBy(dx: inset, dy: inset)
