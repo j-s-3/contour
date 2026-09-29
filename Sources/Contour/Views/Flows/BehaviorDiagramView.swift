@@ -25,43 +25,26 @@ extension FlowAnnotation.Kind {
     var caption: String { self == .decision ? "DECISION" : "REVIEW QUESTION" }
 }
 
-/// Shared Before/After/Delta styling rules — pulled out of `BehaviorDiagramView` and
-/// `StageBox` (per CLAUDE.md's guidance to move remaining selection logic beside
-/// `BehaviorDiagramLayout`) so they're directly testable, and so a connector and its stage
-/// never disagree about whether a change is unchanged, tinted, or dashed.
 enum BehaviorDiagramLogic {
-    /// In Delta, an unchanged element recedes so what the PR changed carries the eye.
     static func fades(mode: DiagramMode, change: FlowChange) -> Bool {
         mode == .delta && change == .existing
     }
 
-    /// In Delta, a changed element is emphasized; Before/After never emphasize.
     static func emphasized(mode: DiagramMode, change: FlowChange) -> Bool {
         mode == .delta && change != .existing
     }
 
-    /// The change's color, but only in Delta and only for an actual change.
     static func tint(mode: DiagramMode, change: FlowChange) -> Color? {
         guard mode == .delta, change != .existing else { return nil }
         return change.color
     }
 
-    /// A removed stage/edge dashes in Delta; an external call always dashes, to read as a
-    /// boundary crossing rather than a plain connection.
     static func dash(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind) -> [CGFloat] {
         if mode == .delta && change == .removed { return [4, 3] }
         if kind == .external { return [5, 3] }
         return []
     }
 
-    // MARK: - Stage fill/stroke (`StageBox`)
-    //
-    // Pulled out of `StageBox`'s computed properties, which SwiftUI's implicit `@MainActor`
-    // on every `View` member — and this struct's own `private` access, scoped to this file —
-    // put out of a test's reach. These take the same inputs explicitly instead.
-
-    /// A stage's fill: the change's tint in Delta, a faint kind-based tint otherwise, both
-    /// deepening slightly on hover so the pointer's target is never ambiguous.
     static func stageFill(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind, isHovered: Bool) -> Color {
         if let tint = tint(mode: mode, change: change) { return tint.opacity(isHovered ? 0.14 : 0.08) }
         switch kind {
@@ -71,8 +54,6 @@ enum BehaviorDiagramLogic {
         }
     }
 
-    /// A stage's outline: selection always wins, then the change's tint, then an external
-    /// call's own purple, then a plain neutral border.
     static func stageStroke(mode: DiagramMode, change: FlowChange, kind: FlowNodeKind, isSelected: Bool) -> Color {
         if isSelected { return .accentColor }
         if let tint = tint(mode: mode, change: change) { return tint.opacity(0.85) }
@@ -84,8 +65,6 @@ enum BehaviorDiagramLogic {
         isSelected ? 2.4 : (isTinted ? 1.8 : 1)
     }
 
-    /// The small kind label above a stage's text ("EXTERNAL", "STORAGE", "SHARED FLOW ↗");
-    /// nil for a plain step, trigger, decision or outcome, which need no extra label.
     static func stageCaption(kind: FlowNodeKind, subflowTitle: String?) -> (text: String, symbol: String, color: Color)? {
         switch kind {
         case .external: return ("EXTERNAL", "globe", .purple)
@@ -95,8 +74,6 @@ enum BehaviorDiagramLogic {
         }
     }
 
-    /// A stage's tooltip: its detail sentence, its change (if any), an uncertainty note, then
-    /// the standing hint on how to interact with it.
     static func stageHelpText(detail: String?, change: FlowChange, isUncertain: Bool) -> String {
         var parts: [String] = []
         if let detail { parts.append(detail) }
@@ -106,9 +83,6 @@ enum BehaviorDiagramLogic {
         return parts.joined(separator: "\n")
     }
 
-    /// What a changed stage's detail area shows: both sides in Delta (when either survived),
-    /// one side in Before/After, nothing for an unchanged stage or a changed one with no
-    /// recorded before/after text for the mode on screen.
     enum ChangeDetailContent: Equatable {
         case beforeAndAfter(before: String?, after: String?)
         case beforeOnly(String)
@@ -126,19 +100,10 @@ enum BehaviorDiagramLogic {
         }
     }
 
-    // MARK: - Hover
-
-    /// The next hovered id on a pointer-enter/leave: entering a stage always claims it; leaving
-    /// clears it only if it's still the one that was hovered, so a stale "exit" from a stage the
-    /// pointer already left can never clobber whatever's hovered now.
     static func hoverUpdate(current: String?, id: String, isHovering: Bool) -> String? {
         isHovering ? id : (current == id ? nil : current)
     }
 
-    // MARK: - Boundaries
-
-    /// Whether a boundary draws as "outside" (dashed, brighter border) and its tint: a trust
-    /// boundary is orange, another outside system purple, everything else neutral.
     static func boundaryStyle(kind: BoundaryKind) -> (outside: Bool, tint: Color) {
         let outside = kind == .external || kind == .trust
         return (outside, kind == .trust ? .orange : (outside ? .purple : .secondary))
@@ -148,14 +113,10 @@ enum BehaviorDiagramLogic {
         (boundaryStyle(kind: kind).outside ? "External · " : "") + label.uppercased()
     }
 
-    // MARK: - Edges
-
     static func edgeOpacity(mode: DiagramMode, change: FlowChange) -> Double {
         fades(mode: mode, change: change) ? 0.35 : (change == .existing ? 0.6 : 0.95)
     }
 
-    /// Async dashes short; a removed edge dashes shorter still and wins when both apply, so a
-    /// removed async call reads as "gone", not "was async".
     static func edgeDash(flow: EdgeFlow, change: FlowChange) -> [CGFloat] {
         var dash: [CGFloat] = []
         if flow == .async { dash = [6, 4] }
@@ -167,7 +128,6 @@ enum BehaviorDiagramLogic {
 
     static func edgeArrowSize(change: FlowChange) -> CGFloat { change == .existing ? 8 : 10 }
 
-    /// The two back corners of an arrowhead pointing from `from` to `tip`, `size` long.
     static func arrowHeadWings(from: CGPoint, tip: CGPoint, size: CGFloat) -> (left: CGPoint, right: CGPoint) {
         let angle = atan2(tip.y - from.y, tip.x - from.x)
         let back = CGPoint(x: tip.x - size * cos(angle), y: tip.y - size * sin(angle))
@@ -176,13 +136,6 @@ enum BehaviorDiagramLogic {
     }
 }
 
-/// A flow drawn as runtime behavior (§4.6): trigger at the top, stages below, branches side by
-/// side, notes for decisions and review questions beside the connection they sit on, and
-/// boxes around the systems it runs in. In Delta, unchanged stages recede and what the PR
-/// changed carries the color; Before and After are coherent snapshots at full strength.
-///
-/// Canvas draws connectors; stages, labels, and notes are real views so each one is clickable
-/// and has the standard right-click menu.
 struct BehaviorDiagramView: View {
     let flowId: String
     let behavior: FlowBehavior
@@ -199,8 +152,6 @@ struct BehaviorDiagramView: View {
     @State private var hoveredId: String?
 
     var body: some View {
-        // The legend sits in its own strip under the canvas rather than floating over it, so
-        // it can never cover a stage however short the window is.
         VStack(spacing: 0) {
             canvas
             Divider()
@@ -208,7 +159,6 @@ struct BehaviorDiagramView: View {
         }
     }
 
-    /// Laid out inside the reader, since the layout spreads to the width it's given.
     private var canvas: some View {
         GeometryReader { geo in
             let layout = BehaviorDiagramLayoutEngine.layout(behavior, mode: mode, annotations: annotations,
@@ -271,13 +221,10 @@ struct BehaviorDiagramView: View {
                     }
                 }
                 .frame(width: layout.size.width, height: layout.size.height)
-                // Centered across the canvas when it fits; scrolls when it doesn't.
                 .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .top)
             }
         }
     }
-
-    // MARK: - Connectors
 
     private func fades(_ change: FlowChange) -> Bool { BehaviorDiagramLogic.fades(mode: mode, change: change) }
 
@@ -303,8 +250,6 @@ struct BehaviorDiagramView: View {
         context.fill(arrow, with: .color(color))
     }
 
-    /// A dotted tick from the stage's outgoing connector to its note, so the note reads as
-    /// "this happens here".
     private func drawTether(_ placed: BehaviorDiagramLayout.PlacedAnnotation, layout: BehaviorDiagramLayout,
                             in context: inout GraphicsContext) {
         guard let node = layout.node(placed.annotation.nodeId) else { return }
@@ -330,8 +275,6 @@ struct BehaviorDiagramView: View {
             .frame(maxWidth: BehaviorDiagramLayoutEngine.nodeWidth)
             .fixedSize()
     }
-
-    // MARK: - Boundaries
 
     private func boundaryBox(_ placed: BehaviorDiagramLayout.PlacedBoundary) -> some View {
         let b = placed.boundary
@@ -364,8 +307,6 @@ struct BehaviorDiagramView: View {
         case .asyncBoundary: return "clock.arrow.circlepath"
         }
     }
-
-    // MARK: - Legend
 
     private var legend: some View {
         HStack(spacing: 12) {
@@ -412,10 +353,6 @@ private struct CompactLabelStyle: LabelStyle {
     }
 }
 
-// MARK: - Stage
-
-/// One stage, shaped by what it is: a capsule trigger, a lozenge branch point, a dashed box
-/// for an outside system, a double outline for a shared flow.
 private struct StageBox: View {
     let node: FlowBehaviorNode
     let mode: DiagramMode
@@ -506,7 +443,6 @@ private struct StageBox: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment == .center ? .center : .topLeading)
     }
 
-    /// What changed, inside the stage: both sides in Delta, one side in Before/After.
     @ViewBuilder
     private var changeDetail: some View {
         switch BehaviorDiagramLogic.changeDetailContent(mode: mode, change: node.change, before: node.before, after: node.after) {
@@ -558,7 +494,6 @@ private struct StageBox: View {
     }
 }
 
-/// A flowchart decision shape: a box with pointed ends.
 private struct Lozenge: InsettableShape {
     var inset: CGFloat = 0
     func path(in rect: CGRect) -> Path {
@@ -577,9 +512,6 @@ private struct Lozenge: InsettableShape {
     func inset(by amount: CGFloat) -> Lozenge { var s = self; s.inset += amount; return s }
 }
 
-// MARK: - Notes
-
-/// "◇ DECISION  Don't wait for more data" beside the connection it shapes; click to judge it.
 private struct AnnotationNote: View {
     let annotation: FlowAnnotation
     var action: () -> Void

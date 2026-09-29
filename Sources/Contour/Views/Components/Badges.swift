@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The provenance spine rendered as UI (§15). These three colors/glyphs recur everywhere
-/// a Statement is shown — fact, claim, or interpretation must always be visually distinct.
 extension Provenance {
     var color: Color {
         switch self {
@@ -58,8 +56,6 @@ extension ChangeKind {
     }
 }
 
-/// A small chip showing provenance (and confidence, for interpretations). Tapping shows
-/// the source in a popover — "The implementation suggests…" is never presented bare.
 struct ProvenanceBadge: View {
     let provenance: Provenance
     let confidence: Confidence?
@@ -77,10 +73,6 @@ struct ProvenanceBadge: View {
     }
 }
 
-/// Provenance as quiet metadata: a single tertiary glyph whose tooltip says whether a line
-/// is the author's claim, an observed fact, or an AI inference (and how confident). Used
-/// where the statement itself should dominate — the Overview — while keeping §15's
-/// distinction one hover away rather than dropping it.
 struct ProvenanceMark: View {
     let provenance: Provenance
     let confidence: Confidence?
@@ -96,8 +88,6 @@ struct ProvenanceMark: View {
 
     private var helpText: String { Self.helpText(provenance: provenance, confidence: confidence, source: source) }
 
-    /// Pulled out (static, taking its inputs explicitly) so this file's central "never
-    /// present an inference as a fact" text is directly testable per `Provenance` case.
     static func helpText(provenance: Provenance, confidence: Confidence?, source: String?) -> String {
         var text: String
         switch provenance {
@@ -110,8 +100,6 @@ struct ProvenanceMark: View {
     }
 }
 
-/// Renders one Statement with its provenance badge and, if present, its source pointer —
-/// the "fact vs claim vs interpretation" distinction made visible at the point of use.
 struct StatementView: View {
     let statement: Statement
     var body: some View {
@@ -144,8 +132,6 @@ struct ChangeKindBadge: View {
     }
 }
 
-/// A tappable code evidence chip — "src/foo/OrderService.java:142-167" — that opens the
-/// focused code viewer without losing the reviewer's place (§7).
 struct CodeRefChip: View {
     let ref: CodeRef
     var action: () -> Void
@@ -165,8 +151,6 @@ struct CodeRefChip: View {
     }
 }
 
-/// A simple flow layout for code-ref chips so a component with many refs wraps instead
-/// of forcing horizontal scroll.
 struct WrapChips<Content: View>: View {
     let refs: [CodeRef]
     let content: (CodeRef) -> Content
@@ -180,7 +164,6 @@ struct WrapChips<Content: View>: View {
     }
 }
 
-/// Minimal SwiftUI Layout implementation for left-to-right wrapping chip rows.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -196,12 +179,6 @@ struct FlowLayout: Layout {
         }
     }
 
-    /// The wrapping algorithm itself, extracted so it's directly testable: `sizeThatFits`
-    /// and `placeSubviews` need real SwiftUI `Subviews`, which this suite has no
-    /// infrastructure to construct, but the row-breaking math they share does not.
-    /// Mirrors `sizeThatFits`/`placeSubviews`'s original inline loop exactly, so a chip
-    /// starts a new row only once its row already holds something (an over-wide chip
-    /// still gets its own row rather than looping forever).
     static func wrap(sizes: [CGSize], spacing: CGFloat, maxWidth: CGFloat) -> (size: CGSize, origins: [CGPoint]) {
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
         var origins: [CGPoint] = []

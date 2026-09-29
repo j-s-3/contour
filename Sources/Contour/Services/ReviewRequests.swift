@@ -1,9 +1,7 @@
 import Foundation
 
-/// A PR someone has asked the user to review, for the start screen.
 struct ReviewRequest: Equatable, Identifiable, Sendable {
     var url: String
-    /// "owner/repo".
     var repo: String
     var number: Int
     var title: String
@@ -14,19 +12,9 @@ struct ReviewRequest: Equatable, Identifiable, Sendable {
     var id: String { "\(repo)#\(number)" }
 }
 
-/// The open PRs awaiting the user's review, from `gh search prs --review-requested=@me`,
-/// so the start screen can be where a review session begins rather than a URL field the
-/// reviewer has to go elsewhere to fill.
-///
-/// Best-effort like every tracker lookup: `gh` missing, not authenticated, offline or rate
-/// limited all come back as an empty list, and the start screen simply doesn't show the
-/// section. Nothing here needs `gh` to open a PR; it only helps find one.
 enum ReviewRequests {
-
     static let limit = 20
 
-    /// Nil when there is no way to ask (no `gh`, or the user pinned anonymous access);
-    /// otherwise whatever GitHub returned, possibly empty.
     static func fetch(access: GitHubAccessMode) async -> [ReviewRequest]? {
         guard access != .anonymous, Shell.which("gh") != nil else { return nil }
         let fields = "number,title,url,repository,author,isDraft,updatedAt"
@@ -37,8 +25,6 @@ enum ReviewRequests {
         return parse(json)
     }
 
-    /// Decodes `gh search prs --json` output, newest update first. Rows missing the fields
-    /// needed to open them are dropped rather than failing the whole list.
     static func parse(_ json: String) -> [ReviewRequest] {
         guard let data = json.data(using: .utf8),
               let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]

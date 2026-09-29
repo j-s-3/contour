@@ -1,15 +1,8 @@
 import SwiftUI
 
-/// §17 MVP — the raw diff stays available, as supporting evidence, at the bottom of the
-/// progressive-disclosure stack (§4: System change → Architecture → Decisions → Flows →
-/// Evidence → Raw diff). Never the primary interface, but navigable: a file list to jump
-/// from, files that collapse, both sides' line numbers, and hunks badged with the decisions
-/// and flow stages that cite them, so the evidence links back up the ladder.
 struct DiffView: View {
     let files: [DiffFile]
     let graph: PRGraph
-    /// A code reference to land on: its file is expanded and its hunk scrolled to the top,
-    /// with the cited lines highlighted.
     var focus: CodeRef?
 
     @Environment(\.reviewActions) private var actions
@@ -28,8 +21,6 @@ struct DiffView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        // Lazy, with every hunk line a row of its own, so a diff of thousands
-                        // of lines only lays out what's on screen.
                         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                             ForEach(files) { file in
                                 Section {
@@ -49,8 +40,6 @@ struct DiffView: View {
             .onChange(of: focus) { _, new in land(on: new, proxy) }
         }
     }
-
-    // MARK: - File list
 
     private func fileList(_ proxy: ScrollViewProxy) -> some View {
         let totals = DiffViewLogic.totalLineCounts(files)
@@ -104,23 +93,17 @@ struct DiffView: View {
         proxy.scrollTo(fileAnchor(file), anchor: .top)
     }
 
-    /// Opens the file a reference points into and scrolls its first cited hunk into view. A
-    /// reference outside every hunk (unchanged context) still lands on its file.
     private func land(on ref: CodeRef?, _ proxy: ScrollViewProxy) {
         guard let target = DiffViewLogic.landingTarget(for: ref, in: files) else { return }
         currentFile = target.file.id
         collapsed = DiffViewLogic.removingFile(target.file.id, from: collapsed)
-        // After the expanded file has been laid out.
         DispatchQueue.main.async {
-            // Just below the top, so the pinned file header doesn't cover the hunk's header.
             if let hunk = target.hunk { proxy.scrollTo(hunk.id, anchor: UnitPoint(x: 0, y: 0.08)) }
             else { proxy.scrollTo(fileAnchor(target.file), anchor: .top) }
         }
     }
 
     private func fileAnchor(_ file: DiffFile) -> String { "file-\(file.id)" }
-
-    // MARK: - File sections
 
     private func fileHeader(_ file: DiffFile) -> some View {
         let isCollapsed = collapsed.contains(file.id)
@@ -232,18 +215,12 @@ struct DiffView: View {
     }
 }
 
-/// File/hunk navigation, line highlighting/coloring, and path formatting — pulled out of
-/// `DiffView`'s instance methods (per CLAUDE.md's guidance) so it's directly testable
-/// without a live view, the same way `UnifiedDiff` parsing is.
 enum DiffViewLogic {
-    /// Which file (and, if any, which hunk) a code reference lands on — nil for the "open
-    /// nothing" case (no reference, or one outside every file in this diff).
     static func landingTarget(for ref: CodeRef?, in files: [DiffFile]) -> (file: DiffFile, hunk: DiffHunk?)? {
         guard let ref, let file = files.first(where: { $0.contains(ref) }) else { return nil }
         return (file, file.hunks.first { $0.overlaps(ref) })
     }
 
-    /// The range a hunk shows, as a reference — head side unless the file is gone.
     static func hunkRef(_ hunk: DiffHunk, in file: DiffFile) -> CodeRef {
         if file.status == .deleted || hunk.newCount == 0 {
             return CodeRef(path: file.oldPath ?? file.path, startLine: hunk.oldStart,
@@ -274,14 +251,12 @@ enum DiffViewLogic {
         }
     }
 
-    /// Whether the line is one the focused reference cites, on the side it cites.
     static func isFocused(_ line: DiffLine, in file: DiffFile, focus: CodeRef?) -> Bool {
         guard let focus, file.contains(focus),
               let number = focus.side == .base ? line.oldLine : line.newLine else { return false }
         return number >= focus.startLine && number <= focus.endLine
     }
 
-    /// Wide enough for the file's largest line number on either side.
     static func gutterWidth(_ file: DiffFile) -> CGFloat {
         let largest = file.hunks.map { max($0.oldStart + $0.oldCount, $0.newStart + $0.newCount) }.max() ?? 1
         return CGFloat(max(String(largest).count, 3)) * 7.5 + 12
@@ -296,40 +271,30 @@ enum DiffViewLogic {
         return String(path[..<slash])
     }
 
-    /// "1 file" / "N files" for the file-list header.
     static func fileCountLabel(_ count: Int) -> String {
         "\(count) \(count == 1 ? "file" : "files")"
     }
 
-    /// Additions and deletions summed across every file, for the file-list header's total.
     static func totalLineCounts(_ files: [DiffFile]) -> (additions: Int, deletions: Int) {
         (files.reduce(0) { $0 + $1.additions }, files.reduce(0) { $0 + $1.deletions })
     }
 
-    /// The collapsed set after the "collapse all" / "expand all" toggle: collapse every file
-    /// if any are expanded, otherwise expand them all.
     static func toggleAllCollapsed(files: [DiffFile], collapsed: Set<Int>) -> Set<Int> {
         collapsed.isEmpty ? Set(files.map(\.id)) : []
     }
 
-    /// The collapsed set after one file's disclosure triangle is clicked.
     static func toggleCollapsed(_ fileID: Int, in collapsed: Set<Int>) -> Set<Int> {
         var next = collapsed
         if next.contains(fileID) { next.remove(fileID) } else { next.insert(fileID) }
         return next
     }
 
-    /// The collapsed set with one file expanded — jumping to a file, or landing a citation on
-    /// one, always opens it even if it was collapsed.
     static func removingFile(_ fileID: Int, from collapsed: Set<Int>) -> Set<Int> {
         var next = collapsed
         next.remove(fileID)
         return next
     }
 
-    /// The note shown in place of hunks: for a binary file, or one with no hunks at all
-    /// (renamed without content changes, newly added or deleted empty, or otherwise
-    /// unchanged). Nil means the file has hunks to render normally.
     static func emptyStateNote(for file: DiffFile) -> String? {
         if file.isBinary { return "Binary file not shown" }
         guard file.hunks.isEmpty else { return nil }
@@ -338,8 +303,6 @@ enum DiffViewLogic {
         return "No content changes"
     }
 
-    /// The display for a hunk's file header: the rename/copy arrow when both paths are known,
-    /// otherwise just the file's own path.
     static func headerTitle(for file: DiffFile) -> (old: String?, new: String) {
         if (file.status == .renamed || file.status == .copied), let old = file.oldPath, let new = file.newPath {
             return (old, new)
@@ -347,14 +310,12 @@ enum DiffViewLogic {
         return (nil, file.path)
     }
 
-    /// The citations shown inline on a hunk header versus rolled into the "+N" overflow menu.
     static func visibleCitations(_ citations: [DiffCitation], max: Int = 3) -> (shown: [DiffCitation], overflow: [DiffCitation]) {
         guard citations.count > max else { return (citations, []) }
         return (Array(citations.prefix(max)), Array(citations.dropFirst(max)))
     }
 }
 
-/// "+12 −3", green and red, the way every diff tool counts a change.
 private struct LineCounts: View {
     let additions: Int
     let deletions: Int
@@ -386,7 +347,6 @@ private struct StatusGlyph: View {
     }
 }
 
-/// A decision or flow stage that cites this hunk — one click back up to the concept.
 private struct CitationBadge: View {
     let citation: DiffCitation
     var action: () -> Void

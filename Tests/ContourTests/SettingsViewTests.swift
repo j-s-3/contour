@@ -2,17 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `SettingsViewLogic` is the status-derivation, precedence-aware footer, and override-notice
-/// text logic CLAUDE.md calls out for this file, pulled out of `SettingsView`/`ToolStatusRow`'s
-/// bodies so it's directly testable against plain `ToolStatus`/`ExternalTool`/`HarnessID`
-/// fixtures. The view construction itself is exercised by `SettingsViewHostingTests` below,
-/// which hosts each tab in an `NSHostingView`. Only the private async `refresh()` that drives
-/// a real `EnvironmentProbe()` stays uncovered (no injection seam), matching the accepted gap
-/// `WelcomeWizardTests.swift` documents for its near-identical probe pattern.
 struct SettingsViewTests {
-
-    // MARK: - harnessTool / label
-
     @Test func harnessToolMapsEachHarnessIdToItsExternalTool() {
         #expect(SettingsViewLogic.harnessTool(.pi) == .pi)
         #expect(SettingsViewLogic.harnessTool(.claude) == .claude)
@@ -37,15 +27,11 @@ struct SettingsViewTests {
         #expect(SettingsViewLogic.label(for: .pi, statuses: [.pi: status]) == "pi")
     }
 
-    // MARK: - githubFooter
-
     @Test func githubFooterNamesEveryAccessMode() {
         #expect(SettingsViewLogic.githubFooter(for: .auto).contains("gh when it's installed"))
         #expect(SettingsViewLogic.githubFooter(for: .gh).contains("Always uses gh"))
         #expect(SettingsViewLogic.githubFooter(for: .anonymous).contains("anonymous API"))
     }
-
-    // MARK: - jiraLabel
 
     @Test func jiraLabelIsPlainWhenAvailable() {
         #expect(SettingsViewLogic.jiraLabel(jiraAvailable: true) == TrackerID.jira.displayName)
@@ -55,14 +41,10 @@ struct SettingsViewTests {
         #expect(SettingsViewLogic.jiraLabel(jiraAvailable: false) == "Jira — acli not found")
     }
 
-    // MARK: - overrideNoticeText
-
     @Test func overrideNoticeTextNamesTheSpecificVariable() {
         #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_HARNESS") == "Overridden by CONTOUR_HARNESS in the environment.")
         #expect(SettingsViewLogic.overrideNoticeText(for: "CONTOUR_TRACKER") == "Overridden by CONTOUR_TRACKER in the environment.")
     }
-
-    // MARK: - symbol / tint
 
     @Test func symbolAndTintAreNeutralWithNoStatusYet() {
         #expect(SettingsViewLogic.symbol(for: nil, tool: .git) == "circle.dotted")
@@ -94,10 +76,6 @@ struct SettingsViewTests {
     }
 }
 
-/// Hosts each Settings tab and `ToolStatusRow` in an `NSHostingView` and forces a layout
-/// pass, so the `Form`/`Section`/`Picker` builders and their closures actually run. These
-/// pin that every tab still builds and lays out to a real size for every status shape the
-/// logic tests describe; the visual result is checked by hand.
 @MainActor
 struct SettingsViewHostingTests {
 

@@ -1,26 +1,14 @@
 import SwiftUI
 import AppKit
 
-/// The window shell from §4.1: sidebar of lenses + files, main pane driven by the
-/// semantic navigation stack, inspector-free for MVP (cross-links live inline instead).
 struct ContentView: View {
     @State private var store = GraphStore()
     @State private var showPalette = false
     @State private var confirmApprove = false
     @State private var composingChangeRequest = false
-    /// Mirrors the persisted flag so finishing the wizard swaps the view immediately.
     @State private var needsOnboarding = !Preferences.shared.hasCompletedOnboarding
-    /// Explicit, not `.automatic`: entering real fullscreen — at launch when the user has
-    /// opted in (`WindowAccessor`), or at any time via the green button — is a known
-    /// trigger for `NavigationSplitView` silently collapsing its sidebar column (the
-    /// automatic width-based visibility heuristic gets a bad reading mid-transition and
-    /// never reconsiders). Owning the binding — and reasserting it once fullscreen
-    /// actually completes — is what keeps the sidebar from vanishing.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
-    /// Carries the Contour mark from the welcome screen into the analysis screen.
     @Namespace private var markNamespace
-    /// Bumped by Open Pull Request… so the start screen's URL field takes focus even when
-    /// the start screen is already showing.
     @State private var urlFieldFocusRequest = 0
 
     var body: some View {
@@ -41,22 +29,16 @@ struct ContentView: View {
                 .keyboardShortcut("k", modifiers: .command)
                 .opacity(0)
         )
-        // Full screen only on opt-in; otherwise the window reopens at its last frame.
         .background(WindowAccessor(entersFullScreen: Preferences.shared.opensInFullScreen))
         .focusedSceneValue(\.reviewStore, store.phase == .review ? store : nil)
-        // File ▸ Open / Close Pull Request. Not published during first-run setup, which has
-        // no PR to leave and its own way to open the first one.
         .focusedSceneValue(\.prSession, needsOnboarding ? nil : sessionActions)
         .onAppear {
-            // Manual-testing hook alongside CONTOUR_MOCK_ANALYSIS: open straight into a PR
-            // rather than pasting a URL on every launch.
             if !needsOnboarding, case .idle = store.phase,
                let url = ProcessInfo.processInfo.environment["CONTOUR_OPEN_PR_URL"], !url.isEmpty {
                 store.load(prURL: url)
             }
         }
         .onChange(of: store.phase) { _, phase in
-            // Companion to CONTOUR_OPEN_PR_URL: land on a specific lens once the PR opens.
             guard phase == .review,
                   let lens = ProcessInfo.processInfo.environment["CONTOUR_OPEN_LENS"] else { return }
             switch lens {
@@ -69,14 +51,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             sidebarVisibility = .all
         }
-        // `contour://…` and GitHub PR links handed to the app by the system. Only live once
-        // Contour runs from a bundle whose Info.plist declares the scheme; a bare SwiftPM
-        // executable is never sent them.
         .onOpenURL { url in
             guard !needsOnboarding, let prURL = PRLink.pullRequestURL(from: url) else { return }
             store.load(prURL: prURL)
         }
-        // Route incoming links to this window rather than opening a second one.
         .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
 
@@ -89,7 +67,6 @@ struct ContentView: View {
         )
     }
 
-    /// Back to the start screen, ready to paste the next URL.
     private func openDifferentPR() {
         store.close()
         urlFieldFocusRequest += 1
@@ -103,8 +80,6 @@ struct ContentView: View {
                 OnboardingView(initialURL: store.lastPRURL, markNamespace: markNamespace,
                                focusRequest: urlFieldFocusRequest) { url in store.load(prURL: url) }
             case .opening:
-                // Only the fetch happens here now; the review opens as soon as the PR has
-                // been read, and the mark carries on resolving in the toolbar.
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
                 FailedView(message: message, onRetry: { store.reopen() }, onOpenDifferent: { store.close() })
@@ -117,15 +92,10 @@ struct ContentView: View {
                 }
             }
         }
-        // Screen changes crossfade (and the mark glides from welcome into opening).
         .animation(.easeInOut(duration: 0.45), value: screen)
-        // A PR link dropped on the start screen or an open review opens that PR; one PR
-        // per window, so a review in progress is replaced.
         .opensDroppedPullRequests { url in store.load(prURL: url) }
     }
 
-    /// Which screen `mainBody` shows. Analysis progress inside the review never swaps the
-    /// screen, so it never animates here.
     private var screen: Int { Self.screen(for: store.phase) }
 
     nonisolated static func screen(for phase: SessionPhase) -> Int {
@@ -149,9 +119,6 @@ struct ContentView: View {
                 detailContent(graph)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-                // The chat is an inspector on the detail column rather than a sheet or a
-                // pane inside a lens: it persists across navigation, so following a code
-                // citation keeps the thread beside the code instead of replacing it.
                 .inspector(isPresented: Binding(
                     get: { store.conversations.isPresented },
                     set: { store.conversations.isPresented = $0 }
@@ -177,12 +144,7 @@ struct ContentView: View {
             .keyboardShortcut(AskShortcut.key, modifiers: AskShortcut.modifiers)
             .opacity(0)
         )
-        // `Text(verbatim:)`, not a bare string literal: the `navigationTitle` overload that
-        // takes a literal binds it as a `LocalizedStringKey`, which formats an interpolated
-        // Int for the current locale — so PR #14039 rendered as "#14,039". A PR number is
-        // an identifier, not a quantity, and must never be group-separated.
         .navigationTitle(Text(verbatim: "\(graph.pr.repo) #\(graph.pr.number)"))
-        // The PR name in the title bar is the PR's own menu — the visible way to leave it.
         .toolbarTitleMenu {
             let session = sessionActions
             Button("Open on GitHub") { session.openOnGitHub() }
@@ -206,8 +168,6 @@ struct ContentView: View {
                 }
                 Button { showPalette = true } label: { Image(systemName: "magnifyingglass") }
                     .help("Command palette (⌘K)")
-                // The ways out once the PR is understood: back to GitHub, or with the
-                // reviewer's judgment ready to paste into a review comment there.
                 Button { store.copyReviewSummary() } label: { Image(systemName: "doc.on.clipboard") }
                     .help("Copy review summary as Markdown")
                 Button { store.openOnGitHub() } label: { Image(systemName: "arrow.up.forward.square") }
@@ -233,8 +193,6 @@ struct ContentView: View {
         }
     }
 
-    /// GitHub's +1: submits an approving review as the reviewer, after a confirmation —
-    /// it's public and can't be taken back from here.
     private func approveButton(_ graph: PRGraph) -> some View {
         Button { confirmApprove = true } label: {
             reviewButtonLabel(.approve, symbol: "hand.thumbsup", submittedColor: .green)
@@ -250,7 +208,6 @@ struct ContentView: View {
         } message: {
             Text("This submits an approving review on GitHub as you, through gh.")
         }
-        // One alert for both verdicts: only one review is ever in flight.
         .alert(
             reviewFailureTitle,
             isPresented: Binding(
@@ -264,8 +221,6 @@ struct ContentView: View {
         }
     }
 
-    /// Approve's counterpart: GitHub needs the reviewer to say what to change, so this asks
-    /// for a comment rather than a bare confirmation.
     private func requestChangesButton(_ graph: PRGraph) -> some View {
         Button { composingChangeRequest = true } label: {
             reviewButtonLabel(.requestChanges, symbol: "hand.thumbsdown", submittedColor: .red)
@@ -279,7 +234,6 @@ struct ContentView: View {
         }
     }
 
-    /// A spinner while this verdict is in flight, filled once it's submitted.
     @ViewBuilder
     private func reviewButtonLabel(_ verdict: PRReview.Verdict, symbol: String, submittedColor: Color) -> some View {
         switch Self.reviewButtonPhase(for: store.review, verdict: verdict) {
@@ -292,9 +246,6 @@ struct ContentView: View {
         }
     }
 
-    /// Which of the three faces `reviewButtonLabel` shows for one verdict's button: this
-    /// verdict's own review is in flight, already submitted, or neither (idle, or a
-    /// *different* verdict is the one in flight/submitted/failed).
     enum ReviewButtonPhase: Equatable {
         case idle
         case submitting
@@ -316,8 +267,6 @@ struct ContentView: View {
         return "Couldn't approve the pull request"
     }
 
-    /// Every destination is always open, whatever its analysis state; the row just says how
-    /// far along it is, and a finished section simply stops saying anything.
     private func sidebar(_ graph: PRGraph) -> some View {
         let analysis = store.analysis
         return List {
@@ -332,9 +281,6 @@ struct ContentView: View {
                            status: flowsStatus, section: .flows)
             }
             Section("Review") {
-                // Review progress is the Overview's things to think about, resolved — the
-                // same n of m the Overview shows — and sits on the row where judgments are
-                // recorded.
                 let p = graph.reviewProgress(discussed: store.conversations.discussedConsiderationIds)
                 let decisionsStatus = analysis.status(.decisions)
                 let done = Self.decisionsRowIsFullyReviewed(
@@ -362,22 +308,16 @@ struct ContentView: View {
         .frame(minWidth: 220)
     }
 
-    /// The Flows sidebar row's title: a count once the stage is done and has something to
-    /// count, a bare label otherwise (still running, or done with nothing found).
     nonisolated static func flowsRowTitle(status: StageStatus, count: Int) -> String {
         status == .done ? "Flows (\(count))" : "Flows"
     }
 
-    /// The Decisions row's checkmark: every decision has to be both analyzed (Decisions and
-    /// Judgment stages done) *and* actually reviewed — a PR with no considerations at all
-    /// (`total == 0`) is never "done", since there was nothing to check off.
     nonisolated static func decisionsRowIsFullyReviewed(
         decisionsStatus: StageStatus, judgmentStatus: StageStatus, progress: (reviewed: Int, total: Int)
     ) -> Bool {
         decisionsStatus == .done && judgmentStatus == .done && progress.total > 0 && progress.reviewed == progress.total
     }
 
-    /// The raw-diff row has nothing to show until the diff has been fetched.
     nonisolated static func diffRowStatus(diffText: String?) -> StageStatus {
         diffText == nil ? .pending : .done
     }
@@ -444,7 +384,6 @@ struct ContentView: View {
         }
     }
 
-    /// The node or edge a navigation target asks Architecture to select, if any.
     private var architectureFocus: ArchAnchor? { Self.architectureFocus(for: store.current) }
 
     nonisolated static func architectureFocus(for current: NavigationTarget) -> ArchAnchor? {
@@ -455,7 +394,6 @@ struct ContentView: View {
         }
     }
 
-    /// The flow, and stage, a navigation target asks Flows to show.
     private var flowsFocus: FlowsView.Focus? { Self.flowsFocus(for: store.current) }
 
     nonisolated static func flowsFocus(for current: NavigationTarget) -> FlowsView.Focus? {
@@ -466,7 +404,6 @@ struct ContentView: View {
         }
     }
 
-    /// The code reference a navigation target asks the raw diff to land on.
     private var diffFocus: CodeRef? { Self.diffFocus(for: store.current) }
 
     nonisolated static func diffFocus(for current: NavigationTarget) -> CodeRef? {
@@ -474,8 +411,6 @@ struct ContentView: View {
         return nil
     }
 
-    /// The decision a navigation target asks Decisions to open, and the Overview question
-    /// that brought the reviewer there, if any.
     private func decisionsFocus(_ graph: PRGraph) -> DecisionsView.Focus? {
         Self.decisionsFocus(for: store.current, graph: graph)
     }
@@ -493,15 +428,7 @@ struct ContentView: View {
         }
     }
 
-    /// Which of `sectionContent`'s branches a lens is in: it already has *something* to
-    /// show (from this revision or a stale one), or it doesn't, in which case the stage's own
-    /// status decides between a retryable failure, a retryable stop, content anyway (a `done`
-    /// stage with nothing to show, e.g. zero decisions found), or a pending placeholder.
     enum SectionBranch: Equatable {
-        /// `showsOverlay` is true only for the `hasContent` case: a `done` stage with
-        /// nothing to show (e.g. zero decisions found) renders the same `content()` but
-        /// with no progress/stopped pill floated over it, since there's nothing left for
-        /// that stage to report.
         case content(showsOverlay: Bool)
         case failed(String)
         case stopped
@@ -516,8 +443,6 @@ struct ContentView: View {
         return .pending
     }
 
-    /// Which pill, if any, floats over a lens's own content while its stage keeps working
-    /// (or sits stopped) behind what's already on screen.
     enum SectionOverlay: Equatable {
         case none
         case progress(String)
@@ -530,9 +455,6 @@ struct ContentView: View {
         return .none
     }
 
-    /// A lens that may still be analyzing. With nothing yet it shows what's known and what's
-    /// being worked on (or, if it failed, a retry); with something, the lens itself, plus a
-    /// floating note while more is still arriving. Never a disabled or blank destination.
     @ViewBuilder
     private func sectionContent<Content: View>(
         _ section: ReviewSection, stage: PipelineStage, hasContent: Bool, ask: String,

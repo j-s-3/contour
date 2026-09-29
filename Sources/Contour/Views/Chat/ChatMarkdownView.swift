@@ -1,12 +1,7 @@
 import SwiftUI
 
-/// Renders an answer's markdown natively: paragraphs, bullet and numbered lists, headings,
-/// and fenced code blocks, with inline emphasis/code/links via `AttributedString`. Inline
-/// spans are linkified first so code citations and review-model references are clickable
-/// in place. A deliberately small subset — answers are a few paragraphs, not documents.
 struct ChatMarkdownView: View {
     let text: String
-    /// Rewrites citations in one inline span into markdown links (see `ChatLinks`).
     var linkify: (String) -> String = { $0 }
 
     var body: some View {
@@ -63,11 +58,6 @@ struct ChatMarkdownView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Linkifies one inline span, then parses it as inline markdown (emphasis, code spans,
-    /// and — this is what makes citations and `[[kind:id]]` references clickable — links).
-    /// A span `linkify` couldn't turn into valid markdown (or that a reviewer typed with
-    /// unbalanced syntax) falls back to the raw, unlinkified text so the line still renders
-    /// instead of vanishing.
     nonisolated static func attributedText(for s: String, linkify: (String) -> String) -> AttributedString {
         let linked = linkify(s)
         return (try? AttributedString(
@@ -76,7 +66,6 @@ struct ChatMarkdownView: View {
         )) ?? AttributedString(s)
     }
 
-    /// Line-oriented block split. Consecutive plain lines join into one paragraph.
     nonisolated static func blocks(_ text: String) -> [Block] {
         var blocks: [Block] = []
         var paragraph: [String] = []
@@ -117,7 +106,6 @@ struct ChatMarkdownView: View {
                 paragraph.append(line)
             }
         }
-        // An unterminated fence mid-stream still renders as code rather than vanishing.
         if let open = code { blocks.append(.code(open.joined(separator: "\n"))) }
         flush()
         return blocks

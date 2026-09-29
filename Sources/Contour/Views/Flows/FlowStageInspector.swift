@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The rungs of the abstraction ladder under a flow stage. Scenario and behavior are the
-/// diagram itself; the inspector starts at the selected stage and goes down.
 enum FlowDrillLevel: Int, CaseIterable, Comparable, Identifiable {
     case behavior, steps, implementation, code
 
@@ -16,7 +14,6 @@ enum FlowDrillLevel: Int, CaseIterable, Comparable, Identifiable {
     }
     static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 
-    /// Rungs with something on them for this stage.
     static func available(for node: FlowBehaviorNode, in flow: FlowNode, graph: PRGraph) -> [FlowDrillLevel] {
         let steps = graph.implementationSteps(for: node, in: flow)
         var out: [FlowDrillLevel] = [.behavior]
@@ -27,34 +24,19 @@ enum FlowDrillLevel: Int, CaseIterable, Comparable, Identifiable {
     }
 }
 
-/// Content-selection logic pulled out of `FlowStageInspector`'s body: which graph-linked
-/// pieces (evidence, neighboring stages, pinned notes) a selected stage shows, and how the
-/// drill level recovers when the selected stage changes out from under it. Kept as plain
-/// functions over `FlowBehavior`/`FlowAnnotation` values, beside the view, per CLAUDE.md's
-/// guidance for this file.
 enum FlowStageInspectorLogic {
-    /// Evidence for a stage: its own refs plus every traced step's, deduplicated. Order
-    /// follows `node.refs` first so directly-attributed evidence sorts ahead of the steps
-    /// it was traced through.
     static func refs(node: FlowBehaviorNode, steps: [FlowStep]) -> [CodeRef] {
         unique(node.refs + steps.flatMap(\.refs))
     }
 
-    /// The decisions and review questions pinned to this stage specifically, out of every
-    /// note pinned anywhere in the flow.
     static func notes(_ all: [FlowAnnotation], forNodeId nodeId: String) -> [FlowAnnotation] {
         all.filter { $0.nodeId == nodeId }
     }
 
-    /// Splits a stage's notes into its decisions and its review questions, in the order the
-    /// "Behavior" rung shows them.
     static func notes(_ notes: [FlowAnnotation], kind: FlowAnnotation.Kind) -> [FlowAnnotation] {
         notes.filter { $0.kind == kind }
     }
 
-    /// What led into this stage, and what it leads to — each outgoing edge paired with the
-    /// stage it lands on. An edge to or from a stage no longer in the behavior graph (a bad
-    /// id from the model) is silently dropped rather than shown as a broken link.
     static func neighbors(
         of nodeId: String, in behavior: FlowBehavior
     ) -> (previous: [FlowBehaviorNode], next: [(edge: FlowBehaviorEdge, node: FlowBehaviorNode)]) {
@@ -65,18 +47,11 @@ enum FlowStageInspectorLogic {
         return (previous, next)
     }
 
-    /// The drill level to fall back to when the selected stage changes: the current level
-    /// if the new stage still has something on that rung, `.behavior` (always available)
-    /// otherwise — so switching from a stage with steps to one without doesn't leave the
-    /// inspector showing an empty "Steps" rung.
     static func levelAfterNodeChange(current: FlowDrillLevel, available: [FlowDrillLevel]) -> FlowDrillLevel {
         available.contains(current) ? current : .behavior
     }
 }
 
-/// What a selected stage does, then how — one rung of the ladder at a time. Provenance is
-/// shown only when the stage was inferred; evidence is at the bottom rung, not beside every
-/// line.
 struct FlowStageInspector: View {
     let graph: PRGraph
     let flow: FlowNode
@@ -121,8 +96,6 @@ struct FlowStageInspector: View {
         .onChange(of: node.id) { _, _ in level = FlowStageInspectorLogic.levelAfterNodeChange(current: level, available: available) }
     }
 
-    // MARK: - Chrome
-
     private var titleBar: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
@@ -147,7 +120,6 @@ struct FlowStageInspector: View {
         .padding(16)
     }
 
-    /// Behavior › Steps › Implementation › Code.
     private var ladder: some View {
         HStack(spacing: 2) {
             ForEach(FlowDrillLevel.allCases) { rung in
@@ -190,8 +162,6 @@ struct FlowStageInspector: View {
 
     private var kindLabel: String { Self.kindLabel(for: node.kind) }
 
-    /// The stage-kind chip shown above a node's title — pulled out as a static function
-    /// so it's directly testable against every `FlowNodeKind` without a view instance.
     nonisolated static func kindLabel(for kind: FlowNodeKind) -> String {
         switch kind {
         case .trigger: return "Trigger"
@@ -203,8 +173,6 @@ struct FlowStageInspector: View {
         case .subflow: return "Shared flow"
         }
     }
-
-    // MARK: - Behavior
 
     @ViewBuilder
     private var behaviorRung: some View {
@@ -299,8 +267,6 @@ struct FlowStageInspector: View {
         }
     }
 
-    // MARK: - Steps
-
     @ViewBuilder
     private var stepsRung: some View {
         field(node.label) {
@@ -321,12 +287,8 @@ struct FlowStageInspector: View {
         }
     }
 
-    // MARK: - Implementation
-
     @ViewBuilder
     private var implementationRung: some View {
-        // The part Architecture can actually draw — an implementation node resolves to the
-        // part it implements.
         if let c = node.componentId.flatMap(graph.drawablePart(for:)) {
             field("Part of") {
                 Button { actions.navigate(.componentDetail(c.id)) } label: {
@@ -394,8 +356,6 @@ struct FlowStageInspector: View {
         }
     }
 
-    // MARK: - Code
-
     @ViewBuilder
     private var codeRung: some View {
         field("Evidence") {
@@ -406,8 +366,6 @@ struct FlowStageInspector: View {
             }
         }
     }
-
-    // MARK: - Building blocks
 
     private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {

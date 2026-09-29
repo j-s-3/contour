@@ -1,8 +1,6 @@
 import CoreGraphics
 import Foundation
 
-/// A laid-out behavior diagram: frames for stages, annotations, and boundaries, and routed
-/// polylines for connections.
 struct BehaviorDiagramLayout {
     struct PlacedNode: Identifiable {
         var node: FlowBehaviorNode
@@ -11,7 +9,6 @@ struct BehaviorDiagramLayout {
     }
     struct PlacedEdge: Identifiable {
         var edge: FlowBehaviorEdge
-        /// Orthogonal polyline from the source's bottom to the target's top.
         var points: [CGPoint]
         var labelPoint: CGPoint?
         var id: String { edge.id }
@@ -21,7 +18,6 @@ struct BehaviorDiagramLayout {
         var frame: CGRect
         var id: String { annotation.id }
     }
-    /// "+2 more" under a stage whose notes were capped.
     struct PlacedOverflow: Identifiable {
         var nodeId: String
         var count: Int
@@ -44,36 +40,20 @@ struct BehaviorDiagramLayout {
     func node(_ id: String) -> PlacedNode? { nodes.first { $0.id == id } }
 }
 
-/// Lays a behavior out top to bottom, the way it's drawn on a whiteboard: the trigger at the
-/// top, each stage below the one that leads to it, branches side by side under the branch
-/// point, and decision/question notes beside the connection they sit on. Connections are
-/// routed orthogonally — down, across at the fan-out bar, down into the target.
-///
-/// Given the canvas width, it spreads out to use it: notes widen and columns move apart so
-/// each branch's notes keep their width, and on a wide canvas every note is drawn rather
-/// than the first few.
 enum BehaviorDiagramLayoutEngine {
     static let nodeWidth: CGFloat = 232
     static let columnGap: CGFloat = 56
     static var columnWidth: CGFloat { nodeWidth + columnGap }
-    /// How far a note's right edge stops short of the next column's stage center.
     static let noteInset: CGFloat = 34
     static let annotationWidth: CGFloat = columnWidth - noteInset
-    /// Notes stop widening here; past it a line is too long to read at a glance.
     static let maxAnnotationWidth: CGFloat = 420
     static let margin: CGFloat = 28
-    /// Space between the fan-out bar and the target's top, where branch labels sit.
     static let labelBand: CGFloat = 30
     static let minLayerGap: CGFloat = 60
-    /// Notes drawn per stage before the rest collapse into "+N more" on a narrow canvas; the
-    /// inspector lists all.
     static let maxNotesPerStage = 3
-    /// A canvas at least this wide draws every note; narrower ones cap at `maxNotesPerStage`.
     static let roomyWidth: CGFloat = 1200
     static let overflowHeight: CGFloat = 20
 
-    /// `availableWidth` is the canvas the diagram is drawn on; without it the diagram keeps its
-    /// compact spacing and caps notes, as on a narrow canvas.
     static func layout(_ behavior: FlowBehavior, mode: DiagramMode, annotations: [FlowAnnotation],
                        availableWidth: CGFloat? = nil) -> BehaviorDiagramLayout {
         let nodes = behavior.nodes
@@ -83,7 +63,6 @@ enum BehaviorDiagramLayoutEngine {
         let layer = layers(nodes, forward: forward, index: index)
         let layerCount = (layer.values.max() ?? 0) + 1
 
-        // Order within each layer by the average position of the stages leading into it.
         var rows: [[String]] = Array(repeating: [], count: layerCount)
         for n in nodes { rows[layer[n.id]!].append(n.id) }
         var column: [String: CGFloat] = [:]
@@ -98,8 +77,6 @@ enum BehaviorDiagramLayoutEngine {
                 return (id, x)
             }
             .sorted { $0.1 == $1.1 ? index[$0.0]! < index[$1.0]! : $0.1 < $1.1 }
-            // Sweep apart so nothing overlaps, then shift back so the row stays centered
-            // under what feeds it.
             var placed: [CGFloat] = []
             for (_, x) in desired { placed.append(placed.last.map { max(x, $0 + 1) } ?? x) }
             let shift = (desired.map(\.1).reduce(0, +) - placed.reduce(0, +)) / CGFloat(placed.count)
@@ -116,8 +93,6 @@ enum BehaviorDiagramLayoutEngine {
         let byNode = grouped.mapValues { Array($0.prefix(cap)) }
         let hidden = grouped.mapValues { max(0, $0.count - cap) }
 
-        // Horizontal: the rightmost column's notes reach the canvas edge, and every column
-        // steps over by a note's width so side-by-side branches keep theirs.
         var noteWidth = annotationWidth
         if let availableWidth, !annotations.isEmpty {
             let fixed = 2 * margin + leftGutter + nodeWidth / 2 + 14 - noteInset
@@ -127,8 +102,6 @@ enum BehaviorDiagramLayoutEngine {
         let pitch = noteWidth + noteInset
         let heights = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, height(of: $0, mode: mode)) })
 
-        // Vertical: each layer is as tall as its tallest stage; the gap under it makes room for
-        // the tallest stack of notes hanging off any of its stages.
         var tops: [CGFloat] = []
         var y = margin
         for row in rows {
@@ -149,7 +122,6 @@ enum BehaviorDiagramLayoutEngine {
             out.nodes.append(.init(node: n, frame: frame))
         }
 
-        // Notes hang to the right of the stage's outgoing connector.
         for n in nodes {
             guard let notes = byNode[n.id], let frame = frames[n.id] else { continue }
             var noteY = frame.maxY + 12
@@ -180,8 +152,6 @@ enum BehaviorDiagramLayoutEngine {
                     points = [CGPoint(x: a.midX, y: a.maxY), CGPoint(x: a.midX, y: bar),
                               CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
                 } else {
-                    // Skip past stages in between along a lane beside them, turning off before
-                    // the source's notes start so the connector never runs through a note.
                     let exit = a.maxY + 6
                     let obstacles = out.nodes.filter { $0.id != edge.fromId && $0.id != edge.toId }.map(\.frame)
                         + out.annotations.map(\.frame) + out.overflow.map(\.frame)
@@ -190,7 +160,6 @@ enum BehaviorDiagramLayoutEngine {
                               CGPoint(x: lane, y: bar), CGPoint(x: b.midX, y: bar), CGPoint(x: b.midX, y: b.minY)]
                 }
             } else {
-                // A loop back to an earlier stage runs up the left gutter.
                 points = [CGPoint(x: a.minX, y: a.midY), CGPoint(x: leftLane, y: a.midY),
                           CGPoint(x: leftLane, y: b.midY), CGPoint(x: b.minX, y: b.midY)]
             }
@@ -215,12 +184,8 @@ enum BehaviorDiagramLayoutEngine {
         return out
     }
 
-    // MARK: - Graph structure
-
-    /// Edges that go forward in execution order. A connection back to a stage already on the
-    /// path (a retry loop) is drawn, but doesn't push stages down.
     private static func forwardEdges(_ behavior: FlowBehavior, index: [String: Int]) -> [FlowBehaviorEdge] {
-        var state: [String: Int] = [:] // 1 = on the current path, 2 = done
+        var state: [String: Int] = [:]
         var back: Set<String> = []
         func visit(_ id: String) {
             state[id] = 1
@@ -239,7 +204,6 @@ enum BehaviorDiagramLayoutEngine {
         return behavior.edges.filter { !back.contains($0.id) }
     }
 
-    /// Longest path from a root, so every stage sits below everything that leads to it.
     private static func layers(_ nodes: [FlowBehaviorNode], forward: [FlowBehaviorEdge], index: [String: Int]) -> [String: Int] {
         var layer: [String: Int] = [:]
         var indegree = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, 0) })
@@ -258,9 +222,6 @@ enum BehaviorDiagramLayoutEngine {
         return layer
     }
 
-    /// The x of a vertical lane from `exit` down to `bar` where it, and the turns into and out
-    /// of it, clear every obstacle. Notes hang to the right of their stage, so the left side is
-    /// usually open; whichever side needs the shorter detour wins.
     private static func detourLane(from start: CGFloat, exit: CGFloat, bar: CGFloat, to end: CGFloat,
                                    avoiding obstacles: [CGRect]) -> CGFloat {
         let clearance: CGFloat = 32
@@ -271,14 +232,12 @@ enum BehaviorDiagramLayoutEngine {
                             CGRect(x: min(lane, end), y: bar, width: abs(lane - end), height: 0)]
             return padded.filter { r in segments.contains { $0.insetBy(dx: -0.5, dy: -0.5).intersects(r) } }
         }
-        // Step past whatever is in the way until the whole route is clear.
         func search(_ direction: CGFloat) -> CGFloat? {
             var lane = start
             for _ in 0..<(obstacles.count + 1) {
                 let hits = blocked(lane)
                 if hits.isEmpty { return lane }
                 let next = direction > 0 ? hits.map(\.maxX).max()! + 1 : hits.map(\.minX).min()! - 1
-                // Moving further out can't clear an obstacle on a turn we've already passed.
                 guard direction > 0 ? next > lane : next < lane else { return nil }
                 lane = next
             }
@@ -309,11 +268,6 @@ enum BehaviorDiagramLayoutEngine {
         return out
     }
 
-    // MARK: - Sizing
-    //
-    // Estimated rather than measured: stages have a fixed width and capped line counts, so a
-    // character budget per line is close enough and keeps layout a pure function.
-
     static func lines(_ text: String, perLine: Int, max cap: Int) -> Int {
         min(cap, max(1, Int((Double(text.count) / Double(perLine)).rounded(.up))))
     }
@@ -334,8 +288,6 @@ enum BehaviorDiagramLayoutEngine {
         return h
     }
 
-    /// A caption runs a little over 5 pt a character; 6 after the note's padding keeps the
-    /// estimate on the safe side as notes widen.
     static func height(of note: FlowAnnotation, width: CGFloat = annotationWidth) -> CGFloat {
         20 + CGFloat(lines(note.text, perLine: max(20, Int((width - 16) / 6)), max: 3)) * 16
     }
