@@ -205,6 +205,28 @@ struct RepoContextServiceTests {
         #expect(try await service.readWholeFile(in: second, path: "a.txt") == "newer\n")
     }
 
+    @Test func checkoutFollowsAPullRequestHeadRewrittenByAForcePush() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await makeRemote(at: root.appendingPathComponent("remote"))
+        let service = service(cache: root, remote: fixture.remote)
+        _ = try await service.checkout(context(fixture))
+
+        let remote = fixture.remote
+        _ = try await Shell.run("git", ["checkout", "-q", "-B", "rewritten", fixture.baseSha], cwd: remote)
+        try "rewritten\n".write(to: remote.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        _ = try await Shell.run("git", ["commit", "-q", "-am", "rewritten"], cwd: remote)
+        let rewrittenSha = try await headOf(remote)
+        _ = try await Shell.run("git", ["update-ref", "refs/pull/7/head", rewrittenSha], cwd: remote)
+        var rewritten = context(fixture)
+        rewritten.headSha = rewrittenSha
+
+        let second = try await service.checkout(rewritten)
+
+        #expect(try await headOf(second.rootDir) == rewrittenSha)
+        #expect(try await service.readWholeFile(in: second, path: "a.txt") == "rewritten\n")
+    }
+
     @Test func checkoutToleratesABaseRefThatCannotBeFetchedWhenTheBaseCommitIsPresent() async throws {
         let root = tempDir()
         defer { try? FileManager.default.removeItem(at: root) }
