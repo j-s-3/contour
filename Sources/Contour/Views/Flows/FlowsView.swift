@@ -149,7 +149,7 @@ struct FlowsView: View {
     private var scenarioTabs: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text("What happens when… · \(graph.flows.count) scenarios")
+                Text(FlowsViewLogic.scenarioHeading(flowCount: graph.flows.count))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text("[ ] to switch")
@@ -172,7 +172,7 @@ struct FlowsView: View {
             (Text(graph.scenarioTitle(for: flow))
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .font(.system(size: 15, weight: selected ? .semibold : .regular))
-             + Text(changed ? " · changed" : "")
+             + Text(FlowsViewLogic.changedSuffix(changed: changed))
                 .font(.callout)
                 .foregroundStyle(Color.blue))
                 .lineLimit(1)
@@ -186,14 +186,14 @@ struct FlowsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .help(changed ? "This PR changes this flow" : "Unchanged by this PR — shown for context")
+        .help(FlowsViewLogic.tabHelp(changed: changed))
         .reviewContextMenu(.flow(flow.id))
     }
 
     @ViewBuilder
     private func story(_ flow: FlowNode, _ behavior: FlowBehavior) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if graph.flows.count <= 1 {
+            if FlowsViewLogic.storyLeadsWithTitle(flowCount: graph.flows.count) {
                 Text(graph.scenarioTitle(for: flow))
                     .font(.system(size: 22, weight: .semibold))
                     .reviewContextMenu(.flow(flow.id))
@@ -212,8 +212,8 @@ struct FlowsView: View {
 
     @ViewBuilder
     private func changeLine(_ behavior: FlowBehavior) -> some View {
-        let text = behavior.changeSummary ?? condensedChangeSummary(behavior)
-        if let text {
+        switch FlowsViewLogic.changeLine(for: behavior) {
+        case .changed(let text):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("THIS PR")
                     .font(.system(size: 10, weight: .heavy)).tracking(0.5)
@@ -223,14 +223,12 @@ struct FlowsView: View {
                     .lineLimit(2)
             }
             .frame(maxWidth: 760, alignment: .leading)
-        } else if !behavior.hasChange {
-            Text("This PR doesn't change this flow — it's shown for context.")
+        case .unchanged:
+            Text(FlowsViewLogic.unchangedNote)
                 .font(.callout).foregroundStyle(.secondary)
+        case .none:
+            EmptyView()
         }
-    }
-
-    private func condensedChangeSummary(_ behavior: FlowBehavior) -> String? {
-        FlowsViewLogic.condensedChangeSummary(behavior)
     }
 
     @ViewBuilder
@@ -251,36 +249,79 @@ struct FlowsView: View {
     @ViewBuilder
     private var diagram: some View {
         if let flow = currentFlow, let behavior = currentBehavior {
-            let visible = behavior.visible(in: mode)
-            let ids = Set(visible.nodes.map(\.id))
+            let shown = FlowsViewLogic.diagramContent(behavior: behavior, annotations: graph.annotations(for: flow), mode: mode)
+            let visible = shown.behavior
             BehaviorDiagramView(
                 flowId: flow.id,
                 behavior: visible,
-                annotations: graph.annotations(for: flow).filter { ids.contains($0.nodeId) },
+                annotations: shown.annotations,
                 mode: mode,
                 selectedNodeId: selectedNodeId,
-                onSelect: { node in select(selectedNodeId == node.id ? nil : node) },
+                onSelect: { node in select(FlowsViewLogic.togglingSelection(of: node, currentSelectedNodeId: selectedNodeId)) },
                 onDrill: drill,
                 onShowImplementation: showImplementation,
-                onOpenAnnotation: { note in
-                    switch note.kind {
-                    case .decision: actions.navigate(.decisionDetail(note.targetId))
-                    case .question: actions.navigate(.consideration(note.targetId))
-                    }
-                },
+                onOpenAnnotation: { note in actions.navigate(FlowsViewLogic.navigationTarget(for: note)) },
                 onOpenSubflow: openFlow,
                 subflowTitle: { id in graph.flow(id).map { graph.scenarioTitle(for: $0) } }
             )
             .id("\(flow.id)-\(mode.rawValue)")
             .background(.background)
             .onChange(of: mode) { _, new in
-                if let node = selectedNode, !node.change.isVisible(in: new) { select(nil) }
+                if FlowsViewLogic.shouldDeselect(selectedNode, whenModeBecomes: new) { select(nil) }
             }
         }
     }
 }
 
 enum FlowsViewLogic {
+    enum ChangeLine: Equatable {
+        case changed(String)
+        case unchanged
+        case none
+    }
+
+    static let unchangedNote = "This PR doesn't change this flow — it's shown for context."
+
+    static func changeLine(for behavior: FlowBehavior) -> ChangeLine {
+        if let text = behavior.changeSummary ?? condensedChangeSummary(behavior) { return .changed(text) }
+        return behavior.hasChange ? .none : .unchanged
+    }
+
+    static func scenarioHeading(flowCount: Int) -> String {
+        "What happens when… · \(flowCount) scenarios"
+    }
+
+    static func changedSuffix(changed: Bool) -> String { changed ? " · changed" : "" }
+
+    static func tabHelp(changed: Bool) -> String {
+        changed ? "This PR changes this flow" : "Unchanged by this PR — shown for context"
+    }
+
+    static func storyLeadsWithTitle(flowCount: Int) -> Bool { flowCount <= 1 }
+
+    static func diagramContent(behavior: FlowBehavior, annotations: [FlowAnnotation], mode: DiagramMode)
+        -> (behavior: FlowBehavior, annotations: [FlowAnnotation]) {
+        let visible = behavior.visible(in: mode)
+        let ids = Set(visible.nodes.map(\.id))
+        return (visible, annotations.filter { ids.contains($0.nodeId) })
+    }
+
+    static func togglingSelection(of node: FlowBehaviorNode, currentSelectedNodeId: String?) -> FlowBehaviorNode? {
+        currentSelectedNodeId == node.id ? nil : node
+    }
+
+    static func navigationTarget(for note: FlowAnnotation) -> NavigationTarget {
+        switch note.kind {
+        case .decision: .decisionDetail(note.targetId)
+        case .question: .consideration(note.targetId)
+        }
+    }
+
+    static func shouldDeselect(_ node: FlowBehaviorNode?, whenModeBecomes mode: DiagramMode) -> Bool {
+        guard let node else { return false }
+        return !node.change.isVisible(in: mode)
+    }
+
     static func scenarioOffset(for characters: String) -> Int? {
         switch characters {
         case "[": return -1
