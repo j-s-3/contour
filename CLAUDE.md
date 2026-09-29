@@ -16,6 +16,13 @@ product and technical design; §10 (pipeline), §11 (data model), §12 (app laye
 `docs/superpowers/specs/2026-09-25-contour-design.md` is the approved spec that introduced
 the harness / tracker / GitHub-access seams.
 
+## Default workflow for changes
+
+Unless told otherwise, every code change goes through the `ship` skill
+(`.claude/skills/ship/SKILL.md`): fresh worktree off `origin/main`, implement, local CI
+gates, PR, babysit CI and conflicts, squash-merge when green, remove the worktree. "Don't
+merge" or "just do it here" opts out.
+
 ## Commands
 
 The package only builds on macOS with the Swift 6.4 toolchain (Xcode 27). CI runs on
