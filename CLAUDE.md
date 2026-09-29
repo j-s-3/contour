@@ -68,7 +68,9 @@ or schema change is a two-step process documented at the top of
 
 CI measures line coverage over `Sources/` (only `.build` and `Tests/` are excluded, so
 `Views/` and `Pipeline/MockAnalysisFixtures.swift` count) and posts the report to the job
-summary. Reproduce it with:
+summary. On `main`, the `coverage-badge` job also writes the TOTAL line percentage to
+`coverage.json` on the `badges` branch, which the README badge renders through shields.io.
+Reproduce the report with:
 
 ```sh
 swift test --enable-code-coverage
@@ -82,9 +84,10 @@ specific file are unexercised.
 
 ## Test coverage policy
 
-The target is **90%+ line coverage**. The repository currently sits around **33%**, so
-the gap is closed incrementally: every change must leave the code it adds or modifies at
-90%+ coverage, and must never lower the overall number. Concretely, for any PR:
+The target is **90%+ line coverage**, and the repository is above it; the README's
+Coverage badge shows the current figure from the last `main` build. Keep it there: every
+change must leave the code it adds or modifies at 90%+ coverage, and must never lower the
+overall number. Concretely, for any PR:
 
 - Run the coverage report above before pushing and check the files you touched. A new or
   changed file below 90% is not done.
