@@ -34,29 +34,34 @@ jobs:
       - name: Build
         run: swift build
 
-      - name: DIAGNOSTIC - full suite, no coverage
-        # Isolated TrackerAndCacheTests alone (parallel and serial) ran clean twice — the
-        # crash needs the full suite's accumulated state. This step isolates the other
-        # variable: does --enable-code-coverage's instrumentation matter, or does the full
-        # suite crash here even without it? Skips the benchmark suites (timing-only, not
-        # relevant to this crash) to keep the run focused.
-        run: |
-          swift test --no-parallel --skip BenchmarkTests --skip BenchTests || echo "FULL SUITE, NO COVERAGE failed: exit $?"
+      - name: Bench (Contour's own latency, offline, issue #60)
+        # No real model, no network: measures Contour's own share of "time to a useful
+        # Overview" (DESIGN.md §13) against a fixed fixture corpus and fails the job on a
+        # regression past a deliberately generous threshold — see BenchTests.swift.
+        # BenchmarkTests (timing-only large-input suites) run here too, since they are
+        # skipped under the sanitizer.
+        run: swift test --filter 'BenchTests|BenchmarkTests'
 
-      - name: Test
-        # Unit tests only; integration tests are gated behind RUN_CONTOUR_INTEGRATION.
-        # This already includes BenchTests below; it's run again on its own so the
-        # per-milestone numbers land in a clearly labeled step of the log rather than
-        # being buried in the full suite's output.
+      - name: Test under Thread Sanitizer
+        # The unit-test run: instruments for data races (the pipeline is an actor, `Shell`
+        # bridges GCD's readabilityHandler/terminationHandler callbacks into Swift
+        # Concurrency, and AnalysisService.modelOverrides is a lock-protected static var)
+        # and, as the only full-suite run in this job, also produces the coverage profile
+        # and the test-output.log that the steps below consume. Integration tests are gated
+        # behind RUN_CONTOUR_INTEGRATION. BenchTests and BenchmarkTests run in the step above.
         #
-        # --no-parallel: diagnosing a `swiftpm-testing-helper` crash (signal 5) that only
+        # --no-parallel: works around a `swiftpm-testing-helper` crash (signal 5) that only
         # reproduces under the default parallel scheduler, at a different point in the run
         # each time — consistent with a real concurrency race rather than one bad test.
-        # TODO(#swift6-migration): re-enable once the race is root-caused; this trades CI
-        # time for a green build in the interim.
+        # TODO(#swift6-migration): re-enable once the race is root-caused.
+        #
+        # A hard gate: a failing test or a reported data race fails the job. The benchmark
+        # suites are skipped: they time large inputs, and under the sanitizer's slowdown
+        # they would only stretch the job.
         run: |
           set -o pipefail
-          swift test --enable-code-coverage --no-parallel 2>&1 | tee test-output.log
+          swift test --sanitize=thread --enable-code-coverage --no-parallel \
+            --skip BenchmarkTests --skip BenchTests 2>&1 | tee test-output.log
 
       - name: No main-actor isolation warnings (issue #185)
         # Members of a `View` are implicitly `@MainActor`; calling one from a nonisolated
@@ -114,27 +119,6 @@ jobs:
           name: coverage-report
           path: coverage.lcov
 
-      - name: Bench (Contour's own latency, offline, issue #60)
-        # No real model, no network: measures Contour's own share of "time to a useful
-        # Overview" (DESIGN.md §13) against a fixed fixture corpus and fails the job on a
-        # regression past a deliberately generous threshold — see BenchTests.swift.
-        run: swift test --filter BenchTests
-
-      - name: Test under Thread Sanitizer
-        # Same unit tests, instrumented for data races: the pipeline is an actor, `Shell`
-        # bridges GCD's readabilityHandler/terminationHandler callbacks into Swift
-        # Concurrency, and AnalysisService.modelOverrides is a lock-protected static var —
-        # exactly the shapes TSan is good at catching and Package.swift's Swift 5 language
-        # mode doesn't check at compile time. A separate `swift test` invocation (not
-        # `--enable-code-coverage`, and run after the coverage steps above) so it can't
-        # confuse their search for the coverage-instrumented test binary and profile under
-        # `.build`. continue-on-error for now, while the baseline is established; the goal
-        # is to make this a hard gate once it's clean.
-        continue-on-error: true
-        # The benchmark suites are skipped here: they exist to time large inputs, and
-        # under the sanitizer's slowdown they would only stretch the job without adding a
-        # race the ordinary suites don't already exercise.
-        run: swift test --sanitize=thread --skip BenchmarkTests --skip BenchTests
-
       - name: Build release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: swift build -c release
