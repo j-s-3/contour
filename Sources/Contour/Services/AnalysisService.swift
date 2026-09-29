@@ -59,7 +59,10 @@ struct AnalysisService {
 
         static var fromEnvironment: MockOptions? {
             guard MockAnalysisFixtures.isEnabled else { return nil }
-            let env = ProcessInfo.processInfo.environment
+            return parse(ProcessInfo.processInfo.environment)
+        }
+
+        static func parse(_ env: [String: String]) -> MockOptions {
             let scale = env["CONTOUR_MOCK_LATENCY"].flatMap { Double($0) }.flatMap { $0 > 0 ? $0 : nil }
             let failStage = env["CONTOUR_MOCK_FAIL_STAGE"].flatMap { raw in
                 PipelineStage.allCases.first { "\($0)" == raw }
