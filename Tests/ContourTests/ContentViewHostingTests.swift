@@ -11,11 +11,8 @@ struct ContentViewHostingTests {
     private func render(_ store: GraphStore, needsOnboarding: Bool = false) -> NSWindow {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: ContentView(store: store, needsOnboarding: needsOnboarding))
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.animationBehavior = .none
-        window.isReleasedWhenClosed = false
+        let window = HeadlessWindow(
+            size: NSSize(width: 1200, height: 800), styleMask: [.titled, .closable, .resizable])
         window.contentView = host
         window.orderBack(nil)
         settle(host)
