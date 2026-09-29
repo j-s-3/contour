@@ -280,4 +280,65 @@ struct DiffViewTests {
         #expect(visible.shown == Array(citations.prefix(3)))
         #expect(visible.overflow == Array(citations.suffix(2)))
     }
+
+
+    @Test func collapseAllControlDescribesTheNextAction() {
+        #expect(DiffViewLogic.collapseAllSymbol(collapsed: []) == "rectangle.compress.vertical")
+        #expect(DiffViewLogic.collapseAllHelp(collapsed: []) == "Collapse all files")
+        #expect(DiffViewLogic.collapseAllSymbol(collapsed: [1]) == "rectangle.expand.vertical")
+        #expect(DiffViewLogic.collapseAllHelp(collapsed: [1]) == "Expand all files")
+    }
+
+    @Test func fileRowHighlightsOnlyTheCurrentFile() {
+        #expect(DiffViewLogic.rowBackground(fileID: 2, current: 2) == Color.accentColor.opacity(0.15))
+        #expect(DiffViewLogic.rowBackground(fileID: 2, current: 3) == Color.clear)
+        #expect(DiffViewLogic.rowBackground(fileID: 2, current: nil) == Color.clear)
+    }
+
+    @Test func fileHeaderChevronAndHelpFollowCollapsedState() {
+        #expect(DiffViewLogic.chevronRotation(isCollapsed: true) == 0)
+        #expect(DiffViewLogic.chevronRotation(isCollapsed: false) == 90)
+        #expect(DiffViewLogic.fileToggleHelp(isCollapsed: true) == "Expand file")
+        #expect(DiffViewLogic.fileToggleHelp(isCollapsed: false) == "Collapse file")
+    }
+
+    @Test func statusBadgeIsHiddenOnlyForModifiedFiles() {
+        for status in [DiffFileStatus.added, .deleted, .renamed, .copied] {
+            #expect(DiffViewLogic.showsStatusBadge(DiffFile(id: 0, oldPath: "a", newPath: "a", status: status)))
+        }
+        #expect(!DiffViewLogic.showsStatusBadge(DiffFile(id: 0, oldPath: "a", newPath: "a", status: .modified)))
+    }
+
+    @Test func statusSymbolIsDistinctPerStatus() {
+        let symbols = [DiffFileStatus.modified, .added, .deleted, .renamed, .copied].map(DiffViewLogic.statusSymbol)
+        #expect(symbols == ["pencil.circle", "plus.circle", "minus.circle", "arrow.right.circle", "doc.on.doc"])
+    }
+
+    @Test func gutterCellsAreBlankOnTheSideALineLacks() {
+        #expect(DiffViewLogic.lineNumberText(42) == "42")
+        #expect(DiffViewLogic.lineNumberText(nil) == "")
+    }
+
+    @Test func emptyLinesDisplayAsASpace() throws {
+        let file = try parsedFile("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n \n-a\n+b")
+        let lines = try #require(file.hunks.first?.lines)
+        #expect(DiffViewLogic.displayText(lines[0]) == " ")
+        #expect(DiffViewLogic.displayText(lines[1]) == "a")
+    }
+
+    @Test func onlyTheNoNewlineMarkerIsMuted() {
+        let marker = DiffLine(id: 0, kind: .noNewlineMarker, text: "\\ No newline at end of file", oldLine: nil, newLine: nil)
+        let added = DiffLine(id: 1, kind: .added, text: "x", oldLine: nil, newLine: 1)
+        #expect(DiffViewLogic.isMuted(marker))
+        #expect(!DiffViewLogic.isMuted(added))
+    }
+
+    @Test func citationBadgeSymbolAndHelpDependOnKind() {
+        let decision = citation(1)
+        let stage = DiffCitation(kind: .flowStage, title: "Stage", target: .decisionDetail("s"))
+        #expect(DiffViewLogic.citationSymbol(.decision) == "checklist")
+        #expect(DiffViewLogic.citationSymbol(.flowStage) == "arrow.triangle.branch")
+        #expect(DiffViewLogic.citationHelp(decision) == "Decision: Decision 1")
+        #expect(DiffViewLogic.citationHelp(stage) == "Flow stage: Stage")
+    }
 }
