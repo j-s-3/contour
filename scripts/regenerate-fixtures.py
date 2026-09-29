@@ -13,6 +13,12 @@ failure the fixtures exist to catch. So they are generated from a real pipeline 
 
 Then run `swift test` — MockAnalysisFixturesTests checks the new fixtures decode against
 the current StageDecoding schema and that every cross-link resolves.
+
+The generated Swift carries no comments (see CLAUDE.md), so its provenance lives here:
+the fixtures are captured verbatim from a real run against sharkdp/bat#3877 ("Detect
+binary content beyond the first line"), which closes issue #3554 so the issue-tracker
+path is exercised too. Only the analysis stages are canned; fetch and checkout still run
+for real under CONTOUR_MOCK_ANALYSIS=1.
 """
 
 import json
@@ -30,33 +36,11 @@ STAGES = [
 
 HEADER = '''import Foundation
 
-/// Canned per-stage responses used when `CONTOUR_MOCK_ANALYSIS=1` is set, so a reviewer
-/// can exercise every lens of the app without waiting on a full run of real harness calls
-/// (§10). This is deliberately scoped to the *analysis* stages only — the GitHub fetch and
-/// the local checkout still run for real, so the code viewer/Evidence lens still has real
-/// files to show. Only the AI-produced JSON that would normally take minutes is
-/// short-circuited.
-///
-/// GENERATED — do not hand-edit. These are captured verbatim from a real pipeline run
-/// against a small public PR, sharkdp/bat#3877 ("Detect binary content beyond the first
-/// line"), which closes GitHub issue #3554. Capturing rather than authoring is the point:
-/// hand-written fixtures drift from what the models actually emit, and that drift is the
-/// failure these fixtures exist to catch. The PR closes an issue on purpose, so the
-/// fixture exercises the GitHub issue-tracker path alongside the graph.
-///
-/// Regenerate with `scripts/regenerate-fixtures.py`; see its docstring for the capture
-/// command.
 enum MockAnalysisFixtures {
-
-    /// `true` when the pipeline should skip real harness invocations and return canned
-    /// JSON instead. Checked once per stage call rather than cached, so tests can flip the
-    /// environment mid-run if ever needed.
     static var isEnabled: Bool {
         ProcessInfo.processInfo.environment["CONTOUR_MOCK_ANALYSIS"] == "1"
     }
 
-    /// The pull request these fixtures were captured from. Mock mode offers it as a
-    /// one-click "Load test data", since the fixtures only line up with this PR's checkout.
     static let sourcePRURL = "https://github.com/sharkdp/bat/pull/3877"
 
     static func response(for stage: PipelineStage) -> [String: Any] {
