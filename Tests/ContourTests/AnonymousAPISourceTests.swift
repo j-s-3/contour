@@ -1,10 +1,15 @@
 import Foundation
+import os
 import Testing
 @testable import Contour
 
 final class MockURLProtocol: URLProtocol {
     struct Canned { var status: Int; var headers: [String: String] = [:]; var body: Data }
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> Canned)?
+    private static let handlerLock = OSAllocatedUnfairLock<(@Sendable (URLRequest) -> Canned)?>(initialState: nil)
+    static var handler: (@Sendable (URLRequest) -> Canned)? {
+        get { handlerLock.withLock { $0 } }
+        set { handlerLock.withLock { $0 = newValue } }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
