@@ -2,25 +2,7 @@ import SwiftUI
 import Testing
 @testable import Contour
 
-/// `ArchitectureInspector.swift` was at 0.00% coverage. Per CLAUDE.md's guidance for this
-/// file, the content-formatting logic — `eyebrow`, `unchangedLine`, `properties`,
-/// `changeWord`, and `EdgeChange.color` — was pulled out to `static` functions (`eyebrow`
-/// additionally takes `graph` explicitly instead of reading `self.graph`) so it's directly
-/// testable. The view's `body` and its section/row builders read `GraphStore`/render real
-/// SwiftUI content and stay untested here.
-///
-/// Issue #104 reopened this file at 7.08% after that first pass, because the pass only
-/// covered `eyebrow`/`unchangedLine`/`properties`/`changeWord` and the view had grown a
-/// "Connections", "Also between these parts" and "Implementation" section since. This
-/// second pass pulls those sections' derivation/formatting logic out the same way:
-/// `showsUnchangedNote`, the `connection*` row helpers, `relationshipEyebrow`,
-/// `crossesLabel`, `relationshipThisPRNote`, `foldedEdgeLine`, `sharedFlows`,
-/// `implementationCountLabel` and `mergedRefs`. What's left in the view body — `ScrollView`,
-/// `VStack`, `ForEach`, `section`/`header`/`linkRow` builders reading `GraphStore` and
-/// `@Environment(\.reviewActions)` — renders real SwiftUI content with no UI-testing
-/// infrastructure in this suite, and stays untested here as in the first pass.
 struct ArchitectureInspectorTests {
-
     private func minimalGraph(components: [ComponentNode]) -> PRGraph {
         let pr = PRSummary(
             repo: "acme/shop", number: 1, title: "t", author: "a", state: "OPEN",
@@ -29,8 +11,6 @@ struct ArchitectureInspectorTests {
         )
         return PRGraph(pr: pr, components: components)
     }
-
-    // MARK: - eyebrow
 
     @Test func eyebrowNamesTheParentWhenThereIsOne() {
         let parent = ComponentNode(id: "parent", title: "Search Service", changeKind: .unchanged)
@@ -55,8 +35,6 @@ struct ArchitectureInspectorTests {
         #expect(ArchitectureInspector.eyebrow(for: part(.unchanged), in: graph) == "Part")
     }
 
-    // MARK: - unchangedLine
-
     @Test func unchangedLineDescribesEveryChangeKind() {
         func part(_ kind: ChangeKind) -> ComponentNode { ComponentNode(id: "p", title: "P", changeKind: kind) }
         #expect(ArchitectureInspector.unchangedLine(part(.new)) == "Added by this PR.")
@@ -65,8 +43,6 @@ struct ArchitectureInspectorTests {
         #expect(ArchitectureInspector.unchangedLine(part(.touched)) == "Not changed by this PR — drawn for context.")
         #expect(ArchitectureInspector.unchangedLine(part(.unchanged)) == "Not changed by this PR — drawn for context.")
     }
-
-    // MARK: - properties
 
     private func edge(flow: EdgeFlow = .sync, trust: Bool = false, critical: Bool = false) -> ArchitectureEdge {
         ArchitectureEdge(id: "e", fromId: "a", toId: "b", label: "l", flow: flow, isTrustBoundary: trust, onCriticalPath: critical)
@@ -82,16 +58,12 @@ struct ArchitectureInspectorTests {
                 == "Asynchronous · crosses a trust boundary · on a critical path")
     }
 
-    // MARK: - changeWord / EdgeChange.color
-
     @Test func changeWordAndColorMatchForEveryEdgeChange() {
         #expect(ArchitectureInspector.changeWord(.new) == "New" && EdgeChange.new.color == .green)
         #expect(ArchitectureInspector.changeWord(.changed) == "Changed" && EdgeChange.changed.color == .blue)
         #expect(ArchitectureInspector.changeWord(.existing) == "Existing" && EdgeChange.existing.color == .secondary)
         #expect(ArchitectureInspector.changeWord(.removed) == "Removed" && EdgeChange.removed.color == .red)
     }
-
-    // MARK: - showsUnchangedNote
 
     @Test func showsUnchangedNoteWhenThereIsNoDeltaAtAll() {
         let part = ComponentNode(id: "p", title: "P", changeKind: .unchanged)
@@ -116,8 +88,6 @@ struct ArchitectureInspectorTests {
         #expect(!ArchitectureInspector.showsUnchangedNote(withPair))
     }
 
-    // MARK: - Connection row content
-
     @Test func connectionIconPointsDownForIncomingAndUpForOutgoing() {
         #expect(ArchitectureInspector.connectionIcon(direction: "from") == "arrow.down.right")
         #expect(ArchitectureInspector.connectionIcon(direction: "to") == "arrow.up.right")
@@ -139,8 +109,6 @@ struct ArchitectureInspectorTests {
     @Test func connectionCaptionJoinsDirectionAndTitle() {
         #expect(ArchitectureInspector.connectionCaption(direction: "from", otherTitle: "Indexer") == "from Indexer")
     }
-
-    // MARK: - relationshipEyebrow / crossesLabel / relationshipThisPRNote
 
     @Test func relationshipEyebrowIsUnqualifiedOnlyForExisting() {
         #expect(ArchitectureInspector.relationshipEyebrow(.existing) == "Relationship")
@@ -186,8 +154,6 @@ struct ArchitectureInspectorTests {
         #expect(ArchitectureInspector.relationshipThisPRNote(e) == nil)
     }
 
-    // MARK: - foldedEdgeLine / sharedFlows
-
     @Test func foldedEdgeLineFormatsAnArrowBetweenTitles() {
         #expect(ArchitectureInspector.foldedEdgeLine(fromTitle: "Web", toTitle: "API", label: "request")
                 == "Web → API: request")
@@ -206,8 +172,6 @@ struct ArchitectureInspectorTests {
         let f2 = FlowNode(id: "f2", title: "Search")
         #expect(ArchitectureInspector.sharedFlows([f1], [f2]).isEmpty)
     }
-
-    // MARK: - implementationCountLabel / mergedRefs
 
     @Test func implementationCountLabelIsNilWhenThereIsNothingToCount() {
         #expect(ArchitectureInspector.implementationCountLabel(nodeCount: 0, nameCount: 0) == nil)

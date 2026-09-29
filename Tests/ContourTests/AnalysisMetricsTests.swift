@@ -2,13 +2,7 @@ import Foundation
 import Testing
 @testable import Contour
 
-/// `AnalysisMetrics` is local-only latency instrumentation (`metrics.jsonl` beside the
-/// analysis cache, nothing sent anywhere). The existing suite only exercised
-/// prShell/rawDiff/whatChanged/beforeAfter/usefulOverview being marked once each — this
-/// pins the remaining milestones, the "a stopped stage never counts" exclusion, the file
-/// destination, and the actual append-to-disk behavior.
 struct AnalysisMetricsTests {
-
     @Test func everyMilestoneHasANonEmptyLabel() {
         for milestone in LatencyMilestone.allCases {
             #expect(!milestone.label.isEmpty)
@@ -38,8 +32,6 @@ struct AnalysisMetricsTests {
         #expect(metrics.elapsed(.fullAnalysis) == 10)
     }
 
-    /// A stopped stage wasn't given the chance to finish, so it must not count toward the
-    /// overview milestone even though `isSettled` is true for it.
     @Test func aStoppedStageNeverCountsTowardUsefulOverview() {
         let start = Date(timeIntervalSince1970: 3000)
         var metrics = AnalysisMetrics(pr: "x", startedAt: start)
@@ -61,7 +53,6 @@ struct AnalysisMetricsTests {
 
         let contents = try String(contentsOf: url, encoding: .utf8)
         let lines = contents.split(separator: "\n")
-        // JSONEncoder escapes "/" as "\/", so match on the part that survives escaping.
         #expect(lines.count == 2, "got: \(contents)")
         #expect(lines.first?.contains("repo#1") == true, "got: \(contents)")
         #expect(lines.last?.contains("repo#2") == true, "got: \(contents)")

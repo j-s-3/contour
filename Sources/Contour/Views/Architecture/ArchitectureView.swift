@@ -1,26 +1,8 @@
 import SwiftUI
 
-/// The Architecture lens (§4.3): "draw the relevant part of the system on a whiteboard, and
-/// show me where this change sits."
-///
-/// It opens by saying how much the PR changes the structure — often "no structural change"
-/// — and then draws the handful of conceptual parts involved, with only what changed drawing
-/// the eye ("What changed", the default; "Before this PR" and "After this PR" are plain
-/// snapshots). A part with parts
-/// inside can be zoomed into; implementation and code are reached from the inspector, which
-/// appears only when something is selected. Decisions and Overview questions are marked on
-/// the box or arrow they concern and lead to the Decisions lens.
-///
-/// Everything here is sized to the space it's given: the drawing fits itself to the pane
-/// rather than asking for its natural size. An earlier version put an unbounded frame inside
-/// a two-axis scroll view, which made the detail column wider than the window and left the
-/// sidebar blank (issue #1).
 struct ArchitectureView: View {
     let graph: PRGraph
-    /// A part or relationship the navigation target asked for ("Open details", a chat link,
-    /// "Show in Architecture" from a flow).
     var focus: ArchAnchor? = nil
-    /// Before this PR / after it / what it changed — shared with Flows.
     @Binding var mode: DiagramMode
 
     @Environment(\.reviewActions) private var actions
@@ -40,8 +22,6 @@ struct ArchitectureView: View {
                 ContentUnavailableView("Nothing to draw", systemImage: "square.stack.3d.up",
                                        description: Text("The analysis didn't identify any architecture for this PR."))
             } else {
-                // The inspector takes its own column only while something is selected, and
-                // the drawing refits beside it rather than being covered.
                 HStack(spacing: 0) {
                     ArchitectureDiagramView(
                         boxes: boxes(level),
@@ -83,15 +63,12 @@ struct ArchitectureView: View {
         }
         .onChange(of: focus) { _, new in if let new { reveal(new) } }
         .onChange(of: selection) { _, _ in
-            // Clicking a part takes focus back from the chat, so B / A / D work again.
             keyboardFocused = true
             publishFocus()
         }
         .onChange(of: mode) { _, _ in dropHiddenSelection() }
         .onDisappear { actions.focus(nil) }
     }
-
-    // MARK: - Header
 
     private func header(_ level: ArchLevel) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -112,7 +89,6 @@ struct ArchitectureView: View {
                 .reviewContextMenu(.pullRequest)
             }
             if !path.isEmpty { breadcrumb }
-            // Last in the header, so it sits on the edge of the drawing it filters.
             DiagramModeControl(mode: $mode, subject: "architecture")
                 .padding(.top, 4)
         }
@@ -157,14 +133,10 @@ struct ArchitectureView: View {
         .font(.callout)
     }
 
-    // MARK: - What to draw
-
     private func boxes(_ level: ArchLevel) -> [ArchBox] { Self.boxes(level, graph: graph, mode: mode) }
     private func arrows(_ level: ArchLevel) -> [ArchArrow] { Self.arrows(level, graph: graph, mode: mode) }
     private func containers(_ level: ArchLevel) -> [ArchContainer] { Self.containers(level, graph: graph, mode: mode) }
 
-    /// Pulled out of the view (static, taking `graph`/`mode` explicitly) so it's directly
-    /// testable, per the "extract layout/selection/formatting logic" guidance.
     nonisolated static func boxes(_ level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> [ArchBox] {
         let decisions = mode == .before ? [:] : graph.decisionAnchors(on: level)
         let questions = mode == .before ? [:] : graph.questionAnchors(on: level)
@@ -253,11 +225,6 @@ struct ArchitectureView: View {
         }
     }
 
-    /// What the legend under the drawing needs to show, or nil when there's nothing to
-    /// explain (Before/After mode, or nothing changed at this level). Pulled out of
-    /// `legend(_:)` so the "which badges appear" derivation — which change kinds are present,
-    /// whether anything has a decision, a question or an async arrow — is directly testable
-    /// without a `View`.
     struct LegendInfo: Equatable {
         var kinds: [ArchEmphasis]
         var hasDecision: Bool
@@ -278,16 +245,11 @@ struct ArchitectureView: View {
         return LegendInfo(kinds: kinds, hasDecision: hasDecision, hasQuestion: hasQuestion, hasAsync: hasAsync)
     }
 
-    // MARK: - Zoom and selection
-
     private func zoom(into id: String) {
         guard let newPath = Self.zoomTarget(into: id, graph: graph) else { return }
         zoom(to: newPath)
     }
 
-    /// The path zooming into `id` would show, or nil if it has nothing inside to zoom into
-    /// (the guard `zoom(into:)` used to check inline). Pulled out, per CLAUDE.md's "extract
-    /// layout/selection/formatting logic" guidance, so it's directly testable.
     nonisolated static func zoomTarget(into id: String, graph: PRGraph) -> [String]? {
         guard !graph.parts(inside: id).isEmpty else { return nil }
         return graph.ancestry(of: id).map(\.id)
@@ -301,27 +263,18 @@ struct ArchitectureView: View {
         }
     }
 
-    /// Zooming out keeps the part the reviewer zoomed out *from* selected, so they see where
-    /// they were — but only if it's still drawn at the new path. Pulled out of `zoom(to:)` so
-    /// this containment check is directly testable without a live `@State` path.
     nonisolated static func selectionAfterZoom(from oldPath: [String], to newPath: [String], graph: PRGraph) -> ArchAnchor? {
         guard let previousFocus = oldPath.last else { return nil }
         let newLevel = graph.architectureLevel(path: newPath)
         return newLevel.contains(previousFocus) ? .node(previousFocus) : nil
     }
 
-    /// Shows a part or relationship that navigation asked for, zooming in if it's inside
-    /// another part.
     private func reveal(_ anchor: ArchAnchor) {
         guard let target = Self.revealTarget(anchor, graph: graph) else { return }
         path = target.path
         selection = target.selection
     }
 
-    /// Where `reveal(_:)` should land: the path to zoom to and what to select, or nil when the
-    /// anchor no longer resolves against `graph` (a stale link). Pulled out of `reveal(_:)` so
-    /// the node/edge resolution — including "the outermost level where this relationship is
-    /// its own arrow" — is directly testable.
     nonisolated static func revealTarget(_ anchor: ArchAnchor, graph: PRGraph) -> (path: [String], selection: ArchAnchor)? {
         switch anchor {
         case .node(let id):
@@ -329,7 +282,6 @@ struct ArchitectureView: View {
             return (graph.architecturePath(showing: part.id), .node(part.id))
         case .edge(let id):
             guard let edge = graph.resolvedEdges.first(where: { $0.id == id }) else { return nil }
-            // The outermost level where this relationship is its own arrow.
             let candidates = [[]] + graph.ancestry(of: edge.fromId).dropLast().indices.map { i in
                 Array(graph.ancestry(of: edge.fromId).prefix(i + 1).map(\.id))
             }
@@ -347,9 +299,6 @@ struct ArchitectureView: View {
         selection = Self.selectionAfterHidingCheck(selection, level: level, graph: graph, mode: mode)
     }
 
-    /// `selection` unchanged, or nil once the mode change (before/after/delta) makes it no
-    /// longer drawn. Pulled out of `dropHiddenSelection()` for the same reason as `boxes`/
-    /// `arrows`/`containers`: it's the state-derivation logic, not the mutation.
     nonisolated static func selectionAfterHidingCheck(_ selection: ArchAnchor?, level: ArchLevel, graph: PRGraph, mode: DiagramMode) -> ArchAnchor? {
         guard let selection else { return nil }
         let boxes = Set(Self.boxes(level, graph: graph, mode: mode).map(\.id))
@@ -361,14 +310,10 @@ struct ArchitectureView: View {
         }
     }
 
-    /// Tells the window what "this" is for ⌘⇧A.
     private func publishFocus() {
         actions.focus(Self.focusSubject(selection: selection, path: path))
     }
 
-    /// What ⌘⇧A should ask about: the current selection, falling back to the part being
-    /// zoomed into when nothing is selected. Pulled out of `publishFocus()` so the fallback
-    /// logic is directly testable.
     nonisolated static func focusSubject(selection: ArchAnchor?, path: [String]) -> ReviewSubject? {
         switch selection {
         case .node(let id): return .component(id)

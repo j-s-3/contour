@@ -1,19 +1,7 @@
 import Testing
 @testable import Contour
 
-/// `EnvironmentProbe.swift` was at 0.00% coverage because the `actor`'s own methods
-/// (`probe`/`probeAll`/`version`/`isGitHubAuthenticated`/`isJiraAuthenticated`) all shelled
-/// out via `Shell.which`/`Shell.run` directly, against whatever tools happen to be
-/// installed on the machine running the test — exactly the kind of non-deterministic,
-/// environment-dependent behavior avoided elsewhere in this suite (see
-/// `AnalysisServiceTests`'s note on not faking `pi`/`claude` on `PATH`). `EnvironmentProbe`
-/// now takes an injectable `EnvironmentProbeOperations` (the same seam `PRSource` gives
-/// `GitHubService`), so these pin the pure pieces (the `ExternalTool` enum's descriptive
-/// properties, `ToolStatus`'s computed properties, the `Dictionary` extension) *and* the
-/// actor's own branches, run against canned `which`/`run` results instead of the real
-/// machine.
 struct EnvironmentProbeTests {
-
     @Test func everyExternalToolHasANonEmptyDisplayNameAndRole() {
         for tool in ExternalTool.allCases {
             #expect(!tool.displayName.isEmpty)
@@ -46,8 +34,6 @@ struct EnvironmentProbeTests {
         #expect(installed.isInstalled)
     }
 
-    /// `isUsable` requires `isInstalled` and treats a `nil` `authenticated` (tools that
-    /// don't need auth, like `git`) as usable, but an explicit `false` as not.
     @Test func toolStatusIsUsableTreatsNilAuthenticatedAsUsableButFalseAsNot() {
         let noAuthNeeded = ToolStatus(tool: .git, path: "/usr/bin/git", version: nil, authenticated: nil, detail: "")
         #expect(noAuthNeeded.isUsable)
@@ -101,13 +87,6 @@ struct EnvironmentProbeTests {
         #expect(!missingKey.jiraAvailable)
     }
 
-    // MARK: - EnvironmentProbe.probe / probeAll, against canned operations
-
-    /// Builds an `EnvironmentProbeOperations` from plain, `Sendable` lookup tables instead
-    /// of a stateful recorder, so the closures need no locking: `which` maps a tool's raw
-    /// value to a resolved path (absent = not installed), and `run` maps a
-    /// space-joined "executable arg1 arg2…" key to either canned stdout or a thrown
-    /// `ProcessError` (a key in neither table also throws, matching a real non-zero exit).
     private func operations(
         which: [String: String] = [:],
         stdout: [String: String] = [:],
@@ -126,9 +105,6 @@ struct EnvironmentProbeTests {
         )
     }
 
-    /// A tool absent from `which`'s results probes as not installed, with every other field
-    /// nil, regardless of which kind of tool it is (harness vs. `gh`/`acli`, which take the
-    /// auth-check branch only once `which` succeeds).
     @Test func probeReportsNotInstalledWhenWhichFindsNothing() async {
         let probe = EnvironmentProbe(operations: operations())
         let status = await probe.probe(.git)
@@ -139,8 +115,6 @@ struct EnvironmentProbeTests {
         #expect(!status.isInstalled)
     }
 
-    /// `git`/`pi`/`claude` have no auth concept: `authenticated` stays nil even when
-    /// installed, and the detail line combines the parsed version with the resolved path.
     @Test func probeForAHarnessCombinesVersionAndPathWithNoAuthCheck() async {
         let ops = operations(
             which: ["git": "/usr/bin/git"],
@@ -155,8 +129,6 @@ struct EnvironmentProbeTests {
         #expect(status.isUsable, "no auth concept means installed is usable")
     }
 
-    /// `version` takes only the first line of `--version` output and trims it — real
-    /// `claude --version` output can carry a trailing newline or extra lines.
     @Test func versionParsingTakesFirstLineTrimmed() async {
         let ops = operations(
             which: ["claude": "/usr/local/bin/claude"],
@@ -167,9 +139,6 @@ struct EnvironmentProbeTests {
         #expect(status.version == "1.2.3 (build 456)")
     }
 
-    /// When the `--version` call itself fails (old binary, unrecognized flag), `version` is
-    /// swallowed to nil rather than propagating the error, and the detail line falls back to
-    /// the bare path.
     @Test func probeToleratesAVersionCommandThatFails() async {
         let ops = operations(
             which: ["pi": "/usr/local/bin/pi"],
@@ -183,8 +152,6 @@ struct EnvironmentProbeTests {
         #expect(status.detail == "/usr/local/bin/pi")
     }
 
-    /// `gh`'s auth check is hardcoded to invoke `gh auth status` (not the resolved path) —
-    /// pinned here by resolving `which` to a custom path but only canning the bare-name key.
     @Test func probeForGHWhenAuthenticatedReportsVersionAndAuthedDetail() async {
         let ops = operations(
             which: ["gh": "/custom/bin/gh"],
@@ -202,8 +169,6 @@ struct EnvironmentProbeTests {
         #expect(status.isUsable)
     }
 
-    /// Installed but `gh auth status` exits non-zero (no account logged in): `authenticated`
-    /// is false, the detail line points at the fix, and `isUsable` goes false too.
     @Test func probeForGHWhenNotAuthenticatedReportsTheFixInTheDetail() async {
         let ops = operations(
             which: ["gh": "/usr/local/bin/gh"],
@@ -218,8 +183,6 @@ struct EnvironmentProbeTests {
         #expect(!status.isUsable)
     }
 
-    /// `gh`'s "Authenticated — …" detail falls back to the bare path when `--version` itself
-    /// failed, mirroring the harness branch's `version.map { … } ?? path` fallback.
     @Test func probeForGHAuthenticatedWithNoVersionFallsBackToPathInDetail() async {
         let ops = operations(
             which: ["gh": "/usr/local/bin/gh"],
@@ -233,8 +196,6 @@ struct EnvironmentProbeTests {
         #expect(status.detail == "Authenticated — /usr/local/bin/gh")
     }
 
-    /// `acli`'s auth check mirrors `gh`'s: hardcoded to `acli jira auth status`, and success
-    /// reports Jira as authenticated with the Jira-specific fix in the failure detail.
     @Test func probeForAcliWhenAuthenticatedReportsVersionAndAuthedDetail() async {
         let ops = operations(
             which: ["acli": "/opt/homebrew/bin/acli"],
@@ -263,15 +224,12 @@ struct EnvironmentProbeTests {
         #expect(!status.isUsable)
     }
 
-    /// `probeAll` probes every `ExternalTool` case and keys the result by tool, exercising
-    /// the loop that `probe`-level tests above never touch on their own.
     @Test func probeAllCoversEveryExternalToolCase() async {
         let ops = operations(
             which: [
                 "git": "/usr/bin/git",
                 "pi": "/usr/local/bin/pi",
                 "gh": "/usr/local/bin/gh",
-                // "claude" and "acli" deliberately absent: not installed.
             ],
             stdout: [
                 "/usr/bin/git --version": "git version 2.43.0\n",
