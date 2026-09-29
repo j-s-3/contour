@@ -52,13 +52,13 @@ extension GraphStore {
     func canSubmitReview(_ verdict: PRReview.Verdict) -> Bool {
         guard let graph, pullRequestWebURL != nil, review != .submitted(verdict) else { return false }
         if case .submitting = review { return false }
-        return PRReview.canReview(prState: graph.pr.state, ghAvailable: Self.ghAvailable)
+        return PRReview.canReview(prState: graph.pr.state, ghAvailable: canUseGitHubCLI)
     }
 
     func reviewUnavailableReason(_ verdict: PRReview.Verdict) -> String? {
         if review == .submitted(verdict) { return verdict == .approve ? "Approved" : "Changes requested" }
         guard let graph else { return "No pull request is open" }
-        if !Self.ghAvailable { return "Reviewing needs the GitHub CLI — install gh and run `gh auth login`" }
+        if !canUseGitHubCLI { return "Reviewing needs the GitHub CLI — install gh and run `gh auth login`" }
         if graph.pr.state.uppercased() != "OPEN" { return "Only an open pull request can be reviewed" }
         return nil
     }
