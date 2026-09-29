@@ -28,27 +28,45 @@ enum PRSessionCommandsLogic {
     static func showsClosePullRequest(_ session: PRSessionActions?) -> Bool { session?.hasOpenPR == true }
 }
 
+@MainActor
+struct PRSessionMenuActions {
+    var session: PRSessionActions?
+    var closeKeyWindow: () -> Void = { NSApplication.shared.keyWindow?.performClose(nil) }
+    var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
+    func openDifferent() { session?.openDifferent() }
+    func openOnGitHub() { session?.openOnGitHub(opener: openURL) }
+    func copyLink() { session?.copyLink() }
+    func closePullRequest() { session?.close() }
+    func closeWindow() { closeKeyWindow() }
+}
+
 struct PRSessionCommands: Commands {
     @FocusedValue(\.prSession) private var session
 
     var body: some Commands {
+        PRSessionCommands.groups(session: session, actions: PRSessionMenuActions(session: session))
+    }
+
+    @CommandsBuilder
+    static func groups(session: PRSessionActions?, actions: PRSessionMenuActions) -> some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Open Pull Request…") { session?.openDifferent() }
+            Button("Open Pull Request…", action: actions.openDifferent)
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(!PRSessionCommandsLogic.openPullRequestEnabled(session))
             Divider()
-            Button("Open on GitHub") { session?.openOnGitHub() }
+            Button("Open on GitHub", action: actions.openOnGitHub)
                 .keyboardShortcut(OpenOnGitHubShortcut.key, modifiers: OpenOnGitHubShortcut.modifiers)
                 .disabled(!PRSessionCommandsLogic.hasLinkableURL(session))
-            Button("Copy Link to Pull Request") { session?.copyLink() }
+            Button("Copy Link to Pull Request", action: actions.copyLink)
                 .disabled(!PRSessionCommandsLogic.hasLinkableURL(session))
         }
         CommandGroup(replacing: .saveItem) {
-            if PRSessionCommandsLogic.showsClosePullRequest(session), let session {
-                Button("Close Pull Request") { session.close() }
+            if PRSessionCommandsLogic.showsClosePullRequest(session) {
+                Button("Close Pull Request", action: actions.closePullRequest)
                     .keyboardShortcut("w", modifiers: .command)
             } else {
-                Button("Close") { NSApp.keyWindow?.performClose(nil) }
+                Button("Close", action: actions.closeWindow)
                     .keyboardShortcut("w", modifiers: .command)
             }
         }

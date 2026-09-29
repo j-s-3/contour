@@ -14,23 +14,21 @@ struct PRDropTarget: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onDrop(of: [.url, .plainText], isTargeted: $isTargeted) { providers in
-                guard let provider = providers.first else { return false }
-                Task {
-                    if let url = await Self.loadPullRequest(from: provider) { open(url) }
-                }
-                return true
+                handleDrop(providers)
             }
             .overlay {
-                if isTargeted {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.accentColor, lineWidth: 3)
-                        .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                        .padding(6)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
+                if isTargeted { PRDropHighlight() }
             }
             .animation(.easeInOut(duration: 0.15), value: isTargeted)
+    }
+
+    @discardableResult
+    func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        Task {
+            if let url = await Self.loadPullRequest(from: provider) { open(url) }
+        }
+        return true
     }
 
     nonisolated(nonsending) static func loadPullRequest(from provider: NSItemProvider) async -> String? {
@@ -48,5 +46,16 @@ struct PRDropTarget: ViewModifier {
             }
         }
         return nil
+    }
+}
+
+struct PRDropHighlight: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(Color.accentColor, lineWidth: 3)
+            .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            .padding(6)
+            .allowsHitTesting(false)
+            .transition(.opacity)
     }
 }

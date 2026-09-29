@@ -51,15 +51,34 @@ final class GraphStore {
 
     var current: NavigationTarget { path.last ?? .summary }
 
-    init(phase: SessionPhase = .idle, review: PRReview.State = .idle) {
+    typealias PipelineFactory = @MainActor (HarnessID, TrackerID, GitHubAccessMode) -> AnalysisPipeline
+    typealias ReviewSubmitter = @MainActor (String, PRReview.Verdict, String) async throws -> Void
+
+    init(
+        phase: SessionPhase = .idle,
+        review: PRReview.State = .idle,
+        preferences: Preferences = .shared,
+        makePipeline: @escaping PipelineFactory = { AnalysisPipeline(harnessID: $0, trackerID: $1, githubAccess: $2) },
+        metricsURL: URL = AnalysisMetrics.fileURL,
+        submitReview: @escaping ReviewSubmitter = { try await PRReview.submit(prURL: $0, verdict: $1, comment: $2) },
+        canUseGitHubCLI: Bool = GraphStore.ghAvailable
+    ) {
         self.phase = phase
         self.review = review
+        self.preferences = preferences
+        self.makePipeline = makePipeline
+        self.metricsURL = metricsURL
+        self.reviewSubmitter = submitReview
+        self.canUseGitHubCLI = canUseGitHubCLI
     }
 
     private var runTask: Task<Void, Never>?
 
-    @MainActor
-    private var preferences: Preferences { Preferences.shared }
+    private let preferences: Preferences
+    private let makePipeline: PipelineFactory
+    private let metricsURL: URL
+    private let reviewSubmitter: ReviewSubmitter
+    let canUseGitHubCLI: Bool
 
     private(set) var lastPRURL: String?
 
@@ -101,11 +120,8 @@ final class GraphStore {
             return
         }
         self.harnessID = harnessID
-        let pipeline = AnalysisPipeline(
-            harnessID: harnessID,
-            trackerID: preferences.resolvedTracker,
-            githubAccess: preferences.resolvedGitHubAccess
-        )
+        let pipeline = makePipeline(
+            harnessID, preferences.resolvedTracker, preferences.resolvedGitHubAccess)
 
         self.pipeline = pipeline
 
@@ -145,7 +161,7 @@ final class GraphStore {
         review = .submitting(verdict)
         Task { @MainActor in
             do {
-                try await PRReview.submit(prURL: url.absoluteString, verdict: verdict, comment: comment)
+                try await reviewSubmitter(url.absoluteString, verdict, comment)
                 guard pullRequestWebURL == url else { return }
                 review = .submitted(verdict)
             } catch {
@@ -231,7 +247,7 @@ final class GraphStore {
     private func saveMetrics() {
         guard let metrics, !metricsSaved, metrics.elapsed(.prShell) != nil else { return }
         metricsSaved = true
-        metrics.append()
+        metrics.append(to: metricsURL)
     }
 
     func navigate(to target: NavigationTarget) {

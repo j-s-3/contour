@@ -117,8 +117,67 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage.lcov
+          path: |
+            coverage.lcov
+            coverage-summary.txt
 
       - name: Build release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: swift build -c release
+
+  coverage-badge:
+    name: Publish coverage badge
+    # Main only: the README badge reads coverage.json from the `badges` branch through
+    # shields.io's endpoint badge. A separate job so only this small step gets write access.
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Push coverage.json to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Line coverage is the 10th column of llvm-cov's TOTAL row, the same figure the
+          # job summary shows.
+          PERCENT="$(awk '$1 == "TOTAL" { sub(/%/, "", $10); print $10 }' coverage-summary.txt)"
+          if [ -z "$PERCENT" ]; then
+            echo "::error::No TOTAL row in coverage-summary.txt"
+            cat coverage-summary.txt
+            exit 1
+          fi
+          # Colors step toward the 90% target set in CLAUDE.md.
+          COLOR="$(awk -v p="$PERCENT" 'BEGIN {
+            if (p >= 90) print "brightgreen"; else if (p >= 80) print "green";
+            else if (p >= 70) print "yellowgreen"; else if (p >= 60) print "yellow";
+            else if (p >= 50) print "orange"; else print "red" }')"
+          echo "Line coverage: ${PERCENT}% (${COLOR})"
+
+          git init -q badges
+          cd badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Build on the existing branch so every push is a fast-forward; start an orphan
+          # branch the first time.
+          if git fetch -q --depth 1 origin badges; then
+            git checkout -q -b badges FETCH_HEAD
+          else
+            git checkout -q --orphan badges
+          fi
+
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
+            "$PERCENT" "$COLOR" > coverage.json
+          git add coverage.json
+          if git diff --cached --quiet; then
+            echo "Coverage unchanged; nothing to push."
+            exit 0
+          fi
+          git commit -q -m "Coverage ${PERCENT}% at ${GITHUB_SHA::7}"
+          git push -q origin badges

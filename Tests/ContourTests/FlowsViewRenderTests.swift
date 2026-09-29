@@ -13,7 +13,7 @@ struct FlowsViewRenderTests {
         let view = FlowsView(graph: graph, focus: focus, mode: .constant(mode), onOpenEvidence: { _ in })
         let hosting = NSHostingView(rootView: AnyView(view))
         hosting.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        let window = HeadlessWindow(size: hosting.frame.size)
         window.contentView = hosting
         window.orderBack(nil)
         hosting.layoutSubtreeIfNeeded()
@@ -94,7 +94,7 @@ struct FlowsViewRenderTests {
             var captured: ((DiagramMode) -> Void)?
             hosting = NSHostingView(rootView: Wrapper(graph: graph, focus: focus, setter: { captured = $0 }))
             hosting.frame = NSRect(x: 0, y: 0, width: 1200, height: 800)
-            window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window = HeadlessWindow(size: hosting.frame.size)
             window.contentView = hosting
             window.orderBack(nil)
             pump()
