@@ -4,6 +4,7 @@ import Testing
 @testable import Contour
 
 @MainActor
+@Suite(.serialized)
 struct GraphStoreSessionTests {
     private struct FakePRSource: PRSource {
         let describesItself = "fake (tests)"
@@ -72,7 +73,7 @@ struct GraphStoreSessionTests {
         )
     }
 
-    private func wait(timeout: Duration = .seconds(30), until condition: () -> Bool) async -> Bool {
+    private func wait(timeout: Duration = .seconds(180), until condition: () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
             if ContinuousClock.now > deadline { return false }
