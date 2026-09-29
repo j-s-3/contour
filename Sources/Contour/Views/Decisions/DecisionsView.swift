@@ -1,5 +1,66 @@
 import SwiftUI
 
+@MainActor
+struct DecisionsViewActions {
+    var selectedId: Binding<String?>
+    var expandedIds: Binding<Set<String>>
+    var showOther: Binding<Bool>
+    var sequenceIds: [String]
+    var currentId: String?
+    var toReview: [DecisionNode]
+    var onSetToReview: (String, Bool) -> Void
+    var focusKeyboard: () -> Void
+
+    func toggleOther() {
+        withAnimation(.easeInOut(duration: 0.18)) { showOther.wrappedValue.toggle() }
+    }
+
+    func select(_ id: String) {
+        selectedId.wrappedValue = id
+        focusKeyboard()
+    }
+
+    @discardableResult
+    func step(_ delta: Int) -> String? {
+        guard let nextId = DecisionsViewLogic.stepId(in: sequenceIds, currentId: currentId, delta: delta) else {
+            return nil
+        }
+        selectedId.wrappedValue = nextId
+        focusKeyboard()
+        return nextId
+    }
+
+    func stepBack() { step(-1) }
+
+    func stepForward() { step(1) }
+
+    func revealOtherAndAdvance() {
+        showOther.wrappedValue = true
+        step(1)
+    }
+
+    func toggleExpanded(_ id: String) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if expandedIds.wrappedValue.contains(id) {
+                expandedIds.wrappedValue.remove(id)
+            } else {
+                expandedIds.wrappedValue.insert(id)
+            }
+        }
+    }
+
+    func setToReview(_ decisionId: String, _ addingToReview: Bool) {
+        let nextId = DecisionsViewLogic.selectionAfterTogglingReview(
+            toReview: toReview, decisionId: decisionId, addingToReview: addingToReview)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            onSetToReview(decisionId, addingToReview)
+            expandedIds.wrappedValue.remove(decisionId)
+        }
+        selectedId.wrappedValue = nextId
+        focusKeyboard()
+    }
+}
+
 struct DecisionsView: View {
     let graph: PRGraph
     var focus: Focus?
@@ -36,6 +97,12 @@ struct DecisionsView: View {
         DecisionsViewLogic.sequence(toReview: toReview, other: other, otherShown: otherShown)
     }
     private var selected: DecisionNode? { graph.decision(selectedId) ?? sequence.first }
+    private var handlers: DecisionsViewActions {
+        DecisionsViewActions(
+            selectedId: $selectedId, expandedIds: $expandedIds, showOther: $showOther,
+            sequenceIds: sequence.map(\.id), currentId: selected?.id, toReview: toReview,
+            onSetToReview: onSetToReview, focusKeyboard: { keyboardFocused = true })
+    }
 
     var body: some View {
         if graph.decisions.isEmpty {
@@ -147,9 +214,7 @@ struct DecisionsView: View {
                     .foregroundStyle(.secondary)
             }
             if !toReview.isEmpty {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) { showOther.toggle() }
-                } label: {
+                Button(action: handlers.toggleOther) {
                     HStack(spacing: 6) {
                         Image(systemName: showOther ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold))
@@ -188,12 +253,9 @@ struct DecisionsView: View {
             isSelected: selected?.id == decision.id && keyboardFocused,
             isArrived: arrivedId == decision.id,
             isExpanded: expandedIds.contains(decision.id),
-            onAddToReview: { setToReview(decision, true) },
-            onToggleExpanded: { toggleExpanded(decision.id) },
-            onSelect: {
-                selectedId = decision.id
-                keyboardFocused = true
-            }
+            onAddToReview: { handlers.setToReview(decision.id, true) },
+            onToggleExpanded: { handlers.toggleExpanded(decision.id) },
+            onSelect: { handlers.select(decision.id) }
         )
         .id(decision.id)
     }
@@ -223,12 +285,9 @@ struct DecisionsView: View {
             noteFocus: $noteFocus,
             onSetState: { judge(decision, $0) },
             onSetNote: { onSetNote(decision.id, $0) },
-            onToggleExpanded: { toggleExpanded(decision.id) },
-            onNotWorthReviewing: { setToReview(decision, false) },
-            onSelect: {
-                selectedId = decision.id
-                keyboardFocused = true
-            }
+            onToggleExpanded: { handlers.toggleExpanded(decision.id) },
+            onNotWorthReviewing: { handlers.setToReview(decision.id, false) },
+            onSelect: { handlers.select(decision.id) }
         )
         .id(decision.id)
     }
@@ -246,24 +305,17 @@ struct DecisionsView: View {
                     .foregroundStyle(.secondary)
                 item(current)
                 HStack {
-                    Button {
-                        step(-1)
-                    } label: {
+                    Button(action: handlers.stepBack) {
                         Label("Previous", systemImage: "arrow.left")
                     }
                     .disabled(!position.canGoPrevious)
                     Spacer()
                     if position.offersOtherDecisions {
-                        Button("Other decisions (\(other.count))") {
-                            showOther = true
-                            step(1)
-                        }
-                        .buttonStyle(.link)
+                        Button("Other decisions (\(other.count))", action: handlers.revealOtherAndAdvance)
+                            .buttonStyle(.link)
                         Spacer()
                     }
-                    Button {
-                        step(1)
-                    } label: {
+                    Button(action: handlers.stepForward) {
                         HStack(spacing: 4) {
                             Text("Next")
                             Image(systemName: "arrow.right")
@@ -339,7 +391,7 @@ struct DecisionsView: View {
             return .handled
         case .toggleExpanded:
             guard let decision = selected else { return .ignored }
-            toggleExpanded(decision.id)
+            handlers.toggleExpanded(decision.id)
             return .handled
         case .ignored:
             return .ignored
@@ -347,10 +399,7 @@ struct DecisionsView: View {
     }
 
     private func step(_ delta: Int, proxy: ScrollViewProxy? = nil) {
-        let ids = sequence.map(\.id)
-        guard let nextId = DecisionsViewLogic.stepId(in: ids, currentId: selected?.id, delta: delta) else { return }
-        selectedId = nextId
-        keyboardFocused = true
+        guard let nextId = handlers.step(delta) else { return }
         if let proxy { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(nextId) } }
     }
 
@@ -374,23 +423,6 @@ struct DecisionsView: View {
             actions.ask(.decision(decision.id))
         case .unreviewed:
             break
-        }
-    }
-
-    private func setToReview(_ decision: DecisionNode, _ toReview: Bool) {
-        let nextId = DecisionsViewLogic.selectionAfterTogglingReview(
-            toReview: self.toReview, decisionId: decision.id, addingToReview: toReview)
-        withAnimation(.easeInOut(duration: 0.2)) {
-            onSetToReview(decision.id, toReview)
-            expandedIds.remove(decision.id)
-        }
-        selectedId = nextId
-        keyboardFocused = true
-    }
-
-    private func toggleExpanded(_ id: String) {
-        withAnimation(.easeInOut(duration: 0.18)) {
-            if expandedIds.contains(id) { expandedIds.remove(id) } else { expandedIds.insert(id) }
         }
     }
 }
