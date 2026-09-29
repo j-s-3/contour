@@ -18,7 +18,7 @@ GitHub pull request into a briefing: what changed, what the code now does, which
 engineering decisions it made, what each one traded away, and where your judgment is
 actually needed. Every claim carries a link to the lines behind it.
 
-<p align="center"><img src="Assets/Screenshots/summary.png" alt="Contour's Overview of a pull request: a before/after chain of the behavior change, why it was made, and five things to think about" width="900"></p>
+<p align="center"><img src="Assets/Screenshots/summary.png" alt="Contour's Overview of a pull request: a before/after chain of the behavior change, why it was made, and five areas needing your judgment, each ending in the decision it asks of you" width="900"></p>
 
 > **Status:** early and experimental. Expect rough edges and breaking changes.
 
@@ -68,7 +68,7 @@ Each "Review →" takes you to the evidence and the decision the item is about.
 
 Contour pulls out every meaningful choice the implementation made. It then asks which of
 them a strong senior engineer would want to stop and consciously agree with. Here it
-found 10 decisions and put 5 in front of you. Each is drawn as a choice between real
+found 9 decisions and put 5 in front of you. Each is drawn as a choice between real
 alternatives, with **what it traded**, **why it landed on that side** (quoting the author
 where it can), the questions raised about it, and every flow it appears in. You judge
 each one: *Looks good*, *Question*, or *Discuss*. You can also move a decision in or out
@@ -133,11 +133,12 @@ previous analysis, clearly marked, while the new one runs.
   originating issue in GitHub Issues or Jira. It stores no provider keys.
 
 Also: a command palette (⌘K) that jumps to any lens or node, a focused code viewer with
-a guaranteed way back, *Open on GitHub* and *Copy review summary* to take your review
-elsewhere, and opening a PR from the clipboard, a dropped link, or your recent and
+a guaranteed way back, **Approve** and **Request changes** buttons that submit your
+verdict to GitHub through `gh`, *Open on GitHub* and *Copy review summary* to take your
+review elsewhere, and opening a PR from the clipboard, a dropped link, or your recent and
 awaiting-review PRs on the start screen.
 
-Not yet: posting reviews back to GitHub, LSP-grade jump-to-definition, and sharded
+Not yet: posting line comments back to GitHub, LSP-grade jump-to-definition, and sharded
 analysis for very large PRs (see `DESIGN.md` §17/§18). `DESIGN.md` has the full product
 and technical design.
 
@@ -152,8 +153,9 @@ and technical design.
 
 That's the whole list. Everything below is optional:
 
-- `gh` — **only needed for private pull requests.** Public PRs are read through GitHub's
-  anonymous REST API, so Contour works on a machine with nothing but `git` and a harness.
+- `gh` — **only needed for private pull requests, and for approving or requesting
+  changes from the app.** Public PRs are read through GitHub's anonymous REST API, so
+  Contour works on a machine with nothing but `git` and a harness.
 - `acli` — only needed if you want Jira instead of GitHub issues for issue lookup.
 
 On first launch a setup wizard probes for all of these and tells you what it found, what

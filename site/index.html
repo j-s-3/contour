@@ -181,10 +181,10 @@
 
       <figure class="shot shot--wide reveal">
         <div class="window">
-          <img src="assets/shots/overview.webp" width="2200" height="1375" loading="lazy" decoding="async"
-               alt="Contour's Overview for sharkdp/bat pull request 3877: a headline of what changed, a before and after behavior strip, why and consequence lines, and four things to think about.">
+          <img src="assets/shots/overview.webp" width="2200" height="1754" loading="lazy" decoding="async"
+               alt="Contour's Overview for sharkdp/bat pull request 3877: a headline of what changed, a before and after behavior strip, why and consequence lines, and four areas needing the reviewer’s judgment, each with the decision it asks for.">
         </div>
-        <figcaption>The Overview for <a href="https://github.com/sharkdp/bat/pull/3877">sharkdp/bat #3877</a>. What changed, why, what it costs, and four things to think about, before you’ve read a line of Rust.</figcaption>
+        <figcaption>The Overview for <a href="https://github.com/sharkdp/bat/pull/3877">sharkdp/bat #3877</a>. What changed, why, what it costs, and the four areas that need your judgment, before you’ve read a line of Rust.</figcaption>
       </figure>
     </section>
 
@@ -251,8 +251,8 @@
 
       <figure class="shot shot--offset reveal">
         <div class="window window--bare">
-          <img src="assets/shots/decision.webp" width="1720" height="895" loading="lazy" decoding="async"
-               alt="A decision card in Contour: How much data should binary detection inspect? The implementation chose First 1 KB over First line only, trading text-file permissiveness for binary detection completeness, with Looks good, Question and Discuss buttons.">
+          <img src="assets/shots/decision.webp" width="1724" height="766" loading="lazy" decoding="async"
+               alt="A decision card in Contour: How much data should binary detection inspect? The implementation chose First 1 KB over First line only, trading text-file permissiveness for binary detection completeness, the question the Overview asks about it, and Looks good, Question and Discuss buttons.">
         </div>
         <figcaption>The same PR’s other system-level decision, as the app shows it.</figcaption>
       </figure>
@@ -311,13 +311,13 @@
               <p class="branch-step warn">NUL arrives in a later chunk → printed as text</p>
             </div>
           </div>
-          <p class="flow-foot">Review question: <em>can binary data still slip through when the first read is short?</em></p>
+          <p class="flow-foot">Review question: <em>is best-effort detection on piped or streamed input acceptable for this fix?</em></p>
         </div>
         <div class="flows-side">
           <p class="big-quote reveal">Flows explain runtime behavior as a story, not as a translated call stack.</p>
           <figure class="shot reveal">
             <div class="window window--bare">
-              <img src="assets/shots/flows.webp" width="1152" height="1181" loading="lazy" decoding="async"
+              <img src="assets/shots/flows.webp" width="1184" height="1116" loading="lazy" decoding="async"
                    alt="Contour's Flows lens for bat file input: a vertical sequence of steps with new and changed steps highlighted, and decisions and a review question pinned beside the new snapshot step.">
             </div>
             <figcaption>Decisions and open questions pin themselves to the step where they bite.</figcaption>
