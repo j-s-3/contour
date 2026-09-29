@@ -1,4 +1,3 @@
-import Foundation
 import SwiftUI
 import Testing
 
@@ -48,7 +47,7 @@ struct ArchitectureDiagramViewTests {
         withPurpose.purpose = "Handles the thing"
         #expect(ArchMetrics.size(of: withPurpose).height > bare.height)
 
-        var withChange = box(before: "old", after: "new")
+        let withChange = box(before: "old", after: "new")
         #expect(ArchMetrics.size(of: withChange).height > bare.height)
 
         var withDecision = box()

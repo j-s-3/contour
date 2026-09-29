@@ -16,7 +16,6 @@ struct ChatMessage: Identifiable, Hashable, Sendable {
 final class Conversation: Identifiable {
     let id = UUID()
     let subject: ReviewSubject
-    let createdAt = Date()
     var expansions: Set<ContextExpansion> = []
     var pinnedRefs: [CodeRef] = []
     var messages: [ChatMessage] = []
@@ -43,7 +42,7 @@ final class ConversationStore {
         @Sendable (
             _ conversationId: UUID, _ contextDocument: String, _ history: [ChatMessage], _ question: String,
             _ harnessID: HarnessID, _ checkout: RepoCheckout
-        ) -> AsyncThrowingStream<ConversationEvent, Error>
+        ) -> AsyncThrowingStream<ConversationEvent, any Error>
 
     static let liveResponder: Responder = { conversationId, contextDocument, history, question, harnessID, checkout in
         ConversationService(

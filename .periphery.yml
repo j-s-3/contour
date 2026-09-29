@@ -1,0 +1,4 @@
+retain_encodable_properties: true
+relative_results: true
+strict: true
+baseline: .periphery-baseline.json

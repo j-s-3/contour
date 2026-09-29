@@ -1,0 +1,42 @@
+included:
+  - Sources
+  - Tests
+  - Package.swift
+
+only_rules:
+  - array_init
+  - class_delegate_protocol
+  - compiler_protocol_init
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - discarded_notification_center_observer
+  - discouraged_direct_init
+  - duplicate_enum_cases
+  - duplicated_key_in_dictionary_literal
+  - empty_count
+  - empty_xctest_method
+  - first_where
+  - flatmap_over_map_reduce
+  - identical_operands
+  - last_where
+  - legacy_random
+  - lower_acl_than_parent
+  - notification_center_detachment
+  - private_unit_test
+  - reduce_boolean
+  - reduce_into
+  - self_in_property_initialization
+  - sorted_first_last
+  - unhandled_throwing_task
+  - unowned_variable_capture
+  - unused_enumerated
+  - unused_setter_value
+  - weak_delegate
+  - xctfail_message
+
+analyzer_rules:
+  - capture_variable
+  - typesafe_array_init
+  - unused_import

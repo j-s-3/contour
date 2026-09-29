@@ -65,7 +65,7 @@ struct GraphStoreTests {
     @Test @MainActor func checkoutEventSetsTheCheckout() {
         let store = GraphStore()
         let checkout = RepoCheckout(
-            rootDir: URL(fileURLWithPath: "/tmp/checkout"), headSha: "h", baseSha: "b", symbolIndexPath: nil)
+            rootDir: URL(fileURLWithPath: "/tmp/checkout"), headSha: "h", baseSha: "b")
         store.handle(.checkout(checkout))
         #expect(store.checkout?.headSha == "h")
     }

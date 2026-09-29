@@ -18,8 +18,6 @@ struct ArchDiagramLayout {
     var edges: [PlacedEdge]
     var boundaries: [PlacedBoundary]
     var size: CGSize
-
-    func node(_ id: String) -> PlacedNode? { nodes.first { $0.id == id } }
 }
 
 enum GraphLayoutEngine {

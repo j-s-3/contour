@@ -2,14 +2,13 @@ import Foundation
 import os
 
 struct AnalysisProgress: Sendable {
-    var stageName: String
     var detail: String
 }
 
 enum AnalysisServiceError: LocalizedError {
     case emptyResponse(harness: String)
     case notJSON(harness: String, raw: String)
-    case processFailed(harness: String, Error)
+    case processFailed(harness: String, any Error)
 
     var reviewerReason: String {
         switch self {
@@ -72,10 +71,16 @@ struct AnalysisService {
     }
 
     private let mockOverride: MockOptions?
+    private let dumpDirectory: URL?
 
-    init(harness: any Harness, mock: MockOptions? = nil) {
+    static var dumpDirectoryFromEnvironment: URL? {
+        ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    init(harness: any Harness, mock: MockOptions? = nil, dumpDirectory: URL? = Self.dumpDirectoryFromEnvironment) {
         self.harness = harness
         self.mockOverride = mock
+        self.dumpDirectory = dumpDirectory
     }
 
     func runStage(
@@ -92,7 +97,7 @@ struct AnalysisService {
                 prompt: prompt, cwd: cwd, tier: tier, stage: stage,
                 streaming: streaming, onElement: onElement, onProgress: onProgress)
         } catch AnalysisServiceError.notJSON {
-            onProgress(AnalysisProgress(stageName: "", detail: "model returned malformed JSON, retrying once"))
+            onProgress(AnalysisProgress(detail: "model returned malformed JSON, retrying once"))
             return try await runStageOnce(
                 prompt: prompt, cwd: cwd, tier: tier, stage: stage,
                 streaming: streaming, onElement: onElement, onProgress: onProgress)
@@ -109,7 +114,7 @@ struct AnalysisService {
         onProgress: @escaping @Sendable (AnalysisProgress) -> Void
     ) async throws -> [String: Any] {
         if let mock = mockOverride ?? MockOptions.fromEnvironment {
-            onProgress(AnalysisProgress(stageName: "", detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
+            onProgress(AnalysisProgress(detail: "using synthetic data (CONTOUR_MOCK_ANALYSIS=1)"))
             let response = MockAnalysisFixtures.response(for: stage)
             try await Self.simulateLatency(
                 of: stage, scale: mock.latencyScale, response: response,
@@ -133,14 +138,14 @@ struct AnalysisService {
                 tier: tier, systemPrompt: Self.groundingSystemPrompt)
 
         var finalText: String?
-        var lastError: Error?
+        var lastError: any Error?
         var extractor = streaming.map(StreamingArrayExtractor.init(key:))
 
         do {
             for try await line in Shell.stream(harness.executable, args, cwd: cwd) {
                 switch harness.interpret(line) {
                 case .progress(let detail):
-                    onProgress(AnalysisProgress(stageName: "", detail: detail))
+                    onProgress(AnalysisProgress(detail: detail))
                 case .finalText(let text):
                     finalText = text
                 case .textDelta(let text):
@@ -161,7 +166,7 @@ struct AnalysisService {
         guard let parsed = Self.extractJSONObject(from: text) else {
             throw AnalysisServiceError.notJSON(harness: name, raw: text)
         }
-        Self.dumpIfRequested(parsed, stage: stage)
+        dumpIfRequested(parsed, stage: stage)
         return parsed
     }
 
@@ -190,9 +195,8 @@ struct AnalysisService {
         }
     }
 
-    private static func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
-        guard let dir = ProcessInfo.processInfo.environment["CONTOUR_DUMP_STAGES"] else { return }
-        let url = URL(fileURLWithPath: dir, isDirectory: true)
+    private func dumpIfRequested(_ object: [String: Any], stage: PipelineStage) {
+        guard let url = dumpDirectory else { return }
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         guard
             let data = try? JSONSerialization.data(

@@ -1,5 +1,3 @@
-import Foundation
-
 enum StageResult: Sendable {
     case behaviorChange(StageDecoding.BehaviorChangeResult)
     case understanding(StageDecoding.UnderstandingResult)

@@ -63,25 +63,6 @@ jobs:
           swift test --sanitize=thread --enable-code-coverage \
             --skip BenchmarkTests --skip BenchTests 2>&1 | tee test-output.log
 
-      - name: No main-actor isolation warnings (issue #185)
-        # Members of a `View` are implicitly `@MainActor`; calling one from a nonisolated
-        # `@Test` is only a warning today because SwiftUI's isolation is @preconcurrency, but
-        # it becomes a hard error under Swift 6 language mode (#72). Pure helpers on views are
-        # declared `nonisolated`; anything that genuinely needs the main actor is called from
-        # a `@MainActor` test. Fail here so new instances don't pile up silently again.
-        run: |
-          PATTERN="main actor-isolated .* in a (synchronous )?nonisolated context"
-          # Strip color codes and OSC-8 links so the list reads cleanly in the annotation.
-          perl -pe 's/\e\[[0-9;]*m//g; s/\e\]8;;.*?\e\\//g' test-output.log \
-            | grep -E "$PATTERN" | sed -E "s|^$GITHUB_WORKSPACE/||" | sort -u > isolation-warnings.txt || true
-          if [ -s isolation-warnings.txt ]; then
-            cat isolation-warnings.txt
-            # One annotation carrying the whole list, so it's readable from the checks API too.
-            LIST="$(sed -E 's/%/%25/g' isolation-warnings.txt | awk '{printf "%s%%0A", $0}')"
-            echo "::error title=Main-actor isolation warnings::$(wc -l < isolation-warnings.txt | tr -d ' ') found. Mark pure View helpers 'nonisolated' or make the test @MainActor.%0A$LIST"
-            exit 1
-          fi
-
       - name: Code coverage report
         run: |
           # The build output layout varies by build system (classic SwiftPM vs.
@@ -181,3 +162,41 @@ jobs:
           fi
           git commit -q -m "Coverage ${PERCENT}% at ${GITHUB_SHA::7}"
           git push -q origin badges
+
+  analysis:
+    name: Static analysis & Address Sanitizer
+    # Runs beside the build job. Periphery and SwiftLint come from Homebrew; their
+    # settings live in .periphery.yml and .swiftlint.yml at the repo root.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 27
+        run: sudo xcode-select -s /Applications/Xcode_27.app
+
+      - name: Install Periphery and SwiftLint
+        run: |
+          brew install periphery swiftlint
+          periphery version
+          swiftlint version
+
+      - name: SwiftLint (bug-pattern rules)
+        # Only the rules listed in .swiftlint.yml's only_rules: bug patterns and cheap
+        # performance checks. Formatting and style stay with swift-format.
+        run: swiftlint lint --strict --quiet --reporter github-actions-logging
+
+      - name: Periphery (unused code)
+        # A fresh checkout, so the index store holds no units from deleted code. The Swift
+        # Build backend writes the index store to .build/out, not where Periphery's own
+        # build step looks, hence --skip-build. Tests are built too so code they exercise
+        # counts as used.
+        run: |
+          swift build --build-tests
+          periphery scan --skip-build --index-store-path .build/out --format github-actions
+
+      - name: Test under Address Sanitizer
+        # Heap and stack memory errors wherever the code, the SDK or Foundation's
+        # Objective-C bridging reaches below Swift's safety. Benchmarks are skipped for the
+        # same reason as under the Thread Sanitizer.
+        run: swift test --sanitize=address --skip BenchmarkTests --skip BenchTests

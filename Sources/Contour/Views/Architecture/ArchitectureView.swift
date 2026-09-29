@@ -16,7 +16,7 @@ struct ArchitectureView: View {
     var body: some View {
         let level = self.level
         VStack(alignment: .leading, spacing: 0) {
-            header(level)
+            header
             Divider()
             if level.nodes.isEmpty {
                 ContentUnavailableView(
@@ -71,7 +71,7 @@ struct ArchitectureView: View {
         .onDisappear { actions.focus(nil) }
     }
 
-    private func header(_ level: ArchLevel) -> some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             impactLabel
             if let headline = graph.architecture?.headline, !headline.isEmpty {

@@ -11,7 +11,7 @@ struct ConversationStoreTests {
 
     let graph = ContourSampleData.publishTriggeredReindex
     let checkout = RepoCheckout(
-        rootDir: FileManager.default.temporaryDirectory, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        rootDir: FileManager.default.temporaryDirectory, headSha: "h", baseSha: "b")
 
     private func scripted(
         _ events: [ConversationEvent], finishing error: (any Error)? = nil

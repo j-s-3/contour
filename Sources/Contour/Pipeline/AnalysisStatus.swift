@@ -54,11 +54,11 @@ extension PipelineStage {
         }
     }
 
-    func failureMessage(for error: Error) -> String {
+    func failureMessage(for error: any Error) -> String {
         "\(failureHeadline). \(Self.failureReason(error))"
     }
 
-    static func failureReason(_ error: Error) -> String {
+    static func failureReason(_ error: any Error) -> String {
         switch error {
         case let error as AnalysisServiceError: return error.reviewerReason
         case is StageDecodingError: return "The model's answer wasn't in the expected shape."

@@ -151,9 +151,6 @@ struct AnalysisDetailsView: View {
     var onStop: (() -> Void)?
     var onRetry: (PipelineStage) -> Void
 
-    @State private var showPipeline = false
-    @State private var showLog = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -197,7 +194,7 @@ struct AnalysisDetailsView: View {
 
             Divider()
 
-            DisclosureGroup("Pipeline details", isExpanded: $showPipeline) {
+            DisclosureGroup("Pipeline details") {
                 VStack(alignment: .leading, spacing: 12) {
                     PipelineStagesView(state: state)
                     if let metrics { MetricsView(metrics: metrics) }
@@ -206,7 +203,7 @@ struct AnalysisDetailsView: View {
             }
             .font(.callout)
 
-            DisclosureGroup("Show log", isExpanded: $showLog) {
+            DisclosureGroup("Show log") {
                 AnalysisLogView(log: log)
                     .frame(height: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -260,8 +257,6 @@ struct AnalysisDetailsView: View {
 struct RefCheckView: View {
     let check: RefCheck
 
-    @State private var showUnresolved = false
-
     var body: some View {
         if check.unresolvedCount == 0 {
             Label {
@@ -272,7 +267,7 @@ struct RefCheckView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         } else {
-            DisclosureGroup(isExpanded: $showUnresolved) {
+            DisclosureGroup {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(check.unresolved, id: \.self) { ref in
                         Text(ref)

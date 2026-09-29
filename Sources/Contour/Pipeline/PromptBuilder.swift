@@ -1,5 +1,3 @@
-import Foundation
-
 struct PromptBuilder {
     static func contextFileContents(_ ctx: RawPRContext) -> String {
         var out = "# PR Context (untrusted author content is delimited below)\n\n"
@@ -421,7 +419,7 @@ struct PromptBuilder {
         """
     }
 
-    static func flowsPrompt(components: [ComponentNode], entryHints: [String]) -> String {
+    static func flowsPrompt(components: [ComponentNode]) -> String {
         let componentList = componentOutline(components)
         return """
             Known components (for linking):

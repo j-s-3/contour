@@ -127,11 +127,11 @@ struct AnalysisServiceHarnessPathTests {
     private let items = #"{"items":[{"n":1},{"n":2}]}"#
 
     private func run(
-        _ harness: ScriptedHarness, streaming: String? = nil,
+        _ harness: ScriptedHarness, streaming: String? = nil, dumpDirectory: URL? = nil,
         onElement: @escaping @Sendable ([String: Any]) -> Void = { _ in },
         onProgress: @escaping @Sendable (AnalysisProgress) -> Void = { _ in }
     ) async throws -> [String: Any] {
-        try await AnalysisService(harness: harness).runStage(
+        try await AnalysisService(harness: harness, dumpDirectory: dumpDirectory).runStage(
             prompt: "p", cwd: cwd, tier: .fast, stage: .understanding, streaming: streaming,
             onElement: onElement, onProgress: onProgress)
     }
@@ -209,16 +209,11 @@ struct AnalysisServiceHarnessPathTests {
         }
     }
 
-    @Test func stageDumpIsWrittenWhenRequestedByEnvironment() async throws {
+    @Test func stageDumpIsWrittenToTheDumpDirectory() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("analysis-dump-\(UUID().uuidString)", isDirectory: true)
-        defer {
-            unsetenv("CONTOUR_DUMP_STAGES")
-            try? FileManager.default.removeItem(at: dir)
-        }
-        setenv("CONTOUR_DUMP_STAGES", dir.path, 1)
-        _ = try await run(ScriptedHarness(script: "printf 'F:%s\\n' '{\"a\":1}'"))
-        unsetenv("CONTOUR_DUMP_STAGES")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try await run(ScriptedHarness(script: "printf 'F:%s\\n' '{\"a\":1}'"), dumpDirectory: dir)
         let data = try Data(contentsOf: dir.appendingPathComponent("understanding.json"))
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         #expect(object?["a"] as? Int == 1)

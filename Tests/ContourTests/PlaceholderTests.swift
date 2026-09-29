@@ -59,8 +59,8 @@ final class PlaceholderTests: XCTestCase {
     func testMockGraphExercisesHierarchyFields() throws {
         let graph = ContourSampleData.publishTriggeredReindex
         XCTAssertNotNil(graph.dominantBehaviorChange)
-        XCTAssertFalse(graph.components.filter { $0.level == .system }.isEmpty)
-        XCTAssertFalse(graph.components.filter { $0.level == .implementation }.isEmpty)
+        XCTAssertTrue(graph.components.contains { $0.level == .system })
+        XCTAssertTrue(graph.components.contains { $0.level == .implementation })
         XCTAssertFalse(graph.flows.first?.storySteps.isEmpty ?? true)
 
         let data = try JSONEncoder().encode(graph)

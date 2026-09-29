@@ -45,13 +45,6 @@ struct BadgesRenderTests {
             StatementView(statement: Statement(text: "Guess", provenance: .interpretation, confidence: .low)))
     }
 
-    @Test func changeKindBadgeRendersForEveryKind() {
-        for kind in [ChangeKind.new, .changed, .touched, .unchanged, .removed] {
-            let size = render(ChangeKindBadge(kind: kind))
-            #expect(size.width > 0 && size.height > 0)
-        }
-    }
-
     @Test func codeRefChipAndWrapChipsRenderEveryRef() {
         let refs = (1...6).map { CodeRef(path: "Sources/File\($0).swift", startLine: $0, endLine: $0 + 3) }
         let chip = render(CodeRefChip(ref: refs[0], action: {}))

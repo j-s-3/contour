@@ -376,7 +376,7 @@ struct FlowBehaviorTests {
 
     @Test func theFlowsStageIsAskedForBehaviorAndTheJudgmentStageForAnchors() {
         let graph = ContourSampleData.publishTriggeredReindex
-        let flows = PromptBuilder.flowsPrompt(components: graph.components, entryHints: [])
+        let flows = PromptBuilder.flowsPrompt(components: graph.components)
         #expect(!flows.contains("- index-on-publish:"))
         #expect(!flows.contains("decisionIds"))
         #expect(flows.contains("\"behavior\""))

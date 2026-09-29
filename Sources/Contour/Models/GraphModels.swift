@@ -34,7 +34,7 @@ struct Statement: Codable, Hashable, Sendable, Identifiable {
         self.confidence = confidence
         self.source = source
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         text = try c.decode(String.self, forKey: .text)
         provenance = try c.decode(Provenance.self, forKey: .provenance)
@@ -42,7 +42,7 @@ struct Statement: Codable, Hashable, Sendable, Identifiable {
         source = try c.decodeIfPresent(String.self, forKey: .source)
         id = UUID().uuidString
     }
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(text, forKey: .text)
         try c.encode(provenance, forKey: .provenance)
@@ -71,7 +71,7 @@ struct CodeRef: Codable, Hashable, Sendable, Identifiable {
         self.side = side
     }
     enum CodingKeys: String, CodingKey { case path, startLine, endLine, blobSha, side }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         path = try c.decode(String.self, forKey: .path)
         startLine = try c.decodeIfPresent(Int.self, forKey: .startLine) ?? 1
@@ -144,7 +144,7 @@ struct ArchitectureEdge: Codable, Hashable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, fromId, toId, label, previousLabel, flow, change, isTrustBoundary, onCriticalPath, decisionIds, note
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         fromId = try c.decode(String.self, forKey: .fromId)
@@ -193,7 +193,7 @@ struct SystemBoundary: Codable, Hashable, Sendable, Identifiable {
         self.componentIds = componentIds
     }
     enum CodingKeys: String, CodingKey { case id, label, kind, componentIds }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
@@ -231,7 +231,7 @@ struct ArchitectureAssessment: Codable, Hashable, Sendable {
         self.focusIds = focusIds
     }
     enum CodingKeys: String, CodingKey { case impact, headline, explanation, focusIds }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         impact = (try? c.decodeIfPresent(ArchitecturalImpact.self, forKey: .impact)) ?? .low
         headline = try c.decodeIfPresent(String.self, forKey: .headline) ?? ""
@@ -251,7 +251,7 @@ struct ResponsibilityDelta: Codable, Hashable, Sendable {
         self.summary = summary
     }
     enum CodingKeys: String, CodingKey { case before, after, summary }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         before = (try? c.decodeIfPresent(String.self, forKey: .before)).flatMap { $0?.isEmpty == false ? $0 : nil }
         after = (try? c.decodeIfPresent(String.self, forKey: .after)).flatMap { $0?.isEmpty == false ? $0 : nil }
@@ -370,7 +370,7 @@ struct DecisionOption: Codable, Hashable, Sendable {
         self.chosen = chosen
     }
     enum CodingKeys: String, CodingKey { case label, detail, chosen }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         label = try c.decode(String.self, forKey: .label)
         detail = try c.decodeIfPresent(String.self, forKey: .detail)
@@ -412,7 +412,7 @@ struct BehaviorStage: Codable, Hashable, Sendable, Identifiable {
         self.outcome = outcome
     }
     enum CodingKeys: String, CodingKey { case id, label, tag, componentIds, flowId, refs, outcome }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         label = try c.decode(String.self, forKey: .label)
@@ -446,7 +446,7 @@ struct BehaviorChange: Codable, Hashable, Sendable, Identifiable {
         self.humanQuestion = humanQuestion
     }
     enum CodingKeys: String, CodingKey { case id, title, before, after, why, consequence, humanQuestion }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         title = try c.decode(String.self, forKey: .title)
@@ -500,7 +500,7 @@ struct ComponentNode: Codable, Hashable, Sendable, Identifiable {
         case id, title, changeKind, summary, refs, decisionIds, flowIds, dependsOnIds, isTrustBoundaryEdge,
             filesChanged, level, implementedBy, parentId, delta
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
@@ -579,7 +579,7 @@ struct DecisionNode: Codable, Hashable, Sendable, Identifiable {
             tradeoffs, componentIds, reviewerState, reviewerNote, level, question, options, shape, why,
             significance, impacts, significanceReason, reviewerPlacement
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
@@ -617,7 +617,7 @@ enum TradeoffProminence: String, Codable, Hashable, Sendable {
 
 struct LenientDecodable<T: Decodable>: Decodable {
     var value: T?
-    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+    init(from decoder: any Decoder) throws { value = try? T(from: decoder) }
 }
 
 struct DecisionTradeoff: Codable, Hashable, Sendable {
@@ -640,7 +640,7 @@ struct DecisionTradeoff: Codable, Hashable, Sendable {
         self.refs = refs
     }
     enum CodingKeys: String, CodingKey { case dimensionA, dimensionB, chosenPosition, explanation, prominence, refs }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         dimensionA = try c.decode(String.self, forKey: .dimensionA)
         dimensionB = try c.decode(String.self, forKey: .dimensionB)
@@ -692,7 +692,7 @@ struct FlowStep: Codable, Hashable, Sendable, Identifiable {
         case id, index, title, componentId, refs, stateDelta, branches, externalCalls, errorPaths,
             changeKind, isAsyncBoundaryAfter, caution
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         index = try c.decodeIfPresent(Int.self, forKey: .index) ?? 0
@@ -729,7 +729,7 @@ struct FlowNode: Codable, Hashable, Sendable, Identifiable {
         self.behavior = behavior
     }
     enum CodingKeys: String, CodingKey { case id, title, steps, entryPointId, storySteps, behavior }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
@@ -763,7 +763,7 @@ struct EntryPointNode: Codable, Hashable, Sendable, Identifiable {
         self.triggersLabel = triggersLabel
     }
     enum CodingKeys: String, CodingKey { case id, title, kind, changeKind, refs, flowId, triggersLabel }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
@@ -781,14 +781,8 @@ struct QuestionNode: Codable, Hashable, Sendable, Identifiable {
     var relatedIds: [String] = []
     var refs: [CodeRef] = []
 
-    init(id: String, text: String, relatedIds: [String] = [], refs: [CodeRef] = []) {
-        self.id = id
-        self.text = text
-        self.relatedIds = relatedIds
-        self.refs = refs
-    }
     enum CodingKeys: String, CodingKey { case id, text, relatedIds, refs }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         text = try c.decode(String.self, forKey: .text)
@@ -834,7 +828,7 @@ struct Consideration: Codable, Hashable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, question, detail, kind, provenance, confidence, explanation, relatedIds, refs, flowAnchors
     }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         question = try c.decode(String.self, forKey: .question)
@@ -860,7 +854,7 @@ struct ChangeMapEntry: Codable, Hashable, Sendable, Identifiable {
         self.filesChanged = filesChanged
     }
     enum CodingKeys: String, CodingKey { case name, filesChanged }
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         filesChanged = try c.decodeIfPresent(Int.self, forKey: .filesChanged) ?? 0

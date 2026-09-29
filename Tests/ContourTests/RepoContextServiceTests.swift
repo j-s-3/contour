@@ -26,7 +26,7 @@ struct RepoContextServiceTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         try "hello from the checkout".write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let content = try await RepoContextService().readWholeFile(in: checkout, path: "a.txt")
         #expect(content == "hello from the checkout")
     }
@@ -38,7 +38,7 @@ struct RepoContextServiceTests {
         try lines.joined(separator: "\n").write(
             to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let result = try await RepoContextService().readLines(
             in: checkout, path: "a.txt", startLine: 10, endLine: 12, contextLines: 2
         )
@@ -54,7 +54,7 @@ struct RepoContextServiceTests {
         try lines.joined(separator: "\n").write(
             to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let result = try await RepoContextService().readLines(
             in: checkout, path: "a.txt", startLine: 1, endLine: 5, contextLines: 6
         )
@@ -69,7 +69,7 @@ struct RepoContextServiceTests {
         try "working tree line 1\nworking tree line 2\n".write(
             to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: baseSha, symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: baseSha)
         let result = try await RepoContextService().readLines(
             in: checkout, path: "a.txt", startLine: 1, endLine: 1, contextLines: 0, side: .base
         )
@@ -88,7 +88,7 @@ struct RepoContextServiceTests {
         try lines.joined(separator: "\n").write(
             to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let result = try await RepoContextService().readLines(in: checkout, path: "a.txt", startLine: 10, endLine: 10)
         #expect(result.lines.map(\.number) == Array(4...16), "default context is 6 lines either side")
     }
@@ -100,7 +100,7 @@ struct RepoContextServiceTests {
         try lines.joined(separator: "\n").write(
             to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
-        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b", symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: dir, headSha: "h", baseSha: "b")
         let result = try await RepoContextService().readLines(
             in: checkout, path: "a.txt", startLine: 10, endLine: 12, contextLines: 0
         )
@@ -165,7 +165,6 @@ struct RepoContextServiceTests {
             checkout.rootDir
                 == root.appendingPathComponent("cache").appendingPathComponent("octo-widgets", isDirectory: true))
         #expect(checkout.headSha == fixture.headSha && checkout.baseSha == fixture.baseSha)
-        #expect(checkout.symbolIndexPath == nil)
         #expect(try await headOf(checkout.rootDir) == fixture.headSha)
         #expect(try await service.readWholeFile(in: checkout, path: "a.txt") == "head\n")
     }

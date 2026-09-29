@@ -34,7 +34,7 @@
 
         @MainActor private static var beat: Beat?
         @MainActor private static var observer: CFRunLoopObserver?
-        @MainActor private static var timer: DispatchSourceTimer?
+        @MainActor private static var timer: any DispatchSourceTimer?
         @MainActor private static var started = false
 
         @MainActor static func start(

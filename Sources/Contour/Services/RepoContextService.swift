@@ -4,7 +4,6 @@ struct RepoCheckout: Sendable {
     var rootDir: URL
     var headSha: String
     var baseSha: String
-    var symbolIndexPath: URL?
 }
 
 enum RepoContextError: LocalizedError {
@@ -72,7 +71,7 @@ struct RepoContextService {
             _ = try await Shell.run("git", ["checkout", "--force", "refs/pr/\(context.number)/head"], cwd: dir)
         }
 
-        return RepoCheckout(rootDir: dir, headSha: context.headSha, baseSha: context.baseSha, symbolIndexPath: nil)
+        return RepoCheckout(rootDir: dir, headSha: context.headSha, baseSha: context.baseSha)
     }
 
     func readLines(

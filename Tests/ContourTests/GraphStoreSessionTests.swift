@@ -53,7 +53,7 @@ struct GraphStoreSessionTests {
                         .appendingPathComponent("contour-checkout-\(UUID().uuidString)", isDirectory: true)
                     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                     return RepoCheckout(
-                        rootDir: dir, headSha: fetched.headSha, baseSha: fetched.baseSha, symbolIndexPath: nil)
+                        rootDir: dir, headSha: fetched.headSha, baseSha: fetched.baseSha)
                 },
                 mockOverride: AnalysisService.MockOptions(latencyScale: latencyScale)
             )
@@ -226,7 +226,7 @@ struct GraphStoreSessionTests {
         store.load(prURL: prURL)
         #expect(await wait { store.phase == .review })
 
-        store.submitReview(.approve)
+        store.submitReview(.approve, comment: "Looks good")
         #expect(store.review == .submitting(.approve))
 
         #expect(await wait { store.review == .submitted(.approve) })
@@ -234,6 +234,7 @@ struct GraphStoreSessionTests {
         #expect(entries.count == 1)
         #expect(entries.first?.url == prURL)
         #expect(entries.first?.verdict == .approve)
+        #expect(entries.first?.comment == "Looks good")
         store.close()
     }
 

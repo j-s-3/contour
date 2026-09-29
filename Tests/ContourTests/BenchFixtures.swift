@@ -96,7 +96,7 @@ enum BenchFixtures {
             comments: [], reviews: [], diff: diff
         )
 
-        let checkout = RepoCheckout(rootDir: rootDir, headSha: ctx.headSha, baseSha: ctx.baseSha, symbolIndexPath: nil)
+        let checkout = RepoCheckout(rootDir: rootDir, headSha: ctx.headSha, baseSha: ctx.baseSha)
         return BenchFixture(context: ctx, checkout: checkout, rootDir: rootDir)
     }
 

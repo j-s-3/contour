@@ -375,7 +375,7 @@ actor AnalysisPipeline {
 
         case .flows:
             log(stage, "finding entry points")
-            let prompt = PromptBuilder.flowsPrompt(components: graph?.components ?? [], entryHints: [])
+            let prompt = PromptBuilder.flowsPrompt(components: graph?.components ?? [])
             let raw = try await streamed(
                 stage, key: "flows", as: FlowNode.self, analysis: analysis, cwd: cwd,
                 prompt: prompt, tier: .strong, progress: progress)

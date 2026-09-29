@@ -16,15 +16,6 @@ enum ContextExpansion: String, CaseIterable, Hashable, Sendable, Identifiable {
         case .entirePR: return "Entire PR"
         }
     }
-
-    var symbol: String {
-        switch self {
-        case .relatedDecisions: return "checklist"
-        case .relatedFlows: return "arrow.triangle.branch"
-        case .implementation: return "chevron.left.forwardslash.chevron.right"
-        case .entirePR: return "arrow.triangle.pull"
-        }
-    }
 }
 
 enum ChatContextBuilder {

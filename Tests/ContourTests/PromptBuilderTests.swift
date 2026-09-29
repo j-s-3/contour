@@ -69,7 +69,7 @@ struct PromptBuilderTests {
         #expect(PromptBuilder.behaviorChangePrompt().contains("behaviorChanges"))
         #expect(PromptBuilder.architecturePrompt().contains("architectureImpact"))
         #expect(PromptBuilder.decisionsPrompt().contains("Do NOT invent rationale"))
-        #expect(PromptBuilder.flowsPrompt(components: parts, entryHints: []).contains("- a: A"))
+        #expect(PromptBuilder.flowsPrompt(components: parts).contains("- a: A"))
         #expect(PromptBuilder.judgmentPrompt(graphSoFar: "{\"k\":1}").contains("{\"k\":1}"))
     }
 }

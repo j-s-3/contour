@@ -1,5 +1,3 @@
-import Foundation
-
 enum ContourSampleData {
     static let publishTriggeredReindex: PRGraph = {
         let publishing = ComponentNode(

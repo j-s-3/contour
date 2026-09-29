@@ -60,10 +60,6 @@ struct GitHubService: Sendable {
         }
     }
 
-    func fetchContext(prURL: String) async throws -> RawPRContext {
-        try await source().fetchContext(prURL: prURL)
-    }
-
     static func normalize(_ input: String) -> String? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.contains("github.com"), trimmed.contains("/pull/") else { return nil }
