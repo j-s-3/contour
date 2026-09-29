@@ -2,33 +2,8 @@ import Foundation
 import Testing
 @testable import Contour
 
-/// Race and cancellation coverage for `AnalysisPipeline` itself (issue: run the suite under
-/// Thread Sanitizer and add tests for Stop/Retry races): Stop mid-stream, Retry spam, a
-/// second `start()` racing the first, cancelling during checkout, and stale-while-revalidate
-/// clearing rather than mixing when the fresh stage fails.
-///
-/// Driven with the mock harness through `AnalysisService.MockOptions` passed to the
-/// pipeline — never the process-wide `CONTOUR_MOCK_*` environment variables, which other
-/// suites running in parallel read too (`AnalysisCache` bails out entirely under
-/// `CONTOUR_MOCK_ANALYSIS=1`, so setting it here for seconds at a time broke the cache
-/// tests that happened to overlap). Plus three more test-only seams on `AnalysisPipeline`
-/// (`prSourceOverride`, `checkoutOverride`, `previousRevisionOverride`) that stand in for
-/// the network fetch, the git checkout, and the cache's "previous revision" lookup. Every
-/// seam stays nil in production.
-///
-/// Every test reacts to the pipeline's own events (a status change, a graph snapshot,
-/// `.complete`) rather than sleeping for a fixed duration, so ordering is deterministic even
-/// though the mock latency uses real `Task.sleep` under the hood to pace streamed stages
-/// enough to be caught mid-flight.
-///
-/// `.serialized`: the mock's fail-once bookkeeping is a process-wide singleton, and the
-/// paced tests are timing-sensitive enough that running them side by side on a loaded CI
-/// runner would only add noise.
 @Suite(.serialized)
 struct PipelineConcurrencyTests {
-
-    // MARK: - Fixtures
-
     private func context(number: Int, head: String) -> RawPRContext {
         RawPRContext(
             url: "https://github.com/acme/shop/pull/\(number)", owner: "acme", repo: "shop", number: number,
@@ -39,8 +14,6 @@ struct PipelineConcurrencyTests {
         )
     }
 
-    /// Stands in for a real GitHub fetch: hands back a fixed context per URL instead of
-    /// hitting the network.
     private struct FakePRSource: PRSource {
         let describesItself = "fake (tests)"
         let contexts: [String: RawPRContext]
@@ -58,9 +31,6 @@ struct PipelineConcurrencyTests {
         return AnalysisCache(directory: dir)
     }
 
-    /// A pipeline wired to a fake source and an empty temp checkout directory — mock
-    /// analysis never reads real files, and `CodeRefVerifier` simply leaves refs it can't
-    /// resolve unverified rather than failing, so the checkout's contents never matter here.
     private func makePipeline(source: FakePRSource, cache: AnalysisCache,
                               previousRevision: AnalysisCache.Entry? = nil,
                               mock: AnalysisService.MockOptions = AnalysisService.MockOptions()) -> AnalysisPipeline {
@@ -78,12 +48,8 @@ struct PipelineConcurrencyTests {
         )
     }
 
-    /// Just enough mock latency that a streamed stage's elements land one at a time instead
-    /// of all at once — the signal a test reacts to instead of a blind sleep.
     private let paced = AnalysisService.MockOptions(latencyScale: 0.05)
 
-    /// Runs `body` as one scenario. Kept as a wrapper so each test reads as a single block;
-    /// nothing process-wide is touched any more.
     private func withMockAnalysis<T>(_ body: () async throws -> T) async throws -> T {
         try await body()
     }
@@ -92,11 +58,6 @@ struct PipelineConcurrencyTests {
         try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions)).decisions
     }
 
-    // MARK: - Stop mid-stream
-
-    /// Stopping while a streamed decision is being applied: the graph ends up holding either
-    /// the element or not — never a duplicate, never torn — and the stage settles rather than
-    /// being left running.
     @Test func stoppingMidStreamLeavesNoTornOrDuplicateDecisions() async throws {
         let ctx = context(number: 101, head: "head1")
         let cache = try tempCache()
@@ -135,11 +96,6 @@ struct PipelineConcurrencyTests {
         }
     }
 
-    // MARK: - Retry spam
-
-    /// Retry called repeatedly on the same stage: only the newest run is ever in flight (see
-    /// `retry(_:)`'s cancel-before-replace), so it settles once, done, with no duplicate
-    /// elements from overlapping attempts.
     @Test func retryingRepeatedlySettlesOnceWithNoDuplicateDecisions() async throws {
         let ctx = context(number: 102, head: "head1")
         let cache = try tempCache()
@@ -149,8 +105,6 @@ struct PipelineConcurrencyTests {
         try await withMockAnalysis {
             await pipeline.start(prURL: ctx.url)
 
-            // Stop as soon as decisions starts streaming, before it can finish — `retry`
-            // only accepts a stage that has failed or stopped.
             stopping: for await event in pipeline.events {
                 if case .status(.decisions, let status) = event, status.isRunning {
                     await pipeline.stop()
@@ -158,22 +112,15 @@ struct PipelineConcurrencyTests {
                 }
             }
 
-            // Wait for the stop to actually land before spamming Retry — spamming while it's
-            // still `.running` is the already-covered case of `retry`'s own guard rejecting it.
             waitingForStop: for await event in pipeline.events {
                 if case .status(.decisions, .stopped) = event { break waitingForStop }
                 if case .complete = event { break waitingForStop }
             }
 
-            // Retry mashed several times back to back, concurrently rather than one at a
-            // time, to actually exercise the race rather than serialize around it.
             await withTaskGroup(of: Void.self) { group in
                 for _ in 0..<5 { group.addTask { await pipeline.retry(.decisions) } }
             }
 
-            // The stop above settled every stage, so its own `.complete` is still queued
-            // behind the `.stopped` status the loop above broke on. Only a `.complete` that
-            // follows the retry actually running is the one to settle on.
             var lastGraph: PRGraph?
             var finalStatus: StageStatus = .pending
             var sawRetryRunning = false
@@ -195,10 +142,6 @@ struct PipelineConcurrencyTests {
         }
     }
 
-    // MARK: - A second PR mid-run
-
-    /// `start` called for a second PR while the first is mid-run: the first run's events —
-    /// in particular its graph snapshots — never reach the session that opens after it.
     @Test func startingASecondPRMidRunNeverLeaksTheFirstRunsEvents() async throws {
         let ctxA = context(number: 201, head: "headA")
         let ctxB = context(number: 202, head: "headB")
@@ -208,7 +151,6 @@ struct PipelineConcurrencyTests {
         try await withMockAnalysis {
             await pipeline.start(prURL: ctxA.url)
 
-            // Let A genuinely get into analysis — not just fetched — before switching.
             startingB: for await event in pipeline.events {
                 if case .status(let stage, let status) = event, status.isRunning, PipelineStage.analysis.contains(stage) {
                     break startingB
@@ -233,11 +175,6 @@ struct PipelineConcurrencyTests {
         }
     }
 
-    // MARK: - Cancel during checkout
-
-    /// Cancelling while the checkout is still running: `cancel()` closes the stream for
-    /// good, no `.checkout` event ever lands, and no analysis stage starts — no partial
-    /// checkout state is ever treated as valid.
     @Test func cancellingDuringCheckoutPublishesNothingAfterAndNeverReachesAnalysis() async throws {
         let ctx = context(number: 301, head: "head1")
         let cache = try tempCache()
@@ -245,8 +182,6 @@ struct PipelineConcurrencyTests {
             harnessID: .claude, trackerID: .none, cache: cache,
             prSourceOverride: FakePRSource(ctx),
             checkoutOverride: { fetchedCtx in
-                // Slow enough that the test can react to "checkout started" and cancel well
-                // before it would ever complete.
                 try await Task.sleep(for: .milliseconds(300))
                 let dir = FileManager.default.temporaryDirectory
                     .appendingPathComponent("contour-checkout-\(fetchedCtx.number)-\(UUID().uuidString)", isDirectory: true)
@@ -268,8 +203,6 @@ struct PipelineConcurrencyTests {
                 }
             }
 
-            // Whatever was already queued when cancel() ran (the checkout's own log line, for
-            // one) still drains; the loop ending at all is what proves the stream closed.
             var afterCancel: [PipelineEvent] = []
             for await event in pipeline.events { afterCancel.append(event) }
 
@@ -285,14 +218,9 @@ struct PipelineConcurrencyTests {
         }
     }
 
-    // MARK: - Stale-while-revalidate
-
-    /// The fresh stage failing after a stale slice was shown: the stale slice is cleared, not
-    /// mixed with (nonexistent) new output, and the reviewer sees a failure rather than a
-    /// slice from a revision that no longer exists.
     @Test func staleWhileRevalidateClearsWithoutMixingWhenTheFreshStageFails() async throws {
         let oldCtx = context(number: 401, head: "head1")
-        let newCtx = context(number: 401, head: "head2") // same PR, a new commit
+        let newCtx = context(number: 401, head: "head2")
         let cache = try tempCache()
 
         var previousGraph = PRGraph.shell(from: oldCtx)
@@ -305,9 +233,6 @@ struct PipelineConcurrencyTests {
         try await withMockAnalysis {
             await pipeline.start(prURL: newCtx.url)
 
-            // `.revalidating` fires twice here: once with the earlier head, when the stale
-            // slice is first shown, and again with nil once every stale stage has settled —
-            // this one included, since a failure also clears a stage out of `stale` (§13).
             var revalidatingHeads: [String?] = []
             var sawStaleDecisions = false
             var lastGraph: PRGraph?

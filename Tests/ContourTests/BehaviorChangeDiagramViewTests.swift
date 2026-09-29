@@ -2,18 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `StageBoxLogic`, `BehaviorChangeDiagramMetrics`, and `CappedWidthLogic` are this file's
-/// pure logic — delta/tint/help-text derivation, density-dependent sizing, and
-/// `CappedWidth`'s one bit of math — pulled out of `StageBox`/`diagram`/`row`/`chain` and
-/// `CappedWidth` (all private or fileprivate to the file) into top-level types so they're
-/// directly testable against plain `BehaviorStageTag`/`BehaviorOutcome`/`Density` fixtures.
-/// The rest — the before/after `Grid`, `ViewThatFits` density stepping, `CappedWidth`'s
-/// `Layout.sizeThatFits`/`placeSubviews` (which need a real SwiftUI `Subview` to measure) —
-/// is view rendering and SwiftUI layout with no UI-testing infrastructure in this suite.
 struct BehaviorChangeDiagramViewTests {
-
-    // MARK: - isDelta
-
     @Test func afterOnlyStageIsDeltaOnlyInTheAfterRow() {
         #expect(StageBoxLogic.isDelta(isAfter: true, tag: .afterOnly))
         #expect(!StageBoxLogic.isDelta(isAfter: false, tag: .afterOnly))
@@ -28,8 +17,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(!StageBoxLogic.isDelta(isAfter: true, tag: .both))
         #expect(!StageBoxLogic.isDelta(isAfter: false, tag: .both))
     }
-
-    // MARK: - tint
 
     @Test func tintIsRedOnFailureRegardlessOfDelta() {
         #expect(StageBoxLogic.tint(outcome: .failure, isAfter: true, isDelta: false) == .red)
@@ -48,8 +35,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(StageBoxLogic.tint(outcome: nil, isAfter: true, isDelta: false) == nil)
         #expect(StageBoxLogic.tint(outcome: nil, isAfter: false, isDelta: true) == nil, "delta only tints green in the After row")
     }
-
-    // MARK: - fill / stroke
 
     @Test func fillUsesTheTintWhenPresent() {
         #expect(StageBoxLogic.fill(tint: .red, hovered: false, isAfter: true) == Color.red.opacity(0.1))
@@ -70,8 +55,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(StageBoxLogic.stroke(tint: nil, isAfter: true) == Color.secondary.opacity(0.3))
         #expect(StageBoxLogic.stroke(tint: nil, isAfter: false) == Color.secondary.opacity(0.25))
     }
-
-    // MARK: - helpText
 
     @Test func helpTextIsJustTheHintForAnOrdinaryStage() {
         #expect(StageBoxLogic.helpText(isDelta: false, isAfter: true, outcome: nil) == "Click to open · right-click to ask about it")
@@ -94,8 +77,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(StageBoxLogic.helpText(isDelta: true, isAfter: true, outcome: .success) == "New in this PR · Succeeds · Click to open · right-click to ask about it")
     }
 
-    // MARK: - strokeStyle
-
     @Test func strokeStyleIsThinAndSolidForAnOrdinaryStage() {
         let style = StageBoxLogic.strokeStyle(isDelta: false, hasOutcome: false, isAfter: true)
         #expect(style.lineWidth == 1)
@@ -115,10 +96,6 @@ struct BehaviorChangeDiagramViewTests {
                 "an outcome alone (not a delta) never dashes")
     }
 
-    // MARK: - BehaviorChangeDiagramMetrics
-
-    /// Regular density is the roomiest setting; every other case steps down together, since
-    /// the doc comment on `Density` promises Before and After stay in step.
     @Test func gridSpacingStepsDownTogetherOffRegular() {
         let regular = BehaviorChangeDiagramMetrics.gridSpacing(for: .regular)
         #expect(regular.horizontal == 18)
@@ -143,8 +120,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(BehaviorChangeDiagramMetrics.arrowFontSize(for: .wrapped) == 11)
     }
 
-    /// Unlike the other metrics (which only distinguish regular from everything denser),
-    /// the arrow's padding has three distinct steps — one per `Density` case.
     @Test func arrowHorizontalPaddingHasThreeDistinctSteps() {
         #expect(BehaviorChangeDiagramMetrics.arrowHorizontalPadding(for: .regular) == 10)
         #expect(BehaviorChangeDiagramMetrics.arrowHorizontalPadding(for: .tight) == 6)
@@ -160,8 +135,6 @@ struct BehaviorChangeDiagramViewTests {
         #expect(BehaviorChangeDiagramMetrics.boxVerticalPadding(for: .tight) == 6)
         #expect(BehaviorChangeDiagramMetrics.boxVerticalPadding(for: .wrapped) == 6)
     }
-
-    // MARK: - CappedWidthLogic
 
     @Test func cappedWidthPassesThroughAWidthAtOrUnderTheCap() {
         #expect(CappedWidthLogic.cap(naturalWidth: 40, at: 88) == 40)

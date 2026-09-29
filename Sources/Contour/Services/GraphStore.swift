@@ -1,21 +1,13 @@
 import Foundation
 import Observation
 
-/// Where one PR session is. There is no "analyzing" phase: the review opens as soon as the
-/// PR itself has been fetched (`review`), and analysis fills it in from there — its
-/// progress lives in `GraphStore.analysis`, per stage, not here.
 enum SessionPhase: Equatable {
     case idle
-    /// Fetching the PR: the only wait before the review window appears.
     case opening
     case review
-    /// Nothing to review at all — the PR couldn't be fetched.
     case failed(String)
 }
 
-/// The semantic navigation stack from §5 — "the reviewer should never lose their place
-/// in the conceptual review merely because they inspected some code." Each entry is a
-/// lens plus enough state to restore selection when popped back to.
 enum NavigationTarget: Hashable {
     case summary
     case architecture
@@ -23,19 +15,15 @@ enum NavigationTarget: Hashable {
     case flows
     case files
     case diff
-    /// The raw diff, scrolled to the file and hunk a code reference lands in.
     case diffLocation(CodeRef)
     case decisionDetail(String)
-    /// An Overview "thing to think about", reviewed on the decision it belongs to.
     case consideration(String)
     case componentDetail(String)
     case edgeDetail(String)
     case flowDetail(String)
-    /// A stage of a flow, selected in the Flows lens.
     case flowNodeDetail(flowId: String, nodeId: String)
     case evidence(CodeRef)
 
-    /// Architecture and Flows draw a diagram that `GraphStore.diagramMode` filters.
     var showsDiagram: Bool {
         switch self {
         case .architecture, .componentDetail, .edgeDetail, .flows, .flowDetail, .flowNodeDetail: return true
@@ -44,34 +32,20 @@ enum NavigationTarget: Hashable {
     }
 }
 
-/// Holds one PR's knowledge graph plus all reviewer-session state (selection stack,
-/// reviewer marks, progress log). This is the single source of truth the whole UI reads
-/// (§12 "GraphStore, single source of truth").
-/// `@MainActor`, not just its individual mutating methods: every stored property here
-/// (`graph`, `path`, `analysis`, ...) is written both by `handle(_:)` — driven by `load()`'s
-/// background `Task` — and by plain reviewer actions (`navigate`, `setReviewerState`, ...).
-/// Isolating only some of those methods left the rest callable from any thread, a real,
-/// unsynchronized race across the two groups that Swift 5 mode didn't catch and Swift 6
-/// mode's codegen turns into a reliably reproducing crash under concurrent test drivers.
 @Observable
 @MainActor
 final class GraphStore {
     private(set) var graph: PRGraph?
     private(set) var checkout: RepoCheckout?
     private(set) var diffText: String?
-    /// `diffText` as files and hunks, parsed once when it arrives rather than per render.
     private(set) var diffFiles: [DiffFile] = []
     private(set) var phase: SessionPhase = .idle
     private(set) var progressLog: [PipelineProgressEntry] = []
-    /// Per-stage progress of the analysis filling in the open review.
     private(set) var analysis = AnalysisState()
     private(set) var metrics: AnalysisMetrics?
     private var metricsSaved = false
     private var pipeline: AnalysisPipeline?
 
-    /// Semantic navigation history, browser-stack style. `path.last` is what's rendered;
-    /// `forwardStack` holds anything popped by `goBack()` so `goForward()` can restore it.
-    /// Pushing a new target via `navigate(to:)` clears any forward history, same as a browser.
     private(set) var path: [NavigationTarget] = [.summary]
     private var forwardStack: [NavigationTarget] = []
 
@@ -79,35 +53,21 @@ final class GraphStore {
 
     private var runTask: Task<Void, Never>?
 
-    /// Read once per load rather than held, so a change in Settings takes effect on the
-    /// next PR without needing to rebuild the store.
     @MainActor
     private var preferences: Preferences { Preferences.shared }
 
     private(set) var lastPRURL: String?
 
-    /// Whether the reviewer has approved or requested changes on this PR from Contour, and
-    /// how that went.
     private(set) var review: PRReview.State = .idle
 
-    /// The harness this PR was analyzed with. Contextual chat reuses it so a conversation
-    /// never talks to a different model than the one that built the review.
     private(set) var harnessID: HarnessID?
 
-    /// Every contextual conversation for this PR (§ contextual chat).
     let conversations = ConversationStore()
 
-    /// What "Ask about this" (⌘⇧A) means with nothing right-clicked: the element the
-    /// current lens has selected, published by that lens.
     var focusedSubject: ReviewSubject?
 
-    /// Before / after / what changed, for both Architecture and Flows. Held here rather
-    /// than in each lens so the ⌘K palette can switch it, and so it survives moving between
-    /// the two drawings.
     var diagramMode: DiagramMode = .delta
 
-    /// MainActor-isolated because it reads `Preferences`, which is UI-owned observable
-    /// state. Every caller is a view action, so this costs nothing.
     @MainActor
     func load(prURL: String, forceRefresh: Bool = false) {
         endAnalysis()
@@ -128,9 +88,6 @@ final class GraphStore {
         focusedSubject = nil
         diagramMode = .delta
 
-        // Contour can't analyze anything without a harness. This is the one hard
-        // requirement, and it fails here with an actionable message rather than several
-        // minutes into the run.
         guard let harnessID = preferences.resolvedHarness else {
             phase = .failed("""
             No AI harness selected. Install pi or Claude Code, then pick one in             Settings (⌘,).
@@ -146,8 +103,6 @@ final class GraphStore {
 
         self.pipeline = pipeline
 
-        // One consumer, on the main actor, in the order the pipeline emitted — so a status
-        // can never be overtaken by an older one, and every snapshot lands whole.
         runTask = Task { @MainActor [weak self] in
             await pipeline.start(prURL: prURL, forceRefresh: forceRefresh)
             for await event in pipeline.events {
@@ -157,35 +112,25 @@ final class GraphStore {
         }
     }
 
-    /// Whether a PR session is under way — opening, open, or failed to open — rather than
-    /// the start screen. What File ▸ Close Pull Request acts on.
     var hasOpenPR: Bool { phase != .idle }
 
-    /// The open PR on GitHub, for Open on GitHub / Copy Link. Nil on the start screen, even
-    /// though the last PR's graph is still held.
     var pullRequestURL: URL? {
         guard hasOpenPR else { return nil }
         return ReviewActions(graph: graph, prURL: lastPRURL).pullRequestURL
     }
 
-    /// Opens the last PR again from scratch — what "Try again" means when opening it
-    /// failed, so the reviewer never has to find and paste the URL a second time.
     @MainActor
     func reopen() {
         guard let lastPRURL else { return close() }
         load(prURL: lastPRURL)
     }
 
-    /// Leaves the current PR: stops its analysis and returns to the URL prompt. The
-    /// prompt is pre-filled with `lastPRURL`, which survives the close.
     @MainActor
     func close() {
         endAnalysis()
         phase = .idle
     }
 
-    /// Submits a review as the reviewer, through `gh`: an approval, or a request for
-    /// changes carrying the reviewer's comment.
     @MainActor
     func submitReview(_ verdict: PRReview.Verdict, comment: String = "") {
         guard canSubmitReview(verdict), PRReview.isReady(verdict, comment: comment),
@@ -194,7 +139,6 @@ final class GraphStore {
         Task { @MainActor in
             do {
                 try await PRReview.submit(prURL: url.absoluteString, verdict: verdict, comment: comment)
-                // A different PR may have opened while the review was in flight.
                 guard pullRequestWebURL == url else { return }
                 review = .submitted(verdict)
             } catch {
@@ -208,28 +152,20 @@ final class GraphStore {
         if case .failed = review { review = .idle }
     }
 
-    /// Re-runs one failed or stopped section. Without a checkout nothing can be re-run in
-    /// place (the failure or stop was upstream of every stage), so the whole PR is reopened
-    /// instead.
     @MainActor
     func retry(_ stage: PipelineStage) {
         guard let pipeline, checkout != nil else { return reopen() }
         Task { await pipeline.retry(stage) }
     }
 
-    /// Whether "Stop analysis" has anything to stop.
     var canStopAnalysis: Bool { phase == .review && pipeline != nil && analysis.canStop }
 
-    /// "Stop analysis": the harness calls cost real tokens, so the reviewer can end them
-    /// without leaving the PR. Whatever has landed stays; every section still in progress
-    /// is marked stopped and can be resumed on its own with Retry.
     @MainActor
     func stopAnalysis() {
         guard canStopAnalysis, let pipeline else { return }
         Task { await pipeline.stop() }
     }
 
-    /// Tears the analysis down for good, when leaving the PR or reopening it.
     @MainActor
     private func endAnalysis() {
         saveMetrics()
@@ -239,8 +175,6 @@ final class GraphStore {
         pipeline = nil
     }
 
-    /// Internal rather than private so tests can drive state transitions with synthetic
-    /// events instead of a real pipeline (network, checkout, harness).
     @MainActor
     func handle(_ event: PipelineEvent) {
         switch event {
@@ -248,7 +182,6 @@ final class GraphStore {
             progressLog.append(entry)
         case .status(let stage, let status):
             analysis.stages[stage] = status
-            // A retried stage reopens an analysis that had finished.
             if status.isRunning, PipelineStage.analysis.contains(stage) { analysis.isComplete = false }
         case .graph(let snapshot):
             graph = snapshot.carryingReviewerState(from: graph)
@@ -269,9 +202,6 @@ final class GraphStore {
             if graph == nil {
                 phase = .failed(message)
             } else {
-                // The PR is on screen but couldn't be checked out: keep the shell and the
-                // raw diff, and say why each section is empty. The underlying error (git's
-                // stderr, usually) goes to the technical log rather than into every section.
                 progressLog.append(PipelineProgressEntry(stage: PipelineStage.checkingOut.rawValue,
                                                          detail: "failed: \(message)"))
                 for stage in PipelineStage.analysis where analysis.status(stage) != .done {
@@ -284,8 +214,6 @@ final class GraphStore {
         if analysis.isComplete { saveMetrics() }
     }
 
-    /// Records whether the reviewer started working before the analysis finished — the
-    /// measure of whether progressive opening is used rather than waited out.
     private func noteEngagement() {
         guard phase == .review, !analysis.isComplete else { return }
         metrics?.reviewerEngagedBeforeComplete = true
@@ -296,8 +224,6 @@ final class GraphStore {
         metricsSaved = true
         metrics.append()
     }
-
-    // MARK: - Navigation
 
     func navigate(to target: NavigationTarget) {
         guard target != current else { return }
@@ -316,16 +242,12 @@ final class GraphStore {
         path.append(next)
     }
 
-    // MARK: - Contextual chat
-
     @MainActor
     func ask(about subject: ReviewSubject) {
         noteEngagement()
         conversations.open(subject)
     }
 
-    /// Opens the subject's thread and asks a specific question in it straight away — for
-    /// menu items like "Why did the PR choose this side?".
     @MainActor
     func ask(_ question: String, about subject: ReviewSubject) {
         let conversation = conversations.open(subject)
@@ -339,7 +261,6 @@ final class GraphStore {
         conversations.send(text, in: conversation, graph: graph, checkout: checkout, harnessID: harnessID)
     }
 
-    /// The subject implied by where the reviewer is, for ⌘⇧A with nothing selected.
     var subjectForCurrentLocation: ReviewSubject {
         if let focusedSubject { return focusedSubject }
         switch current {
@@ -359,8 +280,6 @@ final class GraphStore {
     var canGoBack: Bool { path.count > 1 }
     var canGoForward: Bool { !forwardStack.isEmpty }
 
-    // MARK: - Reviewer actions (§4.4 accept/question/discuss)
-
     func setReviewerState(_ state: ReviewerState, forDecision id: String) {
         noteEngagement()
         guard var g = graph, let idx = g.decisions.firstIndex(where: { $0.id == id }) else { return }
@@ -368,8 +287,6 @@ final class GraphStore {
         graph = g
     }
 
-    /// "Add to review" / "Not worth reviewing": the reviewer overriding which decisions the
-    /// analysis asked them to judge.
     func setToReview(_ toReview: Bool, forDecision id: String) {
         noteEngagement()
         guard var g = graph else { return }

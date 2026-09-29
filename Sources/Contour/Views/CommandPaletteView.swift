@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Internal rather than private so `CommandPaletteViewTests` can build fixed lists of these
-/// directly, per CLAUDE.md's guidance to test this file's filtering/ranking logic with
-/// fixed input lists and queries.
 struct PaletteCommand: Identifiable {
     let id = UUID()
     let title: String
@@ -11,9 +8,6 @@ struct PaletteCommand: Identifiable {
     let action: () -> Void
 }
 
-/// §6/§12 — "keyboard-first workflows, command palette / Quick Open." Jumps directly into
-/// any lens or any named node in the graph (decision, component, flow, entry
-/// point) without walking the sidebar.
 struct CommandPaletteView: View {
     let store: GraphStore
     @Binding var isPresented: Bool
@@ -60,8 +54,6 @@ struct CommandPaletteView: View {
 
     private var allCommands: [PaletteCommand] { Self.allCommands(store: store) }
 
-    /// Pulled out (static, taking `store` explicitly) so the command list can be checked
-    /// directly against a real `GraphStore` instead of a live view.
     static func allCommands(store: GraphStore) -> [PaletteCommand] {
         var commands: [PaletteCommand] = [
             .init(title: "Go to Overview", subtitle: nil, symbol: "house") { store.navigate(to: .summary) },
@@ -74,7 +66,6 @@ struct CommandPaletteView: View {
                 if let url = store.lastPRURL { store.load(prURL: url, forceRefresh: true) }
             }
         ]
-        // On a diagram screen, the same switch as its "Show:" control and B / A / D.
         if store.current.showsDiagram {
             let modes = DiagramMode.allCases.filter { $0 != store.diagramMode }.map { mode in
                 PaletteCommand(title: "Show: \(mode.label)", subtitle: "Diagram view · \(mode.key.uppercased())",
@@ -82,7 +73,6 @@ struct CommandPaletteView: View {
             }
             commands.insert(contentsOf: modes, at: 0)
         }
-        // Appended, never first: Return on an empty query runs the first command.
         if store.canStopAnalysis {
             commands.append(.init(title: "Stop analysis", subtitle: "keeps what's already here; stopped sections can be retried",
                                   symbol: "stop.circle") { store.stopAnalysis() })
@@ -112,8 +102,6 @@ struct CommandPaletteView: View {
 
     private var filtered: [PaletteCommand] { Self.filtered(allCommands, query: query) }
 
-    /// Pulled out (static) so the query-matching rule is directly testable with fixed
-    /// input lists and queries.
     static func filtered(_ commands: [PaletteCommand], query: String) -> [PaletteCommand] {
         guard !query.isEmpty else { return commands }
         return commands.filter { $0.title.localizedCaseInsensitiveContains(query) }
