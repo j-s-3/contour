@@ -8,6 +8,7 @@
 # Contour
 
 [![Build](https://github.com/j-s-3/contour/actions/workflows/build.yml/badge.svg)](https://github.com/j-s-3/contour/actions/workflows/build.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fj-s-3%2Fcontour%2Fbadges%2Fcoverage.json)](https://github.com/j-s-3/contour/actions/workflows/build.yml)
 
 **Review the decisions, not the diff.**
 
