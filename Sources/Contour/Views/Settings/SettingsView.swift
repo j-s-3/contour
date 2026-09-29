@@ -20,7 +20,7 @@ struct SettingsView: View {
         .task { await refresh() }
     }
 
-    private var harnessTab: some View {
+    var harnessTab: some View {
         Form {
             Section {
                 Picker("AI harness", selection: harnessBinding) {
@@ -74,7 +74,7 @@ struct SettingsView: View {
         SettingsViewLogic.label(for: id, statuses: statuses)
     }
 
-    private var sourcesTab: some View {
+    var sourcesTab: some View {
         Form {
             Section {
                 Picker("GitHub access", selection: Binding(
@@ -143,7 +143,7 @@ struct SettingsView: View {
 
     private var jiraLabel: String { SettingsViewLogic.jiraLabel(jiraAvailable: preferences.jiraAvailable) }
 
-    private var windowTab: some View {
+    var windowTab: some View {
         Form {
             Section {
                 Toggle("Open in full screen", isOn: $preferences.opensInFullScreen)

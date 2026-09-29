@@ -75,3 +75,33 @@ struct SettingsViewTests {
         #expect(SettingsViewLogic.tint(for: status, tool: .acli) == .secondary)
     }
 }
+
+@MainActor
+struct SettingsViewHostingTests {
+
+    private func laidOutSize<V: View>(_ view: V) -> CGSize {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 520, height: 400)
+        host.layoutSubtreeIfNeeded()
+        return host.fittingSize
+    }
+
+    @Test func everyTabLaysOutToANonEmptySize() {
+        let view = SettingsView()
+        #expect(laidOutSize(view.harnessTab).height > 0)
+        #expect(laidOutSize(view.sourcesTab).height > 0)
+        #expect(laidOutSize(view.windowTab).height > 0)
+    }
+
+    @Test func theTabViewShellBuilds() {
+        #expect(laidOutSize(SettingsView()).width > 0)
+    }
+
+    @Test func toolStatusRowBuildsForEveryStatusShape() {
+        let usable = ToolStatus(tool: .git, path: "/usr/bin/git", version: "2.0", authenticated: nil, detail: "ok")
+        let absent = ToolStatus(tool: .acli, path: nil, version: nil, authenticated: nil, detail: "Not installed")
+        #expect(laidOutSize(ToolStatusRow(status: nil, tool: .git)).height > 0)
+        #expect(laidOutSize(ToolStatusRow(status: usable, tool: .git)).height > 0)
+        #expect(laidOutSize(ToolStatusRow(status: absent, tool: .acli)).height > 0)
+    }
+}
