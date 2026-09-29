@@ -1,5 +1,3 @@
-import Foundation
-
 enum TrackerID: String, Codable, CaseIterable, Sendable {
     case github
     case jira

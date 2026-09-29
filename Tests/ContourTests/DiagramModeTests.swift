@@ -33,7 +33,9 @@ struct DiagramModeTests {
             .flows, .flowDetail("f"), .flowNodeDetail(flowId: "f", nodeId: "n"),
         ]
         let others: [NavigationTarget] = [.summary, .decisions, .diff, .decisionDetail("d"), .consideration("q")]
-        #expect(diagrams.filter { !$0.showsDiagram }.isEmpty)
-        #expect(others.filter(\.showsDiagram).isEmpty)
+        let everyDiagramShowsOne = diagrams.allSatisfy(\.showsDiagram)
+        let anyOtherShowsOne = others.contains(where: \.showsDiagram)
+        #expect(everyDiagramShowsOne)
+        #expect(!anyOtherShowsOne)
     }
 }

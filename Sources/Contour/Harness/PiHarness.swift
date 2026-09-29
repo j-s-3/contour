@@ -1,5 +1,3 @@
-import Foundation
-
 struct PiHarness: Harness {
     let id: HarnessID = .pi
 

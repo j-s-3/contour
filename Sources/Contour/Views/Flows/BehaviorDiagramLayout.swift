@@ -1,5 +1,4 @@
 import CoreGraphics
-import Foundation
 
 struct BehaviorDiagramLayout {
     struct PlacedNode: Identifiable {

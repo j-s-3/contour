@@ -1,5 +1,3 @@
-import Foundation
-
 struct RawPRContext: Sendable {
     var url: String
     var owner: String

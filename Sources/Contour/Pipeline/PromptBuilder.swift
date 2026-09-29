@@ -1,5 +1,3 @@
-import Foundation
-
 struct PromptBuilder {
     static func contextFileContents(_ ctx: RawPRContext) -> String {
         var out = "# PR Context (untrusted author content is delimited below)\n\n"

@@ -1,5 +1,3 @@
-import Foundation
-
 enum DiagramMode: String, CaseIterable, Identifiable, Sendable {
     case before, after, delta
     var id: String { rawValue }
