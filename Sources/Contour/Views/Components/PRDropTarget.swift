@@ -2,17 +2,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension View {
-    /// Opens a pull request link dropped anywhere on this view — a URL dragged out of a
-    /// browser's address bar, or a Slack message or email that contains one. A drop that
-    /// carries no PR link is ignored rather than opened as a failed review.
     func opensDroppedPullRequests(_ open: @escaping (String) -> Void) -> some View {
         modifier(PRDropTarget(open: open))
     }
 }
 
-/// Internal rather than private so `PRDropTargetTests` can call `loadPullRequest` directly
-/// against a real `NSItemProvider`, per CLAUDE.md's guidance to test this file's
-/// drop-payload parsing the same way as `PRLinkTests`.
 struct PRDropTarget: ViewModifier {
     let open: (String) -> Void
     @State private var isTargeted = false
@@ -21,8 +15,8 @@ struct PRDropTarget: ViewModifier {
         content
             .onDrop(of: [.url, .plainText], isTargeted: $isTargeted) { providers in
                 guard let provider = providers.first else { return false }
-                Self.loadPullRequest(from: provider) { url in
-                    if let url { DispatchQueue.main.async { open(url) } }
+                Task {
+                    if let url = await Self.loadPullRequest(from: provider) { open(url) }
                 }
                 return true
             }
@@ -39,22 +33,20 @@ struct PRDropTarget: ViewModifier {
             .animation(.easeInOut(duration: 0.15), value: isTargeted)
     }
 
-    /// A browser drag carries a URL; a text drag carries the surrounding words too, so it
-    /// is searched rather than taken whole. `nonisolated` because it touches no main-actor
-    /// state (`open`/`isTargeted`) — needed so `PRDropTargetTests`'s `async` helper can
-    /// await it through `withCheckedContinuation` without Swift 6 flagging the `provider`
-    /// argument as crossing an actor boundary unsafely.
-    nonisolated static func loadPullRequest(from provider: NSItemProvider, completion: @escaping (String?) -> Void) {
+    nonisolated(nonsending) static func loadPullRequest(from provider: NSItemProvider) async -> String? {
         if provider.canLoadObject(ofClass: URL.self) {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                completion(url.flatMap(PRLink.pullRequestURL(from:)))
+            return await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url.flatMap(PRLink.pullRequestURL(from:)))
+                }
             }
         } else if provider.canLoadObject(ofClass: String.self) {
-            _ = provider.loadObject(ofClass: String.self) { text, _ in
-                completion(text.flatMap(PRLink.extract(from:)))
+            return await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    continuation.resume(returning: text.flatMap(PRLink.extract(from:)))
+                }
             }
-        } else {
-            completion(nil)
         }
+        return nil
     }
 }

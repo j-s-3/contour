@@ -3,12 +3,6 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `BehaviorDiagramView`'s body is Canvas drawing, `ForEach` composition and gesture wiring
-/// with no pure seam left, so these render it for real with `ImageRenderer` over the sample
-/// publish flow in each mode. They pin that every branch of the view (each stage kind,
-/// boundary, edge style, annotation, overflow chip and the legend) draws without trapping and
-/// produces an image, which is what covers the body for the CLAUDE.md coverage target (#122).
-/// `Lozenge` is checked directly for its geometry.
 @MainActor
 struct BehaviorDiagramRenderTests {
 
@@ -26,8 +20,6 @@ struct BehaviorDiagramRenderTests {
         return renderer.nsImage
     }
 
-    /// Each mode draws a non-empty diagram of the sample flow; Delta also exercises the tinted,
-    /// struck-through and before/after stage paths and the change legend.
     @Test func everyModeRendersTheSampleFlow() {
         let graph = ContourSampleData.publishTriggeredReindex
         let flow = graph.flows[0]
@@ -40,7 +32,6 @@ struct BehaviorDiagramRenderTests {
         }
     }
 
-    /// Many notes on one stage collapse into a "+N more" overflow chip; rendering must cover it.
     @Test func crowdedAnnotationsRenderTheOverflowChip() {
         let behavior = ContourSampleData.publishTriggeredReindex.flows[0].behavior!
         let notes = (0..<6).map {
@@ -50,7 +41,6 @@ struct BehaviorDiagramRenderTests {
         #expect(image(behavior, annotations: notes, mode: .delta, selected: nil) != nil)
     }
 
-    /// A subflow stage, an uncertain stage and every boundary kind render together.
     @Test func subflowUncertainAndEveryBoundaryKindRender() {
         let kinds: [BoundaryKind] = [.application, .process, .service, .datastore, .external, .trust, .network, .asyncBoundary]
         let boundaries = kinds.enumerated().map { FlowBoundary(id: "b\($0.offset)", label: "B\($0.offset)", kind: $0.element) }
@@ -67,8 +57,6 @@ struct BehaviorDiagramRenderTests {
         #expect(image(behavior, annotations: [], mode: .delta, selected: "b") != nil)
     }
 
-    /// A lozenge's pointed ends sit on the vertical midline and its bounds fill the rect;
-    /// insetting shrinks it uniformly. A short shape caps its point at half its height.
     @Test func lozengeFillsItsRectAndInsetsUniformly() {
         let rect = CGRect(x: 0, y: 0, width: 100, height: 60)
         #expect(Lozenge().path(in: rect).boundingRect == rect)

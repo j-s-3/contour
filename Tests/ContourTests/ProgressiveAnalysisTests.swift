@@ -2,12 +2,7 @@ import Foundation
 import Testing
 @testable import Contour
 
-/// Progressive opening: the pieces that let the review appear before the analysis is done
-/// and fill in safely while the reviewer works.
 struct ProgressiveAnalysisTests {
-
-    // MARK: - Streaming
-
     private let streamed = #"""
     {"decisions": [
       {"id": "a", "title": "Uses { braces } and \"quotes\" in prose", "n": [1, {"x": "]"}]},
@@ -41,17 +36,12 @@ struct ProgressiveAnalysisTests {
         #expect(extractor.consume(#", {"id": "f2"}]"#).isEmpty)
     }
 
-    // MARK: - Local linking
-
     private func fixtures() throws -> (arch: StageDecoding.ArchitectureResult, decisions: [DecisionNode], flows: StageDecoding.FlowsResult) {
         (try StageDecoding.decode(StageDecoding.ArchitectureResult.self, from: MockAnalysisFixtures.response(for: .architecture)),
          try StageDecoding.decode(StageDecoding.DecisionsResult.self, from: MockAnalysisFixtures.response(for: .decisions)).decisions,
          try StageDecoding.decode(StageDecoding.FlowsResult.self, from: MockAnalysisFixtures.response(for: .flows)))
     }
 
-    /// The captured decisions were linked by the model when it was handed the component
-    /// list. Linking the same decisions from their code refs alone must land on parts the
-    /// model also chose — never on a part it didn't.
     @Test func linkingByCodeRefsAgreesWithTheModelsOwnLinks() throws {
         let (arch, decisions, _) = try fixtures()
         let unlinked = decisions.map { d -> DecisionNode in var d = d; d.componentIds = []; return d }
@@ -61,7 +51,6 @@ struct ProgressiveAnalysisTests {
             let systemParts = Set(arch.components.filter { $0.level != .implementation }.map(\.id))
             #expect(Set(derived.componentIds).isSubset(of: systemParts))
         }
-        // Where the model named exactly one part, the derived links include it.
         let agreeing = zip(decisions, linked).filter { !Set($0.componentIds).isDisjoint(with: $1.componentIds) }
         #expect(agreeing.count >= decisions.count - 1)
     }
@@ -95,14 +84,12 @@ struct ProgressiveAnalysisTests {
         var sampled = DecisionNode(id: "sample-size", title: "t", decision: Statement(text: "d", provenance: .fact), confidence: .high)
         sampled.refs = [ref("src/input.rs", 270, 275)]
         var vague = DecisionNode(id: "vague", title: "t", decision: Statement(text: "d", provenance: .fact), confidence: .high)
-        vague.refs = [ref("src/input.rs", 900, 910)]   // same file as two stages, overlapping neither
+        vague.refs = [ref("src/input.rs", 900, 910)]
 
         let pinned = GraphLinker.pinDecisions([sampled, vague], to: [flow])[0].behavior!.nodes
         #expect(pinned.first { $0.id == "inspect" }?.decisionIds == ["sample-size"])
         #expect(pinned.allSatisfy { !$0.decisionIds.contains("vague") }, "a same-file tie is not a stage")
     }
-
-    // MARK: - Assembly
 
     private func context(head: String = "head1") -> RawPRContext {
         RawPRContext(
@@ -122,8 +109,6 @@ struct ProgressiveAnalysisTests {
         #expect(shell.decisions.isEmpty && shell.components.isEmpty && shell.behaviorChanges.isEmpty)
     }
 
-    /// Slices land in any order and each stage owns its own fields: applying or clearing
-    /// one never disturbs another.
     @Test func slicesAreIndependent() throws {
         let (arch, decisions, flows) = try fixtures()
         let behavior = try StageDecoding.decode(StageDecoding.BehaviorChangeResult.self, from: MockAnalysisFixtures.response(for: .behaviorChange))
@@ -159,14 +144,12 @@ struct ProgressiveAnalysisTests {
         working.decisions[0].reviewerNote = "fine"
 
         var next = PRGraph.shell(from: context())
-        next.decisions = decisions   // the stage finished: more decisions, marks unknown
+        next.decisions = decisions
         let merged = next.carryingReviewerState(from: working)
         #expect(merged.decisions[0].reviewerState == .accepted)
         #expect(merged.decisions[0].reviewerNote == "fine")
         #expect(merged.decisions.dropFirst().allSatisfy { $0.reviewerState == .unreviewed })
     }
-
-    // MARK: - State
 
     @Test func aSectionIsAsFarAlongAsItsLeastFinishedStageAndFailuresShow() {
         var state = AnalysisState()
@@ -181,8 +164,6 @@ struct ProgressiveAnalysisTests {
         #expect(state.remainingCount == 4)
     }
 
-    /// A failed section tells the reviewer which part failed and why in their terms — never
-    /// the model's raw output or a CLI's stderr, which stay in the technical log.
     @Test func failureMessagesNameTheSectionAndNeverQuoteRawOutput() {
         let raw = #"{"components": [{"id": "parser", "name": "Pars"#
         let notJSON = AnalysisServiceError.notJSON(harness: "claude", raw: raw)
@@ -203,10 +184,6 @@ struct ProgressiveAnalysisTests {
         #expect(!PipelineStage.flows.checkoutFailureMessage.contains("fatal"))
     }
 
-    /// Every stage needs its own reviewer-facing headline and Details-rail short label —
-    /// only a handful of stages were exercised elsewhere (via specific failure/integration
-    /// tests), so a stage added without updating one of these switches would silently fall
-    /// through to nothing rather than failing to compile.
     @Test func everyStageHasAHeadlineAndShortLabel() {
         for stage in PipelineStage.allCases {
             #expect(!stage.failureHeadline.isEmpty)
@@ -220,8 +197,6 @@ struct ProgressiveAnalysisTests {
         #expect(PipelineStage.understanding.failureHeadline == "Couldn't work out what the change is for")
     }
 
-    /// `failureReason` degrades unrecognized error types to a generic message rather than
-    /// leaking their description — `HarnessError` and any other `Error` both take this path.
     @Test func failureReasonDegradesUnrecognizedErrorTypes() {
         let harnessError = HarnessError.contextFileUnreadable("ctx.md", underlying: CancellationError())
         #expect(PipelineStage.failureReason(harnessError) == "The PR's details couldn't be handed to the model.")
@@ -229,9 +204,6 @@ struct ProgressiveAnalysisTests {
         #expect(PipelineStage.failureReason(SomeOtherError()) == "Something went wrong while it ran.")
     }
 
-    /// Every review section needs its own title, present-tense working label, and stage
-    /// list — pinned so a section added without filling in one of these switches is caught
-    /// here instead of shipping a blank label.
     @Test func everyReviewSectionHasATitleWorkingLabelAndStages() {
         for section in ReviewSection.allCases {
             #expect(!section.title.isEmpty)
@@ -243,8 +215,6 @@ struct ProgressiveAnalysisTests {
         #expect(ReviewSection.decisions.title == "Decisions")
         #expect(ReviewSection.architecture.workingLabel == "Mapping system change…")
     }
-
-    // MARK: - Cache
 
     private func tempCache() -> AnalysisCache {
         AnalysisCache(directory: FileManager.default.temporaryDirectory
@@ -278,8 +248,6 @@ struct ProgressiveAnalysisTests {
         #expect(cache.latestRevision(owner: "acme", repo: "shop", number: 7, excludingHead: "current", pipelineVersion: 2) == nil)
     }
 
-    // MARK: - Metrics
-
     @Test func milestonesAreDerivedFromWhatIsOnScreenAndRecordedOnce() {
         let start = Date(timeIntervalSince1970: 1000)
         var metrics = AnalysisMetrics(pr: "x", startedAt: start)
@@ -303,10 +271,6 @@ struct ProgressiveAnalysisTests {
         #expect(metrics.elapsed(.whatChanged) == 5, "first time only")
     }
 
-    // MARK: - Failure recovery
-
-    /// "Try again" with no PR to retry must not start an empty load; it falls back to the
-    /// start screen. (With a URL it reloads that URL, which needs a live pipeline to test.)
     @Test @MainActor func reopenWithoutAPreviousURLReturnsToTheStartScreen() {
         let store = GraphStore()
         store.reopen()

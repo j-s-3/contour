@@ -1,9 +1,5 @@
 import Foundation
 
-/// Anything a reviewer can point at and say "wait, why does it do that?" — every boxed
-/// element in every lens maps to exactly one of these. It is an address into the review
-/// graph, not a copy of it: the graph stays the single source of truth, and a subject is
-/// resolved against it whenever context is needed.
 enum ReviewSubject: Hashable, Sendable {
     case pullRequest
     case behaviorChange(String)
@@ -14,22 +10,16 @@ enum ReviewSubject: Hashable, Sendable {
     case component(String)
     case relationship(String)
     case decision(String)
-    /// One option on a decision's table ("Only inspect what's buffered") — for "why did
-    /// they choose this?" and "what if they'd picked the other one?".
     case decisionOption(decisionId: String, index: Int)
-    /// One of a decision's tradeoffs ("detection completeness ◀──●──▶ streaming behavior").
-    /// Addressed through its decision, because that is where it lives and is judged.
     case tradeoff(decisionId: String, index: Int)
     case flow(String)
     case flowStep(flowId: String, stepId: String)
     case storyStep(flowId: String, index: Int)
-    /// A stage of a flow's behavior diagram ("Inspect content sample").
     case flowNode(flowId: String, nodeId: String)
     case entryPoint(String)
     case codeRef(CodeRef)
 }
 
-/// What kind of thing a subject is, for the chat header glyph and for picking suggestions.
 enum SubjectKind: String, Sendable {
     case pullRequest, behavior, stage, statement, consideration, component, relationship,
          decision, option, tradeoff, flow, flowStep, entryPoint, code
@@ -53,7 +43,6 @@ enum SubjectKind: String, Sendable {
         }
     }
 
-    /// SF Symbols, matching the sidebar's glyph for the same lens.
     var symbol: String {
         switch self {
         case .pullRequest: return "arrow.triangle.pull"
@@ -72,34 +61,22 @@ enum SubjectKind: String, Sendable {
     }
 }
 
-/// A subject resolved against the graph: what it is, where it sits in the hierarchy, and
-/// which neighbors it touches. The context menu, the chat header, and the harness context
-/// document are all built from this one projection, so they can never disagree about what
-/// "this" is.
 struct ResolvedSubject {
     var subject: ReviewSubject
     var kind: SubjectKind
     var title: String
-    /// Ancestors from the PR down, excluding the subject itself — e.g.
-    /// ["PR #16678", "Architecture"] for a component.
     var lineage: [String]
-    /// Up to four short lines for the "You are discussing" card.
     var summary: [String]
-    /// The object itself, in full, as markdown for the harness.
     var detail: String
     var componentIds: [String] = []
     var decisionIds: [String] = []
     var flowIds: [String] = []
     var edgeIds: [String] = []
     var refs: [CodeRef] = []
-    /// Where "Open details" goes.
     var detailTarget: NavigationTarget?
 }
 
 extension PRGraph {
-
-    // MARK: - Resolution
-
     func resolve(_ subject: ReviewSubject) -> ResolvedSubject? {
         let prLine = "PR #\(pr.number): \(pr.title)"
         switch subject {
@@ -440,7 +417,6 @@ extension PRGraph {
             var summary = [node.label, "\(Self.flowChangeLabel(node.change)) · \(scenario)"]
             if let before = node.before, let after = node.after { summary.append("Before: \(before) · After: \(after)") }
             if let d = pinned.first.flatMap(decision) { summary.append("Related decision: \(brief(for: d).question)") }
-            // Decisions pinned here, else the decisions to review shaping the same components.
             let related = pinned.isEmpty
                 ? decisionIds(affectingAny: componentIds).filter { id in decisionsToReview.contains { $0.id == id } }
                 : pinned
@@ -495,9 +471,6 @@ extension PRGraph {
         }
     }
 
-    /// The conceptual objects that cite a code reference — the answer to "what is this
-    /// line *for*?" Exact range matches first, then anything citing an overlapping range
-    /// in the same file.
     func owners(of ref: CodeRef) -> [(subject: ReviewSubject, title: String)] {
         func cites(_ refs: [CodeRef]) -> Bool {
             refs.contains { $0.path == ref.path && $0.startLine <= ref.endLine && ref.startLine <= $0.endLine }
@@ -516,10 +489,6 @@ extension PRGraph {
         return out
     }
 
-    // MARK: - Neighborhood queries used by the context menu
-
-    /// Overview questions that concern these parts (or anything inside them) or these
-    /// relationships, directly or through a decision about them.
     func architectureQuestions(touching componentIds: [String], edges edgeIds: [String]) -> [Consideration] {
         let parts = componentIds.reduce(into: Set<String>()) { $0.formUnion(subtreeIds(of: $1)) }
         return thingsToThinkAbout.filter { item in
@@ -533,8 +502,6 @@ extension PRGraph {
     func decisionIds(affectingAny componentIds: [String]) -> [String] {
         unique(componentIds.flatMap { decisions(affecting: $0).map(\.id) })
     }
-
-    // MARK: - Describers (markdown for the harness)
 
     func describeEdge(_ e: ArchitectureEdge) -> String {
         let from = component(e.fromId)?.title ?? e.fromId
@@ -609,7 +576,6 @@ extension PRGraph {
         return s
     }
 
-    /// One stage on one line: what it is, how the PR changed it, and where it leads.
     func describeStage(_ node: FlowBehaviorNode, in behavior: FlowBehavior) -> String {
         var s = "\(node.label) (\(node.kind.rawValue), \(Self.flowChangeLabel(node.change).lowercased())"
         if node.isUncertain { s += ", inferred rather than traced" }
@@ -624,8 +590,6 @@ extension PRGraph {
         return s
     }
 
-    /// A flow stage in full, with the stages around it, the decisions and questions pinned to
-    /// it, and the implementation underneath — what "Ask about this…" on a stage sends.
     func describe(_ node: FlowBehaviorNode, in f: FlowNode) -> String {
         let behavior = behavior(for: f)
         var s = "Flow stage \"\(node.label)\" in the flow \"\(scenarioTitle(for: f))\" — \(Self.flowChangeLabel(node.change).lowercased())."
@@ -699,15 +663,12 @@ extension PRGraph {
         }
     }
 
-    /// Trims to the first line; drops empties. The "You are discussing" card is a glance,
-    /// not a report.
     static func oneLine(_ text: String) -> String? {
         let first = text.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
         return first.isEmpty ? nil : first
     }
 }
 
-/// Order-preserving de-duplication.
 func unique<T: Hashable>(_ items: [T]) -> [T] {
     var seen = Set<T>()
     return items.filter { seen.insert($0).inserted }

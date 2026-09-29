@@ -2,16 +2,7 @@ import Testing
 import SwiftUI
 @testable import Contour
 
-/// `SummaryViewLogic` is the grouping/filtering/formatting logic CLAUDE.md calls out for
-/// this file, pulled out of `SummaryView`/`ConsiderationRow`'s bodies so it's directly
-/// testable against plain fixtures — `GlanceFact.Tone`, `StageStatus`, `BehaviorStage`,
-/// `Consideration`, and a hand-built `PRGraph` — rather than through the SwiftUI `body`.
-/// The rest — the header, hero diagram, considerations list, explore tiles — is view
-/// rendering with no UI-testing infrastructure in this suite.
 struct SummaryViewTests {
-
-    // MARK: - factTint
-
     @Test func factTintIsNilForPlainLeavingItAtSecondary() {
         #expect(SummaryViewLogic.factTint(.plain) == nil)
     }
@@ -21,8 +12,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.factTint(.caution) == .orange)
         #expect(SummaryViewLogic.factTint(.bad) == .red)
     }
-
-    // MARK: - judgmentWorkingText
 
     @Test func judgmentWorkingTextLooksForChoicesWhileDecisionsRunAndJudgmentHasntStarted() {
         let text = SummaryViewLogic.judgmentWorkingText(decisionsFound: 0, decisionsStatus: .running(detail: nil), judgmentStatus: .pending)
@@ -49,8 +38,6 @@ struct SummaryViewTests {
         #expect(text == "Weighing what needs your judgment…")
     }
 
-    // MARK: - navigationTarget(for:)
-
     @Test func navigationTargetPrefersTheStagesComponent() {
         let stage = BehaviorStage(label: "x", tag: .both, componentIds: ["c1"], flowId: "f1")
         #expect(SummaryViewLogic.navigationTarget(for: stage) == .componentDetail("c1"))
@@ -65,8 +52,6 @@ struct SummaryViewTests {
         let stage = BehaviorStage(label: "x", tag: .both)
         #expect(SummaryViewLogic.navigationTarget(for: stage) == .architecture)
     }
-
-    // MARK: - tileDetail
 
     @Test func tileDetailShowsTheReadySummaryOnceDoneOrStale() {
         #expect(SummaryViewLogic.tileDetail(status: .done, ready: "3 parts", count: 3, noun: "part") == "3 parts")
@@ -94,8 +79,6 @@ struct SummaryViewTests {
     @Test func tileDetailWaitsWhilePending() {
         #expect(SummaryViewLogic.tileDetail(status: .pending, ready: "3 parts", count: 3, noun: "part") == "Waiting…")
     }
-
-    // MARK: - relatedLinks
 
     private func graph(decisions: [DecisionNode] = [], components: [ComponentNode] = [], flows: [FlowNode] = []) -> PRGraph {
         var g = PRGraph(pr: PRSummary(
@@ -152,8 +135,6 @@ struct SummaryViewTests {
         #expect(links.map(\.title) == ["C", "D"])
     }
 
-    // MARK: - capitalizedFirst
-
     @Test func capitalizedFirstCapitalizesOnlyTheFirstLetter() {
         #expect(SummaryViewLogic.capitalizedFirst("observed fact") == "Observed fact")
     }
@@ -162,11 +143,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.capitalizedFirst("") == "")
     }
 
-    // MARK: - awaitingBehaviorText
-
-    /// Pins the (initially surprising) polarity: no failure yet reads as "still understanding",
-    /// a failed understanding step reads as "moved on to building the before/after" — the
-    /// hero never blames the reviewer with raw failure text at this level.
     @Test func awaitingBehaviorTextSaysUnderstandingWhileThatStepHasntFailed() {
         #expect(SummaryViewLogic.awaitingBehaviorText(understandingFailed: false) == "Understanding the change…")
     }
@@ -174,8 +150,6 @@ struct SummaryViewTests {
     @Test func awaitingBehaviorTextMovesOnOnceUnderstandingFailed() {
         #expect(SummaryViewLogic.awaitingBehaviorText(understandingFailed: true) == "Building before / after…")
     }
-
-    // MARK: - retryBannerText
 
     @Test func retryBannerTextNamesAFailure() {
         let text = SummaryViewLogic.retryBannerText(status: .failed("boom"), failureText: "Couldn't build it.", stoppedText: "Stopped early.")
@@ -192,8 +166,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.retryBannerText(status: .running(detail: nil), failureText: "f", stoppedText: "s") == nil)
         #expect(SummaryViewLogic.retryBannerText(status: .pending, failureText: "f", stoppedText: "s") == nil)
     }
-
-    // MARK: - judgmentTailState
 
     @Test func judgmentTailStateIsWorkingWhileUnsettled() {
         #expect(SummaryViewLogic.judgmentTailState(status: .pending) == .working)
@@ -213,8 +185,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.judgmentTailState(status: .done) == .settled)
     }
 
-    // MARK: - thingsToThinkAboutBranch
-
     @Test func thingsToThinkAboutBranchShowsThePlaceholderWithNoItemsYet() {
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: nil, judgmentStopped: false) == .placeholder)
     }
@@ -222,7 +192,6 @@ struct SummaryViewTests {
     @Test func thingsToThinkAboutBranchShowsTheListOnceThereAreItems() {
         let items = [Consideration(id: "q1", question: "?", detail: "")]
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: items, judgmentStopped: false) == .list)
-        // Even a stopped judgment shows the list it already produced, not the stopped banner.
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: items, judgmentStopped: true) == .list)
     }
 
@@ -233,8 +202,6 @@ struct SummaryViewTests {
     @Test func thingsToThinkAboutBranchShowsNothingForAnEmptySettledList() {
         #expect(SummaryViewLogic.thingsToThinkAboutBranch(items: [], judgmentStopped: false) == .none)
     }
-
-    // MARK: - visibleConsiderations
 
     private func considerations(_ n: Int) -> [Consideration] {
         (1...n).map { Consideration(id: "q\($0)", question: "?\($0)", detail: "") }
@@ -250,8 +217,6 @@ struct SummaryViewTests {
         #expect(visible.count == 8)
     }
 
-    // MARK: - showMoreLabel
-
     @Test func showMoreLabelIsNilWhenEverythingAlreadyFits() {
         #expect(SummaryViewLogic.showMoreLabel(count: 5, budget: 5, showingAll: false) == nil)
         #expect(SummaryViewLogic.showMoreLabel(count: 3, budget: 5, showingAll: false) == nil)
@@ -265,8 +230,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.showMoreLabel(count: 8, budget: 5, showingAll: true) == "Show fewer")
     }
 
-    // MARK: - thingsToThinkAboutHeaderText
-
     @Test func thingsToThinkAboutHeaderTextIsSingularForOne() {
         #expect(SummaryViewLogic.thingsToThinkAboutHeaderText(count: 1) == "1 THING TO THINK ABOUT")
     }
@@ -276,8 +239,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.thingsToThinkAboutHeaderText(count: 4) == "4 THINGS TO THINK ABOUT")
     }
 
-    // MARK: - resolvedProgressText
-
     @Test func resolvedProgressTextIsNilWithNothingResolvedYet() {
         #expect(SummaryViewLogic.resolvedProgressText(reviewed: 0, total: 4) == nil)
     }
@@ -285,8 +246,6 @@ struct SummaryViewTests {
     @Test func resolvedProgressTextNamesTheCountOnceSomethingIsResolved() {
         #expect(SummaryViewLogic.resolvedProgressText(reviewed: 2, total: 4) == "2 of 4 resolved")
     }
-
-    // MARK: - architectureReadyText
 
     @Test func architectureReadyTextPrefersTheNamedImpact() {
         #expect(SummaryViewLogic.architectureReadyText(impactLabel: "Moderate", partsCount: 9) == "Moderate architectural impact")
@@ -296,8 +255,6 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.architectureReadyText(impactLabel: nil, partsCount: 3) == "3 parts")
     }
 
-    // MARK: - decisionsReadyText
-
     @Test func decisionsReadyTextShowsProgressOnceThereIsSomethingToReview() {
         #expect(SummaryViewLogic.decisionsReadyText(reviewed: 1, total: 3, decisionsCount: 5) == "1 of 3 resolved")
     }
@@ -305,8 +262,6 @@ struct SummaryViewTests {
     @Test func decisionsReadyTextFallsBackToACountWithNothingToReview() {
         #expect(SummaryViewLogic.decisionsReadyText(reviewed: 0, total: 0, decisionsCount: 5) == "5 identified")
     }
-
-    // MARK: - considerationBadgeHelp
 
     @Test func considerationBadgeHelpSaysResolvedBeforeAnythingElse() {
         #expect(SummaryViewLogic.considerationBadgeHelp(isResolved: true, isQuestion: true) == "Resolved")
@@ -320,8 +275,6 @@ struct SummaryViewTests {
                 == "A judgment call worth your attention")
     }
 
-    // MARK: - reviewButtonHelp
-
     @Test func reviewButtonHelpPointsAtTheDecisionWhenThereIsOne() {
         #expect(SummaryViewLogic.reviewButtonHelp(hasDecision: true) == "Review the decision this question is about")
     }
@@ -330,16 +283,12 @@ struct SummaryViewTests {
         #expect(SummaryViewLogic.reviewButtonHelp(hasDecision: false) == "Ask about this")
     }
 
-    // MARK: - whySectionMode
-
     @Test func whySectionModeShowsWhyAndConsequenceOnlyWithBothAChangeAndContent() {
         #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: true, awaitingBehavior: false)
                 == .whyAndConsequence)
     }
 
     @Test func whySectionModeIgnoresAChangeWithNeitherWhyNorConsequence() {
-        // A dominant change with nothing to say about it falls through to the awaiting check,
-        // same as having no change at all.
         #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: true)
                 == .placeholder)
         #expect(SummaryViewLogic.whySectionMode(hasDominantChange: true, hasWhyOrConsequence: false, awaitingBehavior: false)

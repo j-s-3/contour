@@ -2,11 +2,7 @@ import Testing
 import Foundation
 @testable import Contour
 
-/// File ▸ Open / Close Pull Request and the title-bar menu act on "the open PR". These pin
-/// what that means: nothing on the start screen, and a GitHub link that keeps the host the
-/// PR was opened from.
 struct PRSessionTests {
-
     @Test @MainActor func startScreenHasNoOpenPR() {
         let store = GraphStore()
         #expect(store.phase == .idle)

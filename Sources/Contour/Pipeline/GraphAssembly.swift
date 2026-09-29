@@ -1,6 +1,5 @@
 import Foundation
 
-/// One analysis stage's decoded output — the slice of the graph it owns.
 enum StageResult: Sendable {
     case behaviorChange(StageDecoding.BehaviorChangeResult)
     case understanding(StageDecoding.UnderstandingResult)
@@ -10,15 +9,7 @@ enum StageResult: Sendable {
     case judgment(StageDecoding.JudgmentResult)
 }
 
-/// How the graph is built up one slice at a time. Each stage owns a disjoint set of fields,
-/// so slices can land in any order, be replaced when a stage is retried or revalidated, and
-/// be cleared when one fails — without touching what any other stage produced.
 extension PRGraph {
-
-    /// The graph as soon as the PR has been fetched and before any model has run: enough to
-    /// open the review window with a title, metadata and the raw diff. The PR's own title
-    /// stands in for intent — it is literally the author's claim — until the understanding
-    /// stage replaces it.
     static func shell(from ctx: RawPRContext) -> PRGraph {
         PRGraph(pr: PRSummary(
             repo: "\(ctx.owner)/\(ctx.repo)", number: ctx.number, title: ctx.title, author: ctx.author,
@@ -29,8 +20,6 @@ extension PRGraph {
         ))
     }
 
-    /// Replaces the PR metadata with a fresh fetch while keeping every analysis-owned field,
-    /// for a cached or previous-revision graph shown against the PR as it is now.
     mutating func refreshMetadata(from ctx: RawPRContext) {
         let fresh = PRGraph.shell(from: ctx).pr
         pr.title = fresh.title
@@ -77,9 +66,6 @@ extension PRGraph {
         }
     }
 
-    /// Empties the slice a stage owns — for a failed stage whose previous-revision slice
-    /// must not keep standing in for a conclusion about the current code, and for saving a
-    /// partial analysis without the parts that weren't produced for this revision.
     mutating func clear(_ stage: PipelineStage) {
         switch stage {
         case .behaviorChange:
@@ -111,8 +97,6 @@ extension PRGraph {
         refChecks?[stage.rawValue] = nil
     }
 
-    /// Records how a stage's refs fared against the checkout, replacing any earlier tally
-    /// for the same stage (a retry, or this revision replacing a previous one's slice).
     mutating func record(_ check: RefCheck, for stage: PipelineStage) {
         refChecks = refChecks ?? [:]
         refChecks?[stage.rawValue] = check
@@ -122,8 +106,6 @@ extension PRGraph {
         Statement(text: title, provenance: .claim, confidence: nil, source: "PR title")
     }
 
-    /// Decisions and flows are produced side by side now, so their links to architecture
-    /// parts and to each other are derived once both sides exist (see `GraphLinker`).
     func linked() -> PRGraph {
         var g = self
         g.decisions = GraphLinker.linkDecisions(decisions, to: components)
@@ -131,9 +113,6 @@ extension PRGraph {
         return g
     }
 
-    /// Carries the reviewer's own marks onto a newer snapshot of the graph. The pipeline
-    /// knows nothing about them, so without this every slice that lands while the reviewer
-    /// is working would silently reset the decisions they had already judged.
     func carryingReviewerState(from previous: PRGraph?) -> PRGraph {
         guard let previous else { return self }
         let marks = Dictionary(previous.decisions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
