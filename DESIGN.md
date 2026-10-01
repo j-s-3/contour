@@ -125,14 +125,19 @@ drawn by `ContourMarkView` from a Swift port of `scripts/generate-logo.py` (a te
 it to the icon SVG). Light appearance uses deeper tones of the same teal and amber,
 since the icon's pale amber disappears on a light window.
 
-- **Welcome.** Mark, "Contour", then the proposition ("Understand the change, not just
-  the diff.") and the URL field. The mark stays still. Idle motion would pull the eye
-  away from the one thing to do on this screen. Under the field, so a review session
-  can start here rather than with a hunt for a URL: PRs awaiting the user's review
-  (`gh search prs --review-requested=@me --state=open`, shown only when `gh` can
-  answer) and the PRs opened most recently, with repo and when each was last opened.
+- **Start.** A two-pane browser on the same split view as the review. The sidebar lists
+  where review work comes from: PRs awaiting the user's review
+  (`gh search prs --review-requested=@me --state=open`, listed only when `gh` can
+  answer) and the PRs opened most recently. The pane beside it holds the URL field and
+  the selected source's list, up to ten rows; the source chosen last is remembered.
   Recent PRs reopen instantly from the analysis cache. The URL field covers the rest.
-- **Opening.** The same mark carries over from the welcome screen and starts to
+  The mark rests small in the sidebar header and stays still. Idle motion would pull
+  the eye away from the list.
+- **Welcome.** When no source has anything to list, the pane is the welcome instead:
+  the large mark, "Contour", the proposition ("Understand the change, not just the
+  diff.") and the URL field. The sidebar header then shows the name alone, so the mark
+  is only ever in one place.
+- **Opening.** The same mark carries over from the start screen and starts to
   resolve while the PR is fetched: first the peak, then the rings from the summit
   outward. Each stage owns a slice of the mark sized by its typical cost, and within a
   stage the line eases toward the end of its slice without reaching it. It is not a
@@ -739,7 +744,7 @@ independent stages in parallel (§10).
   baseSha, pipeline version). Written as each stage lands, recording which stages it
   holds, so an interrupted run resumes with only the missing stages. Reopening the same
   commit shows everything at once. Beside the entries, a small `recent-prs.json` index
-  of the last PRs opened (URL, repo, title, when) feeds the welcome screen's recent list
+  of the last PRs opened (URL, repo, title, when) feeds the start screen's recent list
   without decoding every cached graph.
 - **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
   head is shown straight away, marked "from previous revision" (banner, stage status),
