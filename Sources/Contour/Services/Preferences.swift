@@ -67,6 +67,7 @@ final class Preferences {
         static let onboarded = "hasCompletedOnboarding"
         static let fullScreen = "opensInFullScreen"
         static let lastStartSource = "lastStartSource"
+        static let watchedRepositories = "watchedRepositories"
     }
 
     var storedHarness: HarnessID? {
@@ -113,6 +114,16 @@ final class Preferences {
     var lastStartSource: StartSource? {
         get { defaults.string(forKey: Key.lastStartSource).flatMap(StartSource.init(storageKey:)) }
         set { defaults.set(newValue?.storageKey, forKey: Key.lastStartSource) }
+    }
+
+    var watchedRepositories: [WatchedRepository] {
+        get {
+            (defaults.stringArray(forKey: Key.watchedRepositories) ?? []).compactMap(WatchedRepository.parse)
+                .reduce(into: []) { kept, repository in
+                    if !kept.contains(where: { $0.matches(repository.id) }) { kept.append(repository) }
+                }
+        }
+        set { defaults.set(newValue.map(\.id), forKey: Key.watchedRepositories) }
     }
 
     var resolvedHarness: HarnessID? {

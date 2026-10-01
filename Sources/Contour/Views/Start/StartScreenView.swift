@@ -12,13 +12,16 @@ struct StartScreenView: View {
     var focusRequest: Int
     var onSubmit: (String) -> Void
     nonisolated(unsafe) private let pasteboard: NSPasteboard
+    private let actions: StartScreenActions
 
     init(
         model: StartScreenModel, initialURL: String? = nil, markNamespace: Namespace.ID, focusRequest: Int = 0,
-        pasteboard: NSPasteboard = .general, onSubmit: @escaping (String) -> Void
+        pasteboard: NSPasteboard = .general, actions: StartScreenActions? = nil,
+        onSubmit: @escaping (String) -> Void
     ) {
         self.model = model
         self.pasteboard = pasteboard
+        self.actions = actions ?? StartScreenActions(model: model)
         _urlText = State(initialValue: initialURL ?? "")
         self.markNamespace = markNamespace
         self.focusRequest = focusRequest
@@ -27,7 +30,7 @@ struct StartScreenView: View {
 
     var body: some View {
         NavigationSplitView {
-            StartSidebar(model: model, markNamespace: markNamespace)
+            StartSidebar(model: model, actions: actions, markNamespace: markNamespace)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
             detail
@@ -42,10 +45,11 @@ struct StartScreenView: View {
         .task {
             model.loadRecents()
             await checkClipboard()
-            await model.loadReviewRequests()
+            await model.loadRemoteSources()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await checkClipboard() }
+            actions.refreshStale()
         }
     }
 
@@ -76,7 +80,7 @@ struct StartScreenView: View {
                 Spacer()
                 Spacer().frame(height: 60)
             } else {
-                StartSourceList(model: model, onOpen: onSubmit)
+                StartSourceList(model: model, actions: actions, onOpen: onSubmit)
                     .padding(.top, 20)
             }
         }

@@ -4,13 +4,25 @@ import Testing
 
 @testable import Contour
 
+extension StartScreenModel {
+    static func offline() -> StartScreenModel {
+        let name = "contour.tests.start.offline.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return StartScreenModel(
+            preferences: Preferences(defaults: defaults, environment: [:]),
+            dependencies: Dependencies(loadRecents: { [] }, loadReviewRequests: { nil }))
+    }
+}
+
 @MainActor
 @Suite(.serialized)
 struct ContentViewHostingTests {
 
     private func render(_ store: GraphStore, needsOnboarding: Bool = false) -> NSWindow {
         _ = NSApplication.shared
-        let host = NSHostingView(rootView: ContentView(store: store, needsOnboarding: needsOnboarding))
+        let host = NSHostingView(
+            rootView: ContentView(store: store, needsOnboarding: needsOnboarding, startScreen: .offline()))
         let window = HeadlessWindow(
             size: NSSize(width: 1200, height: 800), styleMask: [.titled, .closable, .resizable])
         window.contentView = host

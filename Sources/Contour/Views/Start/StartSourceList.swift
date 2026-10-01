@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StartSourceList: View {
     let model: StartScreenModel
+    let actions: StartScreenActions
     var onOpen: (String) -> Void
 
     var body: some View {
@@ -10,7 +11,13 @@ struct StartSourceList: View {
                 switch model.selection {
                 case .reviewRequests: reviewRequests
                 case .recents: recents
-                case .watched: EmptyView()
+                case .watched(let id):
+                    WatchedPullRequestsList(
+                        repository: id, state: model.state(for: id), isFetching: model.isFetching(id),
+                        labels: { model.labels(for: $0, in: id) },
+                        failureMessage: { model.failureMessage(for: $0, repository: id) },
+                        onRefresh: actions.refresh(id), onOpen: onOpen
+                    )
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -90,11 +90,16 @@ struct ContentView: View {
     private var actions: ContentViewActions { ContentViewActions(store: store) }
 
     private var sessionActions: PRSessionActions {
-        PRSessionActions(
+        let repository =
+            store.hasOpenPR ? PRSessionCommandsLogic.repository(fromPullRequestURL: store.lastPRURL) : nil
+        return PRSessionActions(
             hasOpenPR: store.hasOpenPR,
             pullRequestURL: store.pullRequestURL,
             openDifferent: actions.openDifferent(focusRequest: $urlFieldFocusRequest),
-            close: actions.close
+            close: actions.close,
+            repository: repository,
+            isWatchingRepository: startScreen.isWatched(repository),
+            toggleWatch: repository.map(StartScreenActions(model: startScreen).toggleWatch) ?? {}
         )
     }
 

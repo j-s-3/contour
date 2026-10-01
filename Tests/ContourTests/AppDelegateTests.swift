@@ -57,7 +57,7 @@ struct ContourAppTests {
 
     @Test func reviewWindowContentHostsTheContentView() {
         _ = NSApplication.shared
-        let view = NSHostingView(rootView: ReviewWindowContent())
+        let view = NSHostingView(rootView: ReviewWindowContent(startScreen: .offline()))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
             styleMask: [.titled], backing: .buffered, defer: false)

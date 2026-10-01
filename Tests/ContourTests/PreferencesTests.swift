@@ -186,6 +186,34 @@ struct PreferencesTests {
         defaults.set("settings", forKey: "lastStartSource")
         #expect(Preferences(defaults: defaults, environment: [:]).lastStartSource == nil)
     }
+
+    @Test func watchedRepositoriesRoundTripInOrderAndDefaultToNone() {
+        let defaults = freshDefaults()
+        let prefs = Preferences(defaults: defaults, environment: [:])
+        #expect(prefs.watchedRepositories.isEmpty)
+        prefs.watchedRepositories = [
+            WatchedRepository(owner: "acme", name: "web"), WatchedRepository(owner: "acme", name: "api"),
+        ]
+        #expect(
+            Preferences(defaults: defaults, environment: [:]).watchedRepositories.map(\.id)
+                == ["acme/web", "acme/api"])
+    }
+
+    @Test func storedWatchedRepositoriesThatAreNotValidAreDropped() {
+        let defaults = freshDefaults()
+        defaults.set(["acme/api", "--flag/x", "", "https://gitlab.com/a/b", "acme/web"], forKey: "watchedRepositories")
+        #expect(
+            Preferences(defaults: defaults, environment: [:]).watchedRepositories.map(\.id)
+                == ["acme/api", "acme/web"])
+    }
+
+    @Test func storedWatchedRepositoriesKeepOnlyTheFirstOfEachNameInAnyCase() {
+        let defaults = freshDefaults()
+        defaults.set(["acme/api", "Acme/API", "acme/web", "acme/api"], forKey: "watchedRepositories")
+        #expect(
+            Preferences(defaults: defaults, environment: [:]).watchedRepositories.map(\.id)
+                == ["acme/api", "acme/web"])
+    }
 }
 
 struct ExecutableResolutionTests {
