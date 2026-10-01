@@ -5,8 +5,101 @@ enum ClipboardOffer: Equatable {
     case unreadLink(changeCount: Int)
 }
 
+enum WatchedLoadState: Equatable, Sendable {
+    case loading
+    case loaded(WatchedPullRequestList)
+    case failed(WatchedFailure, keeping: WatchedPullRequestList?)
+
+    var list: WatchedPullRequestList? {
+        switch self {
+        case .loading: return nil
+        case .loaded(let list): return list
+        case .failed(_, let kept): return kept
+        }
+    }
+
+    var failure: WatchedFailure? {
+        if case .failed(let failure, _) = self { return failure }
+        return nil
+    }
+}
+
 enum StartScreenLogic {
     static let rowsShown = 10
+    static let freshForGH: TimeInterval = 120
+    static let freshAnonymously: TimeInterval = 600
+    static let suggestionLimit = 5
+
+    static func isFresh(lastAttempt: Date?, now: Date, anonymous: Bool) -> Bool {
+        guard let lastAttempt else { return false }
+        return now.timeIntervalSince(lastAttempt) < (anonymous ? freshAnonymously : freshForGH)
+    }
+
+    static func state(
+        after result: Result<WatchedPullRequestList, WatchedFailure>, previous: WatchedLoadState?
+    ) -> WatchedLoadState {
+        switch result {
+        case .success(let list): return .loaded(list)
+        case .failure(let failure): return .failed(failure, keeping: previous?.list)
+        }
+    }
+
+    static func count(_ state: WatchedLoadState?) -> String? {
+        switch state {
+        case .none, .loading:
+            return nil
+        case .failed:
+            return "!"
+        case .loaded(let list):
+            guard let rows = count(rows: list.pullRequests.count) else { return nil }
+            return list.hasMore ? "\(rows)+" : rows
+        }
+    }
+
+    static func labels(
+        for pullRequest: WatchedPullRequest, repository: String, viewerLogin: String?,
+        reviewRequests: [ReviewRequest]
+    ) -> [String] {
+        var labels: [String] = []
+        if pullRequest.isDraft { labels.append("draft") }
+        if let viewerLogin, pullRequest.author.caseInsensitiveCompare(viewerLogin) == .orderedSame {
+            labels.append("yours")
+        }
+        let requested = reviewRequests.contains {
+            $0.number == pullRequest.number && $0.repo.caseInsensitiveCompare(repository) == .orderedSame
+        }
+        if requested { labels.append("review requested") }
+        return labels
+    }
+
+    static func suggestions(
+        recents: [AnalysisCache.RecentPR], watched: [WatchedRepository], limit: Int = suggestionLimit
+    ) -> [String] {
+        var seen: Set<String> = []
+        var suggestions: [String] = []
+        for recent in recents {
+            guard let repository = WatchedRepository.parse(recent.repo),
+                !watched.contains(where: { $0.matches(repository.id) }),
+                seen.insert(repository.id.lowercased()).inserted
+            else { continue }
+            suggestions.append(repository.id)
+        }
+        return Array(suggestions.prefix(limit))
+    }
+
+    static func canWatch(_ input: String) -> Bool {
+        WatchedRepository.parse(input) != nil
+    }
+
+    static func emptyMessage(for list: WatchedPullRequestList) -> String {
+        list.hasMore
+            ? "The newest \(WatchedPullRequests.fetchLimit) open pull requests are all automated."
+            : "No open pull requests."
+    }
+
+    static func fetchedLabel(_ date: Date) -> String {
+        "updated \(date.formatted(.relative(presentation: .named)))"
+    }
 
     static func subtitle(repo: String, number: Int, detail: String?, date: Date?, dateVerb: String) -> String {
         var parts = ["\(repo) #\(number)"]

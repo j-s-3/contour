@@ -171,4 +171,152 @@ struct StartScreenLogicTests {
     @Test func listsShowTenRows() {
         #expect(StartScreenLogic.rowsShown == 10)
     }
+
+    private func pullRequest(_ number: Int, author: String = "mwright", isDraft: Bool = false) -> WatchedPullRequest {
+        WatchedPullRequest(
+            url: "https://github.com/acme/api/pull/\(number)", number: number, title: "t\(number)",
+            author: author, isDraft: isDraft, createdAt: Date(timeIntervalSince1970: TimeInterval(number)))
+    }
+
+    private func list(_ count: Int, hasMore: Bool = false) -> WatchedPullRequestList {
+        WatchedPullRequestList(
+            pullRequests: count == 0 ? [] : (1...count).map { pullRequest($0) }, hasMore: hasMore,
+            fetchedAt: Date(timeIntervalSince1970: 1_000))
+    }
+
+    @Test func aListIsFreshForTwoMinutesUnderGHAndTenAnonymously() {
+        let attempt = Date(timeIntervalSince1970: 1_000)
+        #expect(StartScreenLogic.isFresh(lastAttempt: attempt, now: attempt + 119, anonymous: false))
+        #expect(!StartScreenLogic.isFresh(lastAttempt: attempt, now: attempt + 120, anonymous: false))
+        #expect(StartScreenLogic.isFresh(lastAttempt: attempt, now: attempt + 599, anonymous: true))
+        #expect(!StartScreenLogic.isFresh(lastAttempt: attempt, now: attempt + 600, anonymous: true))
+    }
+
+    @Test func aRepositoryNeverFetchedIsNotFresh() {
+        #expect(!StartScreenLogic.isFresh(lastAttempt: nil, now: Date(), anonymous: false))
+    }
+
+    @Test func aSuccessfulFetchReplacesWhateverWasThere() {
+        #expect(StartScreenLogic.state(after: .success(list(2)), previous: .loading) == .loaded(list(2)))
+        #expect(
+            StartScreenLogic.state(after: .success(list(2)), previous: .failed(.notFound, keeping: nil))
+                == .loaded(list(2)))
+    }
+
+    @Test func aFailedFetchKeepsTheRowsThatWereAlreadyShown() {
+        #expect(
+            StartScreenLogic.state(after: .failure(.unavailable), previous: .loaded(list(3)))
+                == .failed(.unavailable, keeping: list(3)))
+        #expect(
+            StartScreenLogic.state(after: .failure(.notFound), previous: .failed(.unavailable, keeping: list(3)))
+                == .failed(.notFound, keeping: list(3)))
+        #expect(
+            StartScreenLogic.state(after: .failure(.notFound), previous: .loading)
+                == .failed(.notFound, keeping: nil))
+        #expect(StartScreenLogic.state(after: .failure(.notFound), previous: nil) == .failed(.notFound, keeping: nil))
+    }
+
+    @Test func loadStatesExposeTheirListAndFailure() {
+        #expect(WatchedLoadState.loading.list == nil)
+        #expect(WatchedLoadState.loading.failure == nil)
+        #expect(WatchedLoadState.loaded(list(1)).list == list(1))
+        #expect(WatchedLoadState.loaded(list(1)).failure == nil)
+        #expect(WatchedLoadState.failed(.notFound, keeping: list(1)).list == list(1))
+        #expect(WatchedLoadState.failed(.notFound, keeping: nil).failure == .notFound)
+    }
+
+    @Test func aWatchedCountIsTheRowsListedWithAPlusWhenThereAreMore() {
+        #expect(StartScreenLogic.count(WatchedLoadState?.none) == nil)
+        #expect(StartScreenLogic.count(.loading) == nil)
+        #expect(StartScreenLogic.count(.loaded(list(0))) == nil)
+        #expect(StartScreenLogic.count(.loaded(list(7))) == "7")
+        #expect(StartScreenLogic.count(.loaded(list(10, hasMore: true))) == "10+")
+        #expect(StartScreenLogic.count(.loaded(list(4, hasMore: true))) == "4+")
+        #expect(StartScreenLogic.count(.failed(.notFound, keeping: nil)) == "!")
+        #expect(StartScreenLogic.count(.failed(.notFound, keeping: list(3))) == "!")
+    }
+
+    @Test func labelsMarkDraftsTheViewersOwnAndRequestedReviews() {
+        let requested = ReviewRequest(
+            url: "https://github.com/acme/api/pull/3", repo: "acme/api", number: 3, title: "t", author: "a",
+            isDraft: false, updatedAt: nil)
+        #expect(
+            StartScreenLogic.labels(
+                for: pullRequest(3, author: "jstephens", isDraft: true), repository: "acme/api",
+                viewerLogin: "jstephens", reviewRequests: [requested])
+                == ["draft", "yours", "review requested"])
+        #expect(
+            StartScreenLogic.labels(
+                for: pullRequest(4), repository: "acme/api", viewerLogin: "jstephens", reviewRequests: [requested]
+            ).isEmpty)
+    }
+
+    @Test func labelsCompareLoginsAndRepositoriesWithoutRegardToCase() {
+        let requested = ReviewRequest(
+            url: "u", repo: "Acme/API", number: 3, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        #expect(
+            StartScreenLogic.labels(
+                for: pullRequest(3, author: "JStephens"), repository: "acme/api", viewerLogin: "jstephens",
+                reviewRequests: [requested])
+                == ["yours", "review requested"])
+    }
+
+    @Test func nothingIsYoursWhenTheViewerIsUnknown() {
+        #expect(
+            StartScreenLogic.labels(
+                for: pullRequest(3, author: "unknown"), repository: "acme/api", viewerLogin: nil,
+                reviewRequests: []
+            ).isEmpty)
+    }
+
+    @Test func aRequestForTheSameNumberInAnotherRepositoryDoesNotLabelTheRow() {
+        let elsewhere = ReviewRequest(
+            url: "u", repo: "acme/web", number: 3, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        #expect(
+            StartScreenLogic.labels(
+                for: pullRequest(3), repository: "acme/api", viewerLogin: nil, reviewRequests: [elsewhere]
+            ).isEmpty)
+    }
+
+    @Test func suggestionsAreRecentRepositoriesNotYetWatchedMostRecentFirst() {
+        let recents = [
+            AnalysisCache.RecentPR(url: "u", repo: "acme/web", number: 1, title: "t", lastOpened: Date()),
+            AnalysisCache.RecentPR(url: "u", repo: "acme/api", number: 2, title: "t", lastOpened: Date()),
+            AnalysisCache.RecentPR(url: "u", repo: "acme/web", number: 3, title: "t", lastOpened: Date()),
+            AnalysisCache.RecentPR(url: "u", repo: "acme/infra", number: 4, title: "t", lastOpened: Date()),
+            AnalysisCache.RecentPR(url: "u", repo: "not a repo", number: 5, title: "t", lastOpened: Date()),
+        ]
+        #expect(
+            StartScreenLogic.suggestions(
+                recents: recents, watched: [WatchedRepository(owner: "Acme", name: "API")])
+                == ["acme/web", "acme/infra"])
+    }
+
+    @Test func atMostFiveRepositoriesAreSuggested() {
+        let recents = (1...8).map {
+            AnalysisCache.RecentPR(url: "u", repo: "acme/r\($0)", number: $0, title: "t", lastOpened: Date())
+        }
+        #expect(
+            StartScreenLogic.suggestions(recents: recents, watched: [])
+                == ["acme/r1", "acme/r2", "acme/r3", "acme/r4", "acme/r5"])
+        #expect(StartScreenLogic.suggestions(recents: recents, watched: [], limit: 2) == ["acme/r1", "acme/r2"])
+    }
+
+    @Test func onlyInputThatNamesARepositoryCanBeWatched() {
+        #expect(StartScreenLogic.canWatch("acme/api"))
+        #expect(StartScreenLogic.canWatch("https://github.com/acme/api/pull/3"))
+        #expect(!StartScreenLogic.canWatch(""))
+        #expect(!StartScreenLogic.canWatch("--flag/x"))
+    }
+
+    @Test func anEmptyListSaysSoUnlessBotsCrowdedEveryoneOut() {
+        #expect(StartScreenLogic.emptyMessage(for: list(0)) == "No open pull requests.")
+        #expect(
+            StartScreenLogic.emptyMessage(for: list(0, hasMore: true))
+                == "The newest 30 open pull requests are all automated.")
+    }
+
+    @Test func theFetchedLabelSaysWhenTheListWasUpdated() {
+        #expect(StartScreenLogic.fetchedLabel(Date()).hasPrefix("updated "))
+    }
 }
