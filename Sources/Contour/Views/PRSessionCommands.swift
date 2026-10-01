@@ -6,6 +6,9 @@ struct PRSessionActions {
     var pullRequestURL: URL?
     var openDifferent: () -> Void
     var close: () -> Void
+    var repository: String?
+    var isWatchingRepository = false
+    var toggleWatch: () -> Void = {}
 
     func openOnGitHub(opener: (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         if let pullRequestURL { opener(pullRequestURL) }
@@ -26,6 +29,17 @@ enum PRSessionCommandsLogic {
     static func openPullRequestEnabled(_ session: PRSessionActions?) -> Bool { session != nil }
     static func hasLinkableURL(_ session: PRSessionActions?) -> Bool { session?.pullRequestURL != nil }
     static func showsClosePullRequest(_ session: PRSessionActions?) -> Bool { session?.hasOpenPR == true }
+    static func watchEnabled(_ session: PRSessionActions?) -> Bool { session?.repository != nil }
+
+    static func watchTitle(_ session: PRSessionActions?) -> String {
+        guard let session, let repository = session.repository else { return "Watch Repository" }
+        return session.isWatchingRepository ? "Stop Watching \(repository)" : "Watch \(repository)"
+    }
+
+    static func repository(fromPullRequestURL url: String?) -> String? {
+        guard let url, let parsed = try? GitHubService.parse(prURL: url) else { return nil }
+        return "\(parsed.owner)/\(parsed.repo)"
+    }
 }
 
 @MainActor
@@ -38,6 +52,7 @@ struct PRSessionMenuActions {
     func openOnGitHub() { session?.openOnGitHub(opener: openURL) }
     func copyLink() { session?.copyLink() }
     func closePullRequest() { session?.close() }
+    func toggleWatch() { session?.toggleWatch() }
     func closeWindow() { closeKeyWindow() }
 }
 
@@ -60,6 +75,8 @@ struct PRSessionCommands: Commands {
                 .disabled(!PRSessionCommandsLogic.hasLinkableURL(session))
             Button("Copy Link to Pull Request", action: actions.copyLink)
                 .disabled(!PRSessionCommandsLogic.hasLinkableURL(session))
+            Button(PRSessionCommandsLogic.watchTitle(session), action: actions.toggleWatch)
+                .disabled(!PRSessionCommandsLogic.watchEnabled(session))
         }
         CommandGroup(replacing: .saveItem) {
             if PRSessionCommandsLogic.showsClosePullRequest(session) {

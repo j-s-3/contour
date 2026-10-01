@@ -69,6 +69,56 @@ struct PRSessionCommandsTests {
         #expect(actions.hasOpenPR == false)
         #expect(actions.pullRequestURL == url)
     }
+
+    private func session(repository: String?, watching: Bool, toggle: @escaping () -> Void = {})
+        -> PRSessionActions
+    {
+        PRSessionActions(
+            hasOpenPR: repository != nil, pullRequestURL: nil, openDifferent: {}, close: {},
+            repository: repository, isWatchingRepository: watching, toggleWatch: toggle)
+    }
+
+    @Test func theWatchItemNamesTheRepositoryAndWhatItWillDo() {
+        #expect(
+            PRSessionCommandsLogic.watchTitle(session(repository: "acme/api", watching: false)) == "Watch acme/api")
+        #expect(
+            PRSessionCommandsLogic.watchTitle(session(repository: "acme/api", watching: true))
+                == "Stop Watching acme/api")
+    }
+
+    @Test func withNoPullRequestOpenTheWatchItemIsGenericAndDisabled() {
+        #expect(PRSessionCommandsLogic.watchTitle(nil) == "Watch Repository")
+        #expect(PRSessionCommandsLogic.watchTitle(session(repository: nil, watching: false)) == "Watch Repository")
+        #expect(!PRSessionCommandsLogic.watchEnabled(nil))
+        #expect(!PRSessionCommandsLogic.watchEnabled(session(repository: nil, watching: false)))
+        #expect(PRSessionCommandsLogic.watchEnabled(session(repository: "acme/api", watching: false)))
+    }
+
+    @Test func theRepositoryComesFromThePullRequestURL() {
+        #expect(
+            PRSessionCommandsLogic.repository(fromPullRequestURL: "https://github.com/acme/api/pull/42")
+                == "acme/api")
+        #expect(PRSessionCommandsLogic.repository(fromPullRequestURL: nil) == nil)
+        #expect(PRSessionCommandsLogic.repository(fromPullRequestURL: "not a link") == nil)
+    }
+
+    @MainActor
+    @Test func theMenuActionTogglesWatchingThroughTheSession() {
+        var toggles = 0
+        let actions = PRSessionMenuActions(
+            session: session(repository: "acme/api", watching: false, toggle: { toggles += 1 }))
+        actions.toggleWatch()
+        #expect(toggles == 1)
+        PRSessionMenuActions(session: nil).toggleWatch()
+        #expect(toggles == 1)
+    }
+
+    @Test func aSessionBuiltWithoutWatchDetailsCannotBeWatched() {
+        let plain = PRSessionActions(hasOpenPR: true, pullRequestURL: nil, openDifferent: {}, close: {})
+        #expect(plain.repository == nil)
+        #expect(!plain.isWatchingRepository)
+        plain.toggleWatch()
+    }
 }
 
 @MainActor
@@ -131,4 +181,5 @@ struct PRSessionCommandsBodyTests {
         let session = PRSessionActions(hasOpenPR: false, pullRequestURL: nil, openDifferent: {}, close: {})
         _ = PRSessionCommands.groups(session: session, actions: PRSessionMenuActions(session: session))
     }
+
 }
