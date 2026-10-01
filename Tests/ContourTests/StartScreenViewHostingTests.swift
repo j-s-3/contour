@@ -150,6 +150,45 @@ struct StartScreenViewHostingTests {
         window.close()
     }
 
+    @Test func recentsAreListedWhileReviewRequestsAreStillLoading() async {
+        _ = NSApplication.shared
+        let recorder = Recorder()
+        let recentPRs = recents()
+        let heldRequests = requests()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(
+                loadRecents: {
+                    recorder.recentLoads += 1
+                    return recentPRs
+                },
+                loadReviewRequests: {
+                    recorder.requestLoads += 1
+                    for await _ in gate { break }
+                    return heldRequests
+                }))
+        let view = NamespaceHost { namespace in
+            StartScreenView(
+                model: model, markNamespace: namespace, pasteboard: pasteboard(holding: nil), onSubmit: { _ in })
+        }
+        let hosting = NSHostingView(rootView: view)
+        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
+        window.contentView = hosting
+        window.orderBack(nil)
+        settle(hosting)
+        #expect(recorder.requestLoads == 1)
+        #expect(model.reviewRequests == nil)
+        #expect(model.recents.map(\.number) == [7])
+        #expect(!model.showsWelcome)
+        release.yield()
+        for _ in 0..<20 where model.reviewRequests == nil {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(model.reviewRequests?.map(\.number) == [8])
+        window.close()
+    }
+
     @Test func theURLFieldKeepsFocusWhenTheListsArriveAfterTheWelcome() async {
         _ = NSApplication.shared
         let lateRequests = requests()

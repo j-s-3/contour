@@ -66,8 +66,16 @@ final class StartScreenModel {
         }
     }
 
-    func reload() async {
+    func loadRecents() {
         recents = dependencies.loadRecents()
+    }
+
+    func loadReviewRequests() async {
         reviewRequests = await dependencies.loadReviewRequests()
+    }
+
+    func reload() async {
+        loadRecents()
+        await loadReviewRequests()
     }
 }

@@ -40,8 +40,9 @@ struct StartScreenView: View {
         .animation(.easeInOut(duration: 0.2), value: clipboardOffer)
         .animation(.easeInOut(duration: 0.25), value: model.showsWelcome)
         .task {
+            model.loadRecents()
             await checkClipboard()
-            await model.reload()
+            await model.loadReviewRequests()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await checkClipboard() }

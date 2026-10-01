@@ -41,6 +41,23 @@ struct StartScreenModelTests {
         #expect(model.showsWelcome)
     }
 
+    @Test func loadRecentsFillsRecentsWithoutAskingGH() {
+        var requestLoads = 0
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(
+                loadRecents: { [recent(1)] },
+                loadReviewRequests: {
+                    requestLoads += 1
+                    return [request(1)]
+                }))
+        model.loadRecents()
+        #expect(model.recents.map(\.number) == [1])
+        #expect(model.reviewRequests == nil)
+        #expect(requestLoads == 0)
+        #expect(!model.showsWelcome)
+    }
+
     @Test func reviewRequestsBecomeASourceOnceGHAnswers() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: [])
         await model.reload()
