@@ -1459,6 +1459,8 @@ Continue with steps 4 to 8 of the `ship` skill: push, open the pull request, wat
 
 Ship as one pull request titled "Watch repositories from the start screen". Start only after Part 1 has merged, in a fresh worktree off `origin/main`.
 
+Part 1 as merged differs from Tasks 3 and 4 as written in two ways that Part 2 builds on: `StartScreenModel` has no `reload()`; it has `loadRecents()` (synchronous) and `loadReviewRequests()` (async, and it skips its write when its task was cancelled), and `StartScreenView`'s `.task` is `model.loadRecents(); await checkClipboard(); await model.loadReviewRequests()`. Task 9 replaces the second loader's role with `loadRemoteSources()` and Task 10 points the view at it.
+
 ### Task 6: WatchedRepository
 
 **Files:**
@@ -2419,7 +2421,7 @@ stderr and response bodies go to the log."
   - `enum WatchedLoadState: Equatable, Sendable` with `.loading`, `.loaded(WatchedPullRequestList)`, `.failed(WatchedFailure, keeping: WatchedPullRequestList?)`, `var list: WatchedPullRequestList?`, `var failure: WatchedFailure?`
   - `StartScreenLogic`: `freshForGH`, `freshAnonymously`, `isFresh(lastAttempt:now:anonymous:)`, `state(after:previous:)`, `count(_ state: WatchedLoadState?)`, `labels(for:repository:viewerLogin:reviewRequests:)`, `suggestions(recents:watched:limit:)`, `canWatch(_:)`, `emptyMessage(for list: WatchedPullRequestList)`, `fetchedLabel(_:)`
   - `StartScreenModel.Dependencies` gains `fetchWatched`, `loadViewerLogin`, `usesAnonymousAccess`, `now`, all defaulted
-  - `StartScreenModel`: `var watched: [WatchedRepository]`, `var viewerLogin: String?`, `var suggestions: [String]`, `func state(for id: String) -> WatchedLoadState?`, `func isWatched(_ id: String?) -> Bool`, `func watch(_ input: String) async -> Bool`, `func stopWatching(_ id: String)`, `func toggleWatch(_ id: String) async`, `func refresh(_ id: String) async`, `func refreshWatched(force: Bool) async`, `func labels(for pullRequest: WatchedPullRequest, in repository: String) -> [String]`, `func failureMessage(for failure: WatchedFailure, repository: String) -> String`
+  - `StartScreenModel`: `var watched: [WatchedRepository]`, `var viewerLogin: String?`, `var suggestions: [String]`, `func state(for id: String) -> WatchedLoadState?`, `func isWatched(_ id: String?) -> Bool`, `func watch(_ input: String) async -> Bool`, `func stopWatching(_ id: String)`, `func toggleWatch(_ id: String) async`, `func loadRemoteSources() async` (replaces the Part 1 `reload()`, which no longer exists: it loads review requests, the viewer login once, and stale watched lists concurrently; every write after an await is skipped when the task was cancelled), `func refresh(_ id: String) async`, `func refreshWatched(force: Bool) async`, `func labels(for pullRequest: WatchedPullRequest, in repository: String) -> [String]`, `func failureMessage(for failure: WatchedFailure, repository: String) -> String`
 
 - [ ] **Step 1: Write the failing Preferences tests**
 
@@ -2866,7 +2868,8 @@ struct StartScreenModelWatchingTests {
     @Test func stopWatchingRemovesTheRepositoryItsListAndItsSelection() async {
         let prefs = preferences(watching: ["acme/api", "acme/web"])
         let model = model(preferences: prefs, requests: []) { _, _ in .success(self.list([1])) }
-        await model.reload()
+        model.loadRecents()
+        await model.loadRemoteSources()
         model.select(.watched("acme/api"))
         model.stopWatching("ACME/api")
         #expect(model.watched.map(\.id) == ["acme/web"])
@@ -2907,12 +2910,52 @@ struct StartScreenModelWatchingTests {
                     return "jstephens"
                 },
                 usesAnonymousAccess: { _ in false }, now: { Date(timeIntervalSince1970: 1_000_000) }))
-        await model.reload()
-        await model.reload()
+        model.loadRecents()
+        await model.loadRemoteSources()
+        model.loadRecents()
+        await model.loadRemoteSources()
         #expect(Set(calls.withLock { $0 }) == ["acme/api", "acme/web"])
         #expect(calls.withLock { $0 }.count == 2)
         #expect(model.viewerLogin == "jstephens")
         #expect(logins.withLock { $0 } == 1)
+    }
+
+    @Test func aCancelledWatchedFetchKeepsNothingAndIsRetriedNextTime() async {
+        let gate = Gate()
+        let calls = OSAllocatedUnfairLock<Int>(initialState: 0)
+        let model = model(preferences: preferences(watching: ["acme/api"])) { _, _ in
+            calls.withLock { $0 += 1 }
+            await gate.wait()
+            return .failure(.unavailable)
+        }
+        let first = Task { await model.refresh("acme/api") }
+        while model.state(for: "acme/api") == nil { await Task.yield() }
+        first.cancel()
+        await gate.open()
+        await first.value
+        #expect(model.state(for: "acme/api") == nil)
+        await model.refreshWatched(force: false)
+        #expect(calls.withLock { $0 } == 2)
+        #expect(model.state(for: "acme/api") == .failed(.unavailable, keeping: nil))
+    }
+
+    @Test func aCancelledRemoteLoadLeavesTheReviewRequestsAlone() async {
+        let gate = Gate()
+        let prefs = preferences()
+        let model = StartScreenModel(
+            preferences: prefs,
+            dependencies: StartScreenModel.Dependencies(
+                loadRecents: { [] },
+                loadReviewRequests: {
+                    await gate.wait()
+                    return nil
+                }))
+        await model.loadReviewRequests()
+        let loading = Task { await model.loadRemoteSources() }
+        loading.cancel()
+        await gate.open()
+        await loading.value
+        #expect(model.reviewRequests == nil)
     }
 
     @Test func aFreshListIsNotFetchedAgainUntilItGoesStale() async {
@@ -3037,7 +3080,8 @@ struct StartScreenModelWatchingTests {
         let model = model(
             preferences: preferences(watching: ["acme/api"]), requests: [requested], login: "mwright"
         ) { _, _ in .success(self.list([1, 2])) }
-        await model.reload()
+        model.loadRecents()
+        await model.loadRemoteSources()
         let rows = model.state(for: "acme/api")?.list?.pullRequests ?? []
         #expect(rows.map { model.labels(for: $0, in: "acme/api") } == [["yours"], ["yours", "review requested"]])
     }
@@ -3061,7 +3105,8 @@ struct StartScreenModelWatchingTests {
         let model = model(preferences: preferences(watching: ["acme/api"]), recents: recents) { _, _ in
             .success(self.list([1]))
         }
-        await model.reload()
+        model.loadRecents()
+        await model.loadRemoteSources()
         #expect(model.suggestions == ["acme/web"])
     }
 
@@ -3195,12 +3240,22 @@ final class StartScreenModel {
             anonymous: dependencies.usesAnonymousAccess(preferences.resolvedGitHubAccess))
     }
 
-    func reload() async {
+    func loadRecents() {
         recents = dependencies.loadRecents()
+    }
+
+    func loadReviewRequests() async {
+        let result = await dependencies.loadReviewRequests()
+        guard !Task.isCancelled else { return }
+        reviewRequests = result
+    }
+
+    func loadRemoteSources() async {
         async let refreshing: Void = refreshWatched(force: false)
-        reviewRequests = await dependencies.loadReviewRequests()
+        await loadReviewRequests()
         if viewerLogin == nil {
-            viewerLogin = await dependencies.loadViewerLogin(preferences.resolvedGitHubAccess)
+            let login = await dependencies.loadViewerLogin(preferences.resolvedGitHubAccess)
+            if !Task.isCancelled { viewerLogin = login }
         }
         await refreshing
     }
@@ -3266,6 +3321,11 @@ final class StartScreenModel {
                 group.addTask { (repository.id, await fetchWatched(repository, access)) }
             }
             for await (id, result) in group where watched.contains(where: { $0.id == id }) {
+                if Task.isCancelled {
+                    lastAttempts[id] = nil
+                    if states[id] == .loading { states[id] = nil }
+                    continue
+                }
                 states[id] = StartScreenLogic.state(after: result, previous: states[id])
             }
         }
@@ -3833,7 +3893,7 @@ In `StartScreenView.swift`, add a stored property `private let actions: StartScr
         self.actions = actions ?? StartScreenActions(model: model)
 ```
 
-Pass it on: `StartSidebar(model: model, actions: actions, markNamespace: markNamespace)` and `StartSourceList(model: model, actions: actions, onOpen: onSubmit)`. Refresh stale lists when the app becomes active:
+Pass it on: `StartSidebar(model: model, actions: actions, markNamespace: markNamespace)` and `StartSourceList(model: model, actions: actions, onOpen: onSubmit)`. In the view's `.task`, replace `await model.loadReviewRequests()` with `await model.loadRemoteSources()`, so the body reads `model.loadRecents(); await checkClipboard(); await model.loadRemoteSources()`. Refresh stale lists when the app becomes active:
 
 ```swift
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -3858,7 +3918,8 @@ In `StartScreenViewRenderTests.swift`, change the `loaded` helper to take watche
             preferences: prefs,
             dependencies: StartScreenModel.Dependencies(
                 loadRecents: { recents }, loadReviewRequests: { requests }, fetchWatched: fetch))
-        await model.reload()
+        model.loadRecents()
+        await model.loadRemoteSources()
         if let source { model.select(source) }
         return model
     }
