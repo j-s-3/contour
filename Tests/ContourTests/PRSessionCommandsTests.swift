@@ -122,7 +122,7 @@ struct PRSessionCommandsTests {
 }
 
 @MainActor
-struct PRSessionCommandsBodyTests {
+extension PRSessionCommandsTests {
     @Test func menuActionsForwardToTheFocusedSession() {
         let url = URL(string: "https://github.com/acme/shop/pull/42")!
         var opened = 0
