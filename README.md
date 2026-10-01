@@ -139,8 +139,9 @@ previous analysis, clearly marked, while the new one runs.
 Also: a command palette (⌘K) that jumps to any lens or node, a focused code viewer with
 a guaranteed way back, **Approve** and **Request changes** buttons that submit your
 verdict to GitHub through `gh`, *Open on GitHub* and *Copy review summary* to take your
-review elsewhere, and opening a PR from the clipboard, a dropped link, or your recent and
-awaiting-review PRs on the start screen.
+review elsewhere, and opening a PR from the clipboard, a dropped link, or the start
+screen's lists: PRs awaiting your review, PRs you opened recently, and the open PRs of
+any repository you choose to watch.
 
 Not yet: posting line comments back to GitHub, LSP-grade jump-to-definition, and sharded
 analysis for very large PRs (see `DESIGN.md` §17/§18). `DESIGN.md` has the full product
