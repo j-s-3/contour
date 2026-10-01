@@ -133,7 +133,8 @@ since the icon's pale amber disappears on a light window.
   finding review work nobody asked them for. Each lists its ten newest open PRs that
   weren't opened by a bot (`gh pr list -R owner/repo --state open`, or the REST
   `pulls` endpoint anonymously), labelled `draft`, `yours` and `review requested`
-  where they apply. Thirty are fetched so that removing bots still leaves ten.
+  where they apply. `yours` comes from one `gh api user --jq .login` call per launch,
+  made only under `gh` access, so it never shows anonymously. Thirty are fetched so that removing bots still leaves ten.
   Lists are held in memory and refetched when older than two minutes under `gh` or
   ten anonymously, since anonymous access shares 60 requests an hour with opening
   PRs. Repositories are added from the sidebar, or from the File menu while a PR is
@@ -830,10 +831,10 @@ through a subscription.
 Beyond that, every invocation is read-only (no `bash`, no edit, no write, no WebFetch),
 ephemeral, and session-less, so nothing a PR contains can persist into a later analysis.
 
-- A watched repository's name is parsed and held to GitHub's owner and repository
-  character set before it is stored or passed to `gh`, and an owner cannot start with
-  a hyphen, so user input can't become a flag. PR titles and author logins on the
-  start screen are rendered verbatim and never reach a harness prompt.
+A watched repository's name is parsed and held to the character set the parser allows
+before it is stored or passed to `gh`, and an owner cannot start with a hyphen, so user
+input can't become a flag. PR titles and author logins on the start screen are rendered
+verbatim and never reach a harness prompt.
 
 ## 17. MVP scope (implemented)
 
