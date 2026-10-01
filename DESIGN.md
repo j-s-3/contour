@@ -744,7 +744,7 @@ independent stages in parallel (§10).
   baseSha, pipeline version). Written as each stage lands, recording which stages it
   holds, so an interrupted run resumes with only the missing stages. Reopening the same
   commit shows everything at once. Beside the entries, a small `recent-prs.json` index
-  of the last PRs opened (URL, repo, title, when) feeds the welcome screen's recent list
+  of the last PRs opened (URL, repo, title, when) feeds the start screen's recent list
   without decoding every cached graph.
 - **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
   head is shown straight away, marked "from previous revision" (banner, stage status),
