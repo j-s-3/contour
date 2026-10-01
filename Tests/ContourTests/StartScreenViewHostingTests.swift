@@ -198,11 +198,17 @@ struct StartScreenViewHostingTests {
         window.close()
     }
 
-    @Test func dismissingTheClipboardOfferRemovesIt() {
+    @Test func dismissingTheClipboardOfferKeepsItAwayWhenTheAppReturns() async {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: prURL))
         #expect(button(in: window, named: "from clipboard?") != nil)
         #expect(press("Dismiss", in: window))
+        #expect(button(in: window, named: "from clipboard?") == nil)
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(25))
+            if let content = window.contentView { settle(content) }
+        }
         #expect(button(in: window, named: "from clipboard?") == nil)
         #expect(recorder.submitted.isEmpty)
         window.close()
