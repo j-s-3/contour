@@ -13,7 +13,7 @@ struct StartSourceList: View {
                 case .recents: recents
                 case .watched(let id):
                     WatchedPullRequestsList(
-                        repository: id, state: model.state(for: id),
+                        repository: id, state: model.state(for: id), isFetching: model.isFetching(id),
                         labels: { model.labels(for: $0, in: id) },
                         failureMessage: { model.failureMessage(for: $0, repository: id) },
                         onRefresh: actions.refresh(id), onOpen: onOpen

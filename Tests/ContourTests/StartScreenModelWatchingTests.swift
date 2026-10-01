@@ -61,6 +61,11 @@ struct StartScreenModelWatchingTests {
                 usesAnonymousAccess: { _ in anonymous }, now: { clock.now }))
     }
 
+    private func yield(until condition: () -> Bool) async -> Bool {
+        for _ in 0..<10_000 where !condition() { await Task.yield() }
+        return condition()
+    }
+
     private func counting(_ calls: OSAllocatedUnfairLock<[String]>, returning list: WatchedPullRequestList) -> Fetch {
         { repository, _ in
             calls.withLock { $0.append(repository.id) }
@@ -184,7 +189,7 @@ struct StartScreenModelWatchingTests {
             return .failure(.unavailable)
         }
         let first = Task { await model.refresh("acme/api") }
-        while model.state(for: "acme/api") == nil { await Task.yield() }
+        #expect(await yield { model.state(for: "acme/api") != nil })
         first.cancel()
         await gate.open()
         await first.value
@@ -294,7 +299,7 @@ struct StartScreenModelWatchingTests {
             return .success(self.list([1]))
         }
         let refreshing = Task { await model.refresh("acme/api") }
-        while model.state(for: "acme/api") == nil { await Task.yield() }
+        #expect(await yield { model.state(for: "acme/api") != nil })
         #expect(model.state(for: "acme/api") == .loading)
         await gate.open()
         await refreshing.value
@@ -309,7 +314,7 @@ struct StartScreenModelWatchingTests {
             return .success(self.list([1]))
         }
         let adding = Task { await model.watch("acme/api") }
-        while model.state(for: "acme/api") == nil { await Task.yield() }
+        #expect(await yield { model.state(for: "acme/api") != nil })
         model.stopWatching("acme/api")
         await gate.open()
         _ = await adding.value
@@ -338,6 +343,53 @@ struct StartScreenModelWatchingTests {
         await model.loadRemoteSources()
         let rows = model.state(for: "acme/api")?.list?.pullRequests ?? []
         #expect(rows.map { model.labels(for: $0, in: "acme/api") } == [["yours"], ["yours", "review requested"]])
+    }
+
+    @Test func theViewerIsNeverYoursUnderAnonymousAccess() async {
+        let requested = ReviewRequest(
+            url: "u", repo: "acme/api", number: 2, title: "t", author: "a", isDraft: false, updatedAt: nil)
+        let model = model(
+            preferences: preferences(watching: ["acme/api"]), anonymous: true, requests: [requested],
+            login: "mwright"
+        ) { _, _ in .success(self.list([1, 2])) }
+        await model.loadRemoteSources()
+        let rows = model.state(for: "acme/api")?.list?.pullRequests ?? []
+        #expect(rows.map { model.labels(for: $0, in: "acme/api") } == [[], ["review requested"]])
+    }
+
+    @Test func retryingAFailureWithNoRowsShowsAsFetchingUntilTheAnswerLands() async {
+        let gate = Gate()
+        let gated = OSAllocatedUnfairLock<Bool>(initialState: false)
+        let model = model(preferences: preferences(watching: ["acme/api"])) { _, _ in
+            if gated.withLock({ $0 }) { await gate.wait() }
+            return .failure(.unavailable)
+        }
+        await model.refresh("acme/api")
+        #expect(model.state(for: "acme/api") == .failed(.unavailable, keeping: nil))
+        #expect(!model.isFetching("acme/api"))
+        gated.withLock { $0 = true }
+        let retrying = Task { await model.refresh("acme/api") }
+        #expect(await yield { model.isFetching("acme/api") })
+        #expect(model.state(for: "acme/api") == .failed(.unavailable, keeping: nil))
+        await gate.open()
+        await retrying.value
+        #expect(!model.isFetching("acme/api"))
+    }
+
+    @Test func overlappingFetchesOfOneRepositoryStayFetchingUntilBothLand() async {
+        let gate = Gate()
+        let model = model(preferences: preferences(watching: ["acme/api"])) { _, _ in
+            await gate.wait()
+            return .success(self.list([1]))
+        }
+        let first = Task { await model.refresh("acme/api") }
+        let second = Task { await model.refresh("acme/api") }
+        #expect(await yield { model.state(for: "acme/api") == .loading })
+        #expect(model.isFetching("acme/api"))
+        await gate.open()
+        await first.value
+        await second.value
+        #expect(!model.isFetching("acme/api"))
     }
 
     @Test func failureMessagesSayWhetherAccessIsAnonymous() {

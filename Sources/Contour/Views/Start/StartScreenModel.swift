@@ -37,6 +37,7 @@ final class StartScreenModel {
     private(set) var watched: [WatchedRepository]
     private(set) var viewerLogin: String?
     private var states: [String: WatchedLoadState] = [:]
+    private var fetchesInFlight: [String: Int] = [:]
     private var remembered: StartSource?
 
     @ObservationIgnored private var lastAttempts: [String: Date] = [:]
@@ -93,6 +94,8 @@ final class StartScreenModel {
 
     func state(for id: String) -> WatchedLoadState? { states[id] }
 
+    func isFetching(_ id: String) -> Bool { fetchesInFlight[id] != nil }
+
     func isWatched(_ id: String?) -> Bool {
         guard let id else { return false }
         return watched.contains { $0.matches(id) }
@@ -100,7 +103,8 @@ final class StartScreenModel {
 
     func labels(for pullRequest: WatchedPullRequest, in repository: String) -> [String] {
         StartScreenLogic.labels(
-            for: pullRequest, repository: repository, viewerLogin: viewerLogin,
+            for: pullRequest, repository: repository,
+            viewerLogin: dependencies.usesAnonymousAccess(preferences.resolvedGitHubAccess) ? nil : viewerLogin,
             reviewRequests: reviewRequests ?? [])
     }
 
@@ -184,13 +188,16 @@ final class StartScreenModel {
         let moment = dependencies.now()
         for repository in repositories {
             lastAttempts[repository.id] = moment
+            fetchesInFlight[repository.id, default: 0] += 1
             if states[repository.id] == nil { states[repository.id] = .loading }
         }
         await withTaskGroup(of: (String, Result<WatchedPullRequestList, WatchedFailure>).self) { group in
             for repository in repositories {
                 group.addTask { (repository.id, await fetchWatched(repository, access)) }
             }
-            for await (id, result) in group where watched.contains(where: { $0.id == id }) {
+            for await (id, result) in group {
+                finishFetch(id)
+                guard watched.contains(where: { $0.id == id }) else { continue }
                 if Task.isCancelled {
                     lastAttempts[id] = nil
                     if states[id] == .loading { states[id] = nil }
@@ -199,5 +206,10 @@ final class StartScreenModel {
                 states[id] = StartScreenLogic.state(after: result, previous: states[id])
             }
         }
+    }
+
+    private func finishFetch(_ id: String) {
+        let remaining = (fetchesInFlight[id] ?? 1) - 1
+        fetchesInFlight[id] = remaining > 0 ? remaining : nil
     }
 }

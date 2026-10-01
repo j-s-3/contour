@@ -3,6 +3,7 @@ import SwiftUI
 struct WatchedPullRequestsList: View {
     let repository: String
     let state: WatchedLoadState?
+    var isFetching = false
     var labels: (WatchedPullRequest) -> [String]
     var failureMessage: (WatchedFailure) -> String
     var onRefresh: () -> Void
@@ -14,9 +15,11 @@ struct WatchedPullRequestsList: View {
             systemImage: StartScreenLogic.symbol(for: .watched(repository))
         ) {
             if let list = state?.list {
-                Text(verbatim: StartScreenLogic.fetchedLabel(list.fetchedAt))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                TimelineView(.periodic(from: .now, by: 60)) { _ in
+                    Text(verbatim: StartScreenLogic.fetchedLabel(list.fetchedAt))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Button(action: onRefresh) {
                 Image(systemName: "arrow.clockwise")
@@ -28,7 +31,7 @@ struct WatchedPullRequestsList: View {
         if let failure = state?.failure {
             WatchedFailureMessage(text: failureMessage(failure), onRetry: onRefresh)
         }
-        if state == nil || state == .loading {
+        if state == nil || state == .loading || isFetching {
             ProgressView()
                 .controlSize(.small)
                 .padding(8)
