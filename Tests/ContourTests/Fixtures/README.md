@@ -105,3 +105,18 @@ load-bearing: `ClaudeHarness.interpret` ignores every `system` event regardless 
 payload. The `system` lines here are therefore trimmed to just the fields that identify
 the event, so the fixture still proves the noise is skipped without publishing one
 developer's environment.
+
+## `gh-pr-list.json`
+Real output of `gh pr list -R cli/cli --state open --limit 30 --json
+number,title,url,author,isDraft,createdAt`, captured 2026-10-01 and unedited. It holds
+pull requests from people and from bots; `gh` spells a bot's login `app/dependabot` and
+sets `author.is_bot`. `WatchedPullRequestsParseTests` relies on at least one bot being
+present.
+
+## `rest-pulls.json`
+Real output of `GET /repos/cli/cli/pulls?state=open&sort=created&direction=desc&per_page=30`
+from the anonymous REST API, captured 2026-10-01. The response was projected with `jq` to
+the seven fields the parser reads (`number`, `title`, `html_url`, `draft`, `created_at`,
+`user.login`, `user.type`), because the full response is several hundred kilobytes of
+fields nothing reads. No value was changed. The REST API spells a bot's login
+`dependabot[bot]` and sets `user.type` to `Bot`.
