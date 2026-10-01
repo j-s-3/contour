@@ -99,6 +99,45 @@ struct StartScreenViewHostingTests {
         settle(view)
     }
 
+    private func button(in window: NSWindow, named name: String) -> NSObject? {
+        guard let root = window.contentView else { return nil }
+        for attribute in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
+            _ = NSApp.perform(
+                NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: true as NSNumber, with: attribute)
+        }
+        settle(root)
+        func text(_ object: NSObject, _ name: String) -> String? {
+            let selector = NSSelectorFromString(name)
+            guard object.responds(to: selector) else { return nil }
+            return object.perform(selector)?.takeUnretainedValue() as? String
+        }
+        func walk(_ node: Any) -> NSObject? {
+            guard let object = node as? NSObject else { return nil }
+            let isButton =
+                [NSAccessibility.Role.button.rawValue, NSAccessibility.Role.link.rawValue]
+                .contains(text(object, "accessibilityRole") ?? "")
+            let names = ["accessibilityLabel", "accessibilityHelp", "accessibilityTitle"].compactMap {
+                text(object, $0)
+            }
+            if isButton, names.contains(where: { $0.contains(name) }) { return object }
+            let childrenSelector = NSSelectorFromString("accessibilityChildren")
+            guard object.responds(to: childrenSelector) else { return nil }
+            let children = object.perform(childrenSelector)?.takeUnretainedValue()
+            for child in children as? [Any] ?? [] {
+                if let found = walk(child) { return found }
+            }
+            return nil
+        }
+        return walk(root)
+    }
+
+    private func press(_ name: String, in window: NSWindow) -> Bool {
+        guard let target = button(in: window, named: name) else { return false }
+        _ = target.perform(NSSelectorFromString("accessibilityPerformPress"))
+        if let content = window.contentView { settle(content) }
+        return true
+    }
+
     @Test func appearingLoadsRecentsAndReviewRequests() {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: nil), requests: requests())
@@ -147,6 +186,35 @@ struct StartScreenViewHostingTests {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: nil))
         #expect(MockAnalysisFixtures.isEnabled)
+        window.close()
+    }
+
+    @Test func pastingFromTheClipboardFillsTheFieldForReturnToOpen() {
+        let recorder = Recorder()
+        let window = host(recorder: recorder, board: pasteboard(holding: prURL))
+        #expect(press("Paste from clipboard", in: window))
+        pressReturn(in: window)
+        #expect(recorder.submitted == [prURL])
+        window.close()
+    }
+
+    @Test func dismissingTheClipboardOfferRemovesIt() {
+        let recorder = Recorder()
+        let window = host(recorder: recorder, board: pasteboard(holding: prURL))
+        #expect(button(in: window, named: "from clipboard?") != nil)
+        #expect(press("Dismiss", in: window))
+        #expect(button(in: window, named: "from clipboard?") == nil)
+        #expect(recorder.submitted.isEmpty)
+        window.close()
+    }
+
+    @Test func loadTestDataOpensTheMockPullRequest() {
+        setenv("CONTOUR_MOCK_ANALYSIS", "1", 1)
+        defer { unsetenv("CONTOUR_MOCK_ANALYSIS") }
+        let recorder = Recorder()
+        let window = host(recorder: recorder, board: pasteboard(holding: nil))
+        #expect(press("Load test data", in: window))
+        #expect(recorder.submitted == [MockAnalysisFixtures.sourcePRURL])
         window.close()
     }
 
