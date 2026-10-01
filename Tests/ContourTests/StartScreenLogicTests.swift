@@ -96,17 +96,6 @@ struct StartScreenLogicTests {
         #expect(StartScreenLogic.visibleRequests(nil, limit: 5).isEmpty)
     }
 
-    @Test func shouldShowListsIsFalseOnlyWhenBothListsAreEmpty() {
-        #expect(!StartScreenLogic.shouldShowLists(requests: [], recents: []))
-
-        let request = ReviewRequest(
-            url: "u", repo: "acme/shop", number: 1, title: "t", author: "a", isDraft: false, updatedAt: nil)
-        #expect(StartScreenLogic.shouldShowLists(requests: [request], recents: []))
-
-        let recent = AnalysisCache.RecentPR(url: "u", repo: "acme/shop", number: 1, title: "t", lastOpened: Date())
-        #expect(StartScreenLogic.shouldShowLists(requests: [], recents: [recent]))
-    }
-
     private func request(_ number: Int) -> ReviewRequest {
         ReviewRequest(
             url: "https://github.com/acme/shop/pull/\(number)", repo: "acme/shop", number: number,

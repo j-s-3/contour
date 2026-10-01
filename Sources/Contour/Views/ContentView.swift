@@ -10,10 +10,13 @@ struct ContentView: View {
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @Namespace private var markNamespace
     @State private var urlFieldFocusRequest = 0
+    @State private var startScreen: StartScreenModel
 
-    init(store: GraphStore = GraphStore(), needsOnboarding: Bool? = nil) {
+    init(store: GraphStore = GraphStore(), needsOnboarding: Bool? = nil, startScreen: StartScreenModel? = nil) {
         _store = State(initialValue: store)
         _needsOnboarding = State(initialValue: needsOnboarding ?? !Preferences.shared.hasCompletedOnboarding)
+        _startScreen = State(
+            initialValue: startScreen ?? StartScreenModel(preferences: .shared, dependencies: .live))
     }
 
     var body: some View {
@@ -100,11 +103,7 @@ struct ContentView: View {
         Group {
             switch store.phase {
             case .idle:
-                OnboardingView(
-                    initialURL: store.lastPRURL, markNamespace: markNamespace,
-                    focusRequest: urlFieldFocusRequest,
-                    onSubmit: actions.load
-                )
+                startScreenView
             case .opening:
                 AnalyzingView(stage: .fetching, log: store.progressLog, markNamespace: markNamespace)
             case .failed(let message):
@@ -113,16 +112,19 @@ struct ContentView: View {
                 if let graph = store.graph {
                     readyBody(graph)
                 } else {
-                    OnboardingView(
-                        initialURL: store.lastPRURL, markNamespace: markNamespace,
-                        focusRequest: urlFieldFocusRequest,
-                        onSubmit: actions.load
-                    )
+                    startScreenView
                 }
             }
         }
         .animation(.easeInOut(duration: 0.45), value: screen)
         .opensDroppedPullRequests(actions.load)
+    }
+
+    private var startScreenView: some View {
+        StartScreenView(
+            model: startScreen, initialURL: store.lastPRURL, markNamespace: markNamespace,
+            focusRequest: urlFieldFocusRequest, onSubmit: actions.load
+        )
     }
 
     private var screen: Int { Self.screen(for: store.phase) }

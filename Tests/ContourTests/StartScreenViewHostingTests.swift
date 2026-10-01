@@ -6,7 +6,7 @@ import Testing
 
 @MainActor
 @Suite(.serialized)
-struct OnboardingViewHostingTests {
+struct StartScreenViewHostingTests {
     private struct NamespaceHost<Content: View>: View {
         @Namespace var ns
         let content: (Namespace.ID) -> Content
@@ -40,14 +40,21 @@ struct OnboardingViewHostingTests {
         ]
     }
 
+    private func preferences() -> Preferences {
+        let name = "contour.tests.start.hosting.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return Preferences(defaults: defaults, environment: [:])
+    }
+
     private func host(
         recorder: Recorder, board: NSPasteboard, initialURL: String? = nil, requests: [ReviewRequest]? = nil
     ) -> NSWindow {
         _ = NSApplication.shared
         let recentPRs = recents()
-        let view = NamespaceHost { namespace in
-            OnboardingView(
-                initialURL: initialURL, markNamespace: namespace, pasteboard: board,
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(
                 loadRecents: {
                     recorder.recentLoads += 1
                     return recentPRs
@@ -55,11 +62,14 @@ struct OnboardingViewHostingTests {
                 loadReviewRequests: {
                     recorder.requestLoads += 1
                     return requests
-                },
+                }))
+        let view = NamespaceHost { namespace in
+            StartScreenView(
+                model: model, initialURL: initialURL, markNamespace: namespace, pasteboard: board,
                 onSubmit: { recorder.submitted.append($0) })
         }
         let hosting = NSHostingView(rootView: view)
-        let window = HeadlessWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled, .closable])
+        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
         window.contentView = hosting
         window.orderBack(nil)
         settle(hosting)
@@ -138,5 +148,28 @@ struct OnboardingViewHostingTests {
         let window = host(recorder: recorder, board: pasteboard(holding: nil))
         #expect(MockAnalysisFixtures.isEnabled)
         window.close()
+    }
+
+    @Test func theModelKeepsItsListsAfterTheViewGoesAway() {
+        let recorder = Recorder()
+        let recentPRs = recents()
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(
+                loadRecents: {
+                    recorder.recentLoads += 1
+                    return recentPRs
+                },
+                loadReviewRequests: { nil }))
+        let view = NamespaceHost { namespace in
+            StartScreenView(model: model, markNamespace: namespace, onSubmit: { _ in })
+        }
+        let hosting = NSHostingView(rootView: view)
+        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
+        window.contentView = hosting
+        window.orderBack(nil)
+        settle(hosting)
+        window.close()
+        #expect(model.recents.map(\.number) == [7])
     }
 }

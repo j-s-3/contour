@@ -55,10 +55,6 @@ enum StartScreenLogic {
         Array((requests ?? []).prefix(limit))
     }
 
-    static func shouldShowLists(requests: [ReviewRequest], recents: [AnalysisCache.RecentPR]) -> Bool {
-        !requests.isEmpty || !recents.isEmpty
-    }
-
     static func sources(reviewRequestsAvailable: Bool, watched: [String]) -> [StartSource] {
         var sources: [StartSource] = []
         if reviewRequestsAvailable { sources.append(.reviewRequests) }
