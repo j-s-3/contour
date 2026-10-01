@@ -68,7 +68,7 @@ struct OnboardingView: View {
                     }
                 Button {
                     if let clip = pasteboard.string(forType: .string) {
-                        urlText = OnboardingViewLogic.resolvedPasteText(clip)
+                        urlText = StartScreenLogic.resolvedPasteText(clip)
                     }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
@@ -118,7 +118,7 @@ struct OnboardingView: View {
 
     private var pullRequestLists: some View {
         PullRequestLists(
-            requests: OnboardingViewLogic.visibleRequests(reviewRequests, limit: Self.rowsShown),
+            requests: StartScreenLogic.visibleRequests(reviewRequests, limit: Self.rowsShown),
             recents: recents, onOpen: onSubmit
         )
     }
@@ -133,7 +133,7 @@ struct OnboardingView: View {
                     }
                 })
             else { return }
-            apply(OnboardingViewLogic.resolvedPasteText(text))
+            apply(StartScreenLogic.resolvedPasteText(text))
         }
     }
 
@@ -154,7 +154,7 @@ struct OnboardingView: View {
 
     private func checkClipboard() async {
         let changeCount = pasteboard.changeCount
-        guard !OnboardingViewLogic.isDeclined(changeCount: changeCount, declinedChangeCount: declinedChangeCount) else {
+        guard !StartScreenLogic.isDeclined(changeCount: changeCount, declinedChangeCount: declinedChangeCount) else {
             clipboardOffer = nil
             return
         }
@@ -163,19 +163,19 @@ struct OnboardingView: View {
                 pasteboard.accessBehavior == .alwaysDeny
                 ? []
                 : (try? await pasteboard.detectedPatterns(for: [\.probableWebURL])) ?? []
-            clipboardOffer = OnboardingViewLogic.offer(
+            clipboardOffer = StartScreenLogic.offer(
                 detectedProbableWebURL: patterns.contains(\.probableWebURL), changeCount: changeCount
             )
             return
         }
-        clipboardOffer = OnboardingViewLogic.offer(fromReadableClipboardText: pasteboard.string(forType: .string))
+        clipboardOffer = StartScreenLogic.offer(fromReadableClipboardText: pasteboard.string(forType: .string))
     }
 
     private func openUnreadClipboard(_ changeCount: Int) {
         clipboardOffer = nil
         declinedChangeCount = changeCount
-        OnboardingViewLogic.perform(
-            OnboardingViewLogic.resolveClipboardRead(pasteboard.string(forType: .string)),
+        StartScreenLogic.perform(
+            StartScreenLogic.resolveClipboardRead(pasteboard.string(forType: .string)),
             open: onSubmit, fillField: { urlText = $0 }
         )
     }
@@ -221,7 +221,7 @@ struct PullRequestLists: View {
     var onOpen: (String) -> Void
 
     var body: some View {
-        if OnboardingViewLogic.shouldShowLists(requests: requests, recents: recents) {
+        if StartScreenLogic.shouldShowLists(requests: requests, recents: recents) {
             HStack(alignment: .top, spacing: 28) {
                 if !requests.isEmpty {
                     PullRequestList(title: "Awaiting your review", systemImage: "person.crop.circle.badge.questionmark")
@@ -251,64 +251,6 @@ struct PullRequestLists: View {
             .padding(.horizontal, 24)
             .transition(.opacity)
         }
-    }
-}
-
-enum ClipboardOffer: Equatable {
-    case pullRequest(String)
-    case unreadLink(changeCount: Int)
-}
-
-enum OnboardingViewLogic {
-    static func subtitle(repo: String, number: Int, detail: String?, date: Date?, dateVerb: String) -> String {
-        var parts = ["\(repo) #\(number)"]
-        if let detail { parts.append(detail) }
-        if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
-        return parts.joined(separator: " · ")
-    }
-
-    static func isDeclined(changeCount: Int, declinedChangeCount: Int?) -> Bool {
-        changeCount == declinedChangeCount
-    }
-
-    static func offer(fromReadableClipboardText text: String?) -> ClipboardOffer? {
-        text.flatMap(PRLink.extract(from:)).map(ClipboardOffer.pullRequest)
-    }
-
-    static func offer(detectedProbableWebURL: Bool, changeCount: Int) -> ClipboardOffer? {
-        detectedProbableWebURL ? .unreadLink(changeCount: changeCount) : nil
-    }
-
-    enum ClipboardReadAction: Equatable {
-        case open(String)
-        case fillField(String)
-        case doNothing
-    }
-
-    static func resolveClipboardRead(_ clip: String?) -> ClipboardReadAction {
-        guard let clip else { return .doNothing }
-        if let url = PRLink.extract(from: clip) { return .open(url) }
-        return .fillField(clip)
-    }
-
-    static func perform(_ action: ClipboardReadAction, open: (String) -> Void, fillField: (String) -> Void) {
-        switch action {
-        case .open(let url): open(url)
-        case .fillField(let text): fillField(text)
-        case .doNothing: break
-        }
-    }
-
-    static func resolvedPasteText(_ text: String) -> String {
-        PRLink.extract(from: text) ?? text
-    }
-
-    static func visibleRequests(_ requests: [ReviewRequest]?, limit: Int) -> [ReviewRequest] {
-        Array((requests ?? []).prefix(limit))
-    }
-
-    static func shouldShowLists(requests: [ReviewRequest], recents: [AnalysisCache.RecentPR]) -> Bool {
-        !requests.isEmpty || !recents.isEmpty
     }
 }
 
@@ -372,6 +314,6 @@ struct PullRequestRow: View {
     }
 
     private var subtitle: String {
-        OnboardingViewLogic.subtitle(repo: repo, number: number, detail: detail, date: date, dateVerb: dateVerb)
+        StartScreenLogic.subtitle(repo: repo, number: number, detail: detail, date: date, dateVerb: dateVerb)
     }
 }

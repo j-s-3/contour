@@ -69,9 +69,9 @@ struct OnboardingViewRenderTests {
     @Test func performCarriesOutEachClipboardReadAction() {
         var opened: [String] = []
         var filled: [String] = []
-        OnboardingViewLogic.perform(.open("u"), open: { opened.append($0) }, fillField: { filled.append($0) })
-        OnboardingViewLogic.perform(.fillField("text"), open: { opened.append($0) }, fillField: { filled.append($0) })
-        OnboardingViewLogic.perform(.doNothing, open: { opened.append($0) }, fillField: { filled.append($0) })
+        StartScreenLogic.perform(.open("u"), open: { opened.append($0) }, fillField: { filled.append($0) })
+        StartScreenLogic.perform(.fillField("text"), open: { opened.append($0) }, fillField: { filled.append($0) })
+        StartScreenLogic.perform(.doNothing, open: { opened.append($0) }, fillField: { filled.append($0) })
         #expect(opened == ["u"])
         #expect(filled == ["text"])
     }
