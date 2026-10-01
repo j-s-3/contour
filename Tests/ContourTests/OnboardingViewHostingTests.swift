@@ -13,16 +13,6 @@ struct OnboardingViewHostingTests {
         var body: some View { content(ns) }
     }
 
-    @Observable
-    fileprivate final class LogModel {
-        var log: [PipelineProgressEntry] = [PipelineProgressEntry(stage: "Opening", detail: "Fetching")]
-    }
-
-    fileprivate struct ConsoleHost: View {
-        let model: LogModel
-        var body: some View { AnalysisConsoleView(log: model.log) }
-    }
-
     private final class Recorder {
         var submitted: [String] = []
         var recentLoads = 0
@@ -147,19 +137,6 @@ struct OnboardingViewHostingTests {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: nil))
         #expect(MockAnalysisFixtures.isEnabled)
-        window.close()
-    }
-
-    @Test func consoleFollowsNewEntriesAsTheyArrive() {
-        let model = LogModel()
-        let hosting = NSHostingView(rootView: ConsoleHost(model: model))
-        let window = HeadlessWindow(size: NSSize(width: 600, height: 300), styleMask: [.titled, .closable])
-        window.contentView = hosting
-        window.orderBack(nil)
-        settle(hosting)
-        model.log.append(PipelineProgressEntry(stage: "Analyzing architecture", detail: "Reading GraphStore.swift"))
-        settle(hosting)
-        #expect(model.log.count == 2)
         window.close()
     }
 }

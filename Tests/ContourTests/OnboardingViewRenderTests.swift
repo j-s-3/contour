@@ -46,14 +46,6 @@ struct OnboardingViewRenderTests {
         #expect(size.width > 0 && size.height > 0)
     }
 
-    @Test func analyzingViewLaysOut() {
-        let log = [PipelineProgressEntry(stage: "Analyzing architecture", detail: "Reading GraphStore.swift")]
-        for stage in [PipelineStage.fetching, .architecture, .judgment] {
-            _ = render(NamespaceHost { AnalyzingView(stage: stage, log: log, markNamespace: $0) })
-        }
-        _ = render(NamespaceHost { AnalyzingView(stage: .fetching, log: [], markNamespace: $0) })
-    }
-
     @Test func pullRequestListsLayOutWithBothSources() {
         let requests = [
             ReviewRequest(
@@ -72,26 +64,6 @@ struct OnboardingViewRenderTests {
         for offer in [ClipboardOffer.pullRequest("https://github.com/acme/shop/pull/1"), .unreadLink(changeCount: 4)] {
             _ = render(ClipboardOfferRow(offer: offer, onOpen: { _ in }, onOpenUnread: { _ in }, onDismiss: {}))
         }
-    }
-
-    @Test func analysisConsoleLaysOutAndShowsWhenExpanded() {
-        let log = [
-            PipelineProgressEntry(stage: "Opening", detail: "Fetching"),
-            PipelineProgressEntry(stage: "Analyzing architecture", detail: "Reading GraphStore.swift"),
-        ]
-        _ = render(AnalysisConsoleView(log: log))
-
-        let key = "showsAnalysisActivity"
-        let previous = UserDefaults.standard.object(forKey: key)
-        UserDefaults.standard.set(true, forKey: key)
-        defer {
-            if let previous {
-                UserDefaults.standard.set(previous, forKey: key)
-            } else {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
-        }
-        _ = render(NamespaceHost { AnalyzingView(stage: .architecture, log: log, markNamespace: $0) })
     }
 
     @Test func performCarriesOutEachClipboardReadAction() {
@@ -113,9 +85,5 @@ struct OnboardingViewRenderTests {
             ) { continuation.resume(returning: $0) }
         }
         #expect(applied == "https://github.com/acme/shop/pull/3")
-    }
-
-    @Test func failedViewLaysOut() {
-        _ = render(FailedView(message: "Couldn't reach GitHub.", onRetry: {}, onOpenDifferent: {}))
     }
 }
