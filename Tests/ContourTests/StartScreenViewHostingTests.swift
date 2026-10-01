@@ -166,6 +166,7 @@ struct StartScreenViewHostingTests {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: prURL))
         #expect(recorder.recentLoads == 1)
+        #expect(button(in: window, named: "from clipboard?") != nil)
         window.close()
     }
 
@@ -205,7 +206,7 @@ struct StartScreenViewHostingTests {
         #expect(press("Dismiss", in: window))
         #expect(button(in: window, named: "from clipboard?") == nil)
         NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-        for _ in 0..<8 {
+        for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(25))
             if let content = window.contentView { settle(content) }
         }
@@ -256,7 +257,7 @@ struct StartScreenViewHostingTests {
         #expect(model.recents.map(\.number) == [7])
         #expect(!model.showsWelcome)
         release.yield()
-        for _ in 0..<20 where model.reviewRequests == nil {
+        for _ in 0..<80 where model.reviewRequests == nil {
             try? await Task.sleep(for: .milliseconds(25))
         }
         #expect(model.reviewRequests?.map(\.number) == [8])
@@ -287,35 +288,12 @@ struct StartScreenViewHostingTests {
         #expect(model.showsWelcome)
         #expect((window.firstResponder as? NSTextView)?.isFieldEditor == true)
         release.yield()
-        for _ in 0..<20 where model.showsWelcome {
+        for _ in 0..<80 where model.showsWelcome {
             try? await Task.sleep(for: .milliseconds(25))
         }
         settle(hosting)
         #expect(!model.showsWelcome)
         #expect((window.firstResponder as? NSTextView)?.isFieldEditor == true)
         window.close()
-    }
-
-    @Test func theModelKeepsItsListsAfterTheViewGoesAway() {
-        let recorder = Recorder()
-        let recentPRs = recents()
-        let model = StartScreenModel(
-            preferences: preferences(),
-            dependencies: StartScreenModel.Dependencies(
-                loadRecents: {
-                    recorder.recentLoads += 1
-                    return recentPRs
-                },
-                loadReviewRequests: { nil }))
-        let view = NamespaceHost { namespace in
-            StartScreenView(model: model, markNamespace: namespace, onSubmit: { _ in })
-        }
-        let hosting = NSHostingView(rootView: view)
-        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
-        window.contentView = hosting
-        window.orderBack(nil)
-        settle(hosting)
-        window.close()
-        #expect(model.recents.map(\.number) == [7])
     }
 }

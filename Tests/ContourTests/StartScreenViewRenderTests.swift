@@ -47,7 +47,8 @@ struct StartScreenViewRenderTests {
             preferences: preferences(),
             dependencies: StartScreenModel.Dependencies(
                 loadRecents: { recents }, loadReviewRequests: { requests }))
-        await model.reload()
+        model.loadRecents()
+        await model.loadReviewRequests()
         if let source { model.select(source) }
         return model
     }

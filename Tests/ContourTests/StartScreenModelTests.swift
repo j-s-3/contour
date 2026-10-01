@@ -34,6 +34,11 @@ struct StartScreenModelTests {
                 loadRecents: { recents }, loadReviewRequests: { requests }))
     }
 
+    private func load(_ model: StartScreenModel) async {
+        model.loadRecents()
+        await model.loadReviewRequests()
+    }
+
     @Test func beforeAnythingLoadsTheOnlySourceIsRecentlyOpened() {
         let model = model(preferences: preferences(), requests: [request(1)])
         #expect(model.sources == [.recents])
@@ -60,33 +65,33 @@ struct StartScreenModelTests {
 
     @Test func reviewRequestsBecomeASourceOnceGHAnswers() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: [])
-        await model.reload()
+        await load(model)
         #expect(model.sources == [.reviewRequests, .recents])
         #expect(model.recents.map(\.number) == [1])
     }
 
     @Test func whenGHCannotAnswerReviewRequestsAreNotASource() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: nil)
-        await model.reload()
+        await load(model)
         #expect(model.sources == [.recents])
         #expect(model.visibleReviewRequests.isEmpty)
     }
 
     @Test func withNothingRememberedSelectionPrefersReviewRequests() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: [request(1)])
-        await model.reload()
+        await load(model)
         #expect(model.selection == .reviewRequests)
     }
 
     @Test func aChosenSourceIsRememberedByTheNextModel() async {
         let prefs = preferences()
         let first = model(preferences: prefs, recents: [recent(1)], requests: [request(1)])
-        await first.reload()
+        await load(first)
         first.select(.recents)
         #expect(first.selection == .recents)
 
         let second = model(preferences: prefs, recents: [recent(1)], requests: [request(1)])
-        await second.reload()
+        await load(second)
         #expect(second.selection == .recents)
     }
 
@@ -94,7 +99,7 @@ struct StartScreenModelTests {
         let prefs = preferences()
         prefs.lastStartSource = .watched("acme/gone")
         let model = model(preferences: prefs, recents: [recent(1)], requests: [request(1)])
-        await model.reload()
+        await load(model)
         #expect(model.selection == .reviewRequests)
     }
 
@@ -103,19 +108,49 @@ struct StartScreenModelTests {
         prefs.lastStartSource = .reviewRequests
         let model = model(preferences: prefs, recents: [recent(1)], requests: [request(1)])
         #expect(model.selection == .recents)
-        await model.reload()
+        await load(model)
         #expect(model.selection == .reviewRequests)
     }
 
     @Test func welcomeGivesWayAsSoonAsAnySourceHasRows() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: nil)
-        await model.reload()
+        await load(model)
         #expect(!model.showsWelcome)
+    }
+
+    @Test func reviewRequestsAloneAreEnoughToReplaceTheWelcome() async {
+        let model = model(preferences: preferences(), recents: [], requests: [request(1)])
+        await load(model)
+        #expect(!model.showsWelcome)
+    }
+
+    @Test func aCancelledReviewRequestFetchLeavesTheListAlone() async {
+        let gate = FetchGate()
+        var fetches = 0
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(
+                loadRecents: { [] },
+                loadReviewRequests: {
+                    fetches += 1
+                    if fetches == 1 { return [request(1)] }
+                    await gate.wait()
+                    return nil
+                }))
+        await model.loadReviewRequests()
+        #expect(model.reviewRequests?.map(\.number) == [1])
+
+        let refetch = Task { await model.loadReviewRequests() }
+        refetch.cancel()
+        await gate.open()
+        await refetch.value
+        #expect(fetches == 2)
+        #expect(model.reviewRequests?.map(\.number) == [1])
     }
 
     @Test func reviewRequestsAreCappedAtTenAndCounted() async {
         let model = model(preferences: preferences(), requests: (1...14).map(request))
-        await model.reload()
+        await load(model)
         #expect(model.visibleReviewRequests.count == 10)
         #expect(model.count(for: .reviewRequests) == "10")
         #expect(model.count(for: .recents) == nil)
@@ -124,7 +159,7 @@ struct StartScreenModelTests {
 
     @Test func theSelectionBindingReadsAndWritesTheSelection() async {
         let model = model(preferences: preferences(), recents: [recent(1)], requests: [request(1)])
-        await model.reload()
+        await load(model)
         let binding = model.selectionBinding
         #expect(binding.wrappedValue == .reviewRequests)
         binding.wrappedValue = .recents
@@ -136,5 +171,21 @@ struct StartScreenModelTests {
     @Test func liveDependenciesReadTheRealSources() async {
         let live = StartScreenModel.Dependencies.live
         #expect(live.loadRecents().count <= StartScreenLogic.rowsShown)
+    }
+}
+
+private actor FetchGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
     }
 }

@@ -71,11 +71,8 @@ final class StartScreenModel {
     }
 
     func loadReviewRequests() async {
-        reviewRequests = await dependencies.loadReviewRequests()
-    }
-
-    func reload() async {
-        loadRecents()
-        await loadReviewRequests()
+        let result = await dependencies.loadReviewRequests()
+        guard !Task.isCancelled else { return }
+        reviewRequests = result
     }
 }
