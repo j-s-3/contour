@@ -100,6 +100,7 @@ struct PRSessionCommandsTests {
                 == "acme/api")
         #expect(PRSessionCommandsLogic.repository(fromPullRequestURL: nil) == nil)
         #expect(PRSessionCommandsLogic.repository(fromPullRequestURL: "not a link") == nil)
+        #expect(PRSessionCommandsLogic.repository(fromPullRequestURL: "https://github.com/-acme/api/pull/1") == nil)
     }
 
     @MainActor
@@ -181,5 +182,4 @@ extension PRSessionCommandsTests {
         let session = PRSessionActions(hasOpenPR: false, pullRequestURL: nil, openDifferent: {}, close: {})
         _ = PRSessionCommands.groups(session: session, actions: PRSessionMenuActions(session: session))
     }
-
 }

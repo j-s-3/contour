@@ -37,8 +37,7 @@ enum PRSessionCommandsLogic {
     }
 
     static func repository(fromPullRequestURL url: String?) -> String? {
-        guard let url, let parsed = try? GitHubService.parse(prURL: url) else { return nil }
-        return "\(parsed.owner)/\(parsed.repo)"
+        url.flatMap(WatchedRepository.parse)?.id
     }
 }
 
