@@ -20,6 +20,11 @@ struct StartScreenActionsTests {
         var urls: [URL] = []
     }
 
+    private func yield(until condition: () -> Bool) async -> Bool {
+        for _ in 0..<10_000 where !condition() { await Task.yield() }
+        return condition()
+    }
+
     private func preferences(watching ids: [String] = []) -> Preferences {
         let name = "contour.tests.start.actions.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -115,8 +120,8 @@ struct StartScreenActionsTests {
     @Test func theDefaultSpawnRunsTheWork() async {
         let model = model()
         StartScreenActions(model: model).watch("acme/api")
-        while !model.isWatched("acme/api") { await Task.yield() }
-        while model.state(for: "acme/api")?.list == nil { await Task.yield() }
+        #expect(await yield { model.isWatched("acme/api") })
+        #expect(await yield { model.state(for: "acme/api")?.list != nil })
         #expect(model.watched.map(\.id) == ["acme/api"])
     }
 }

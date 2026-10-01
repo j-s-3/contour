@@ -49,8 +49,10 @@ struct ReviewCommands: View {
 }
 
 struct ReviewWindowContent: View {
+    var startScreen: StartScreenModel?
+
     var body: some View {
-        ContentView()
+        ContentView(startScreen: startScreen)
             .frame(minWidth: 1080, minHeight: 720)
     }
 }
