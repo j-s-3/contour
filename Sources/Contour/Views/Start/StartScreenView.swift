@@ -31,7 +31,8 @@ struct StartScreenView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
             detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(
+                    maxWidth: .infinity, maxHeight: .infinity, alignment: model.showsWelcome ? .center : .topLeading)
         }
         .navigationTitle("Contour")
         .onAppear { urlFieldFocused = true }
@@ -47,10 +48,10 @@ struct StartScreenView: View {
         }
     }
 
-    @ViewBuilder
     private var detail: some View {
-        if model.showsWelcome {
-            VStack(spacing: 0) {
+        let welcome = model.showsWelcome
+        return VStack(alignment: welcome ? .center : .leading, spacing: 0) {
+            if welcome {
                 Spacer()
                 ContourMarkView()
                     .matchesContourMark(in: markNamespace)
@@ -67,20 +68,19 @@ struct StartScreenView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
                     .padding(.top, 6)
-                openControls(alignment: .center)
-                    .padding(.top, 28)
+            }
+            openControls(alignment: welcome ? .center : .leading)
+                .padding(.top, welcome ? 28 : 0)
+            if welcome {
                 Spacer()
                 Spacer().frame(height: 60)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                openControls(alignment: .leading)
+            } else {
                 StartSourceList(model: model, onOpen: onSubmit)
                     .padding(.top, 20)
             }
-            .padding(24)
-            .frame(maxWidth: 760, maxHeight: .infinity, alignment: .topLeading)
         }
+        .padding(welcome ? 0 : 24)
+        .frame(maxWidth: welcome ? .infinity : 760, maxHeight: .infinity, alignment: welcome ? .center : .topLeading)
     }
 
     private func openControls(alignment: HorizontalAlignment) -> some View {
