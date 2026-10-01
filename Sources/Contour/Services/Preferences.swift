@@ -66,6 +66,7 @@ final class Preferences {
         static let strongModel = "strongModelOverride"
         static let onboarded = "hasCompletedOnboarding"
         static let fullScreen = "opensInFullScreen"
+        static let lastStartSource = "lastStartSource"
     }
 
     var storedHarness: HarnessID? {
@@ -107,6 +108,11 @@ final class Preferences {
     var opensInFullScreen: Bool {
         get { defaults.bool(forKey: Key.fullScreen) }
         set { defaults.set(newValue, forKey: Key.fullScreen) }
+    }
+
+    var lastStartSource: StartSource? {
+        get { defaults.string(forKey: Key.lastStartSource).flatMap(StartSource.init(storageKey:)) }
+        set { defaults.set(newValue?.storageKey, forKey: Key.lastStartSource) }
     }
 
     var resolvedHarness: HarnessID? {

@@ -170,6 +170,22 @@ struct PreferencesTests {
         #expect(GitHubAccessMode.gh.displayName == "Always use gh")
         #expect(GitHubAccessMode.anonymous.displayName == "Anonymous API only")
     }
+
+    @Test func lastStartSourceRoundTripsAndDefaultsToNil() {
+        let defaults = freshDefaults()
+        let prefs = Preferences(defaults: defaults, environment: [:])
+        #expect(prefs.lastStartSource == nil)
+        prefs.lastStartSource = .watched("acme/api")
+        #expect(Preferences(defaults: defaults, environment: [:]).lastStartSource == .watched("acme/api"))
+        prefs.lastStartSource = nil
+        #expect(Preferences(defaults: defaults, environment: [:]).lastStartSource == nil)
+    }
+
+    @Test func aStoredStartSourceThatCannotBeReadIsIgnored() {
+        let defaults = freshDefaults()
+        defaults.set("settings", forKey: "lastStartSource")
+        #expect(Preferences(defaults: defaults, environment: [:]).lastStartSource == nil)
+    }
 }
 
 struct ExecutableResolutionTests {
