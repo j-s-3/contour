@@ -46,13 +46,13 @@ struct WatchedRepository: Codable, Equatable, Identifiable, Sendable {
         if name.hasSuffix(".git") { name.removeLast(4) }
 
         guard isValid(owner, maximumLength: maximumOwnerLength), !owner.hasPrefix("-"),
-            isValid(name, maximumLength: maximumNameLength), name != ".", name != ".."
+            isValid(name, maximumLength: maximumNameLength)
         else { return nil }
         return WatchedRepository(owner: owner, name: name)
     }
 
     private static func isValid(_ text: String, maximumLength: Int) -> Bool {
-        !text.isEmpty && text.count <= maximumLength
+        !text.isEmpty && text.count <= maximumLength && text != "." && text != ".."
             && text.unicodeScalars.allSatisfy(allowedCharacters.contains)
     }
 }
