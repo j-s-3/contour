@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct WatchedPullRequest: Equatable, Identifiable, Sendable {
     var url: String
@@ -17,10 +18,112 @@ struct WatchedPullRequestList: Equatable, Sendable {
     var fetchedAt: Date
 }
 
+enum WatchedFailure: Error, Equatable, Sendable {
+    case notFound
+    case rateLimited(resetAt: Date?)
+    case unavailable
+}
+
+private let watchedLogger = Logger(subsystem: "Contour", category: "WatchedPullRequests")
+
 struct WatchedPullRequests: Sendable {
     struct Candidate: Equatable, Sendable {
         var pullRequest: WatchedPullRequest
         var isBot: Bool
+    }
+
+    enum Transport: Equatable, Sendable {
+        case gh
+        case rest
+    }
+
+    var ghAvailable: @Sendable () -> Bool = { Shell.which("gh") != nil }
+    var runGH: @Sendable ([String]) async throws -> String = { try await Shell.run("gh", $0) }
+    var anonymous = AnonymousAPISource()
+    var now: @Sendable () -> Date = { Date() }
+
+    func fetch(
+        _ repository: WatchedRepository, access: GitHubAccessMode
+    ) async -> Result<WatchedPullRequestList, WatchedFailure> {
+        guard let transport = Self.transport(access: access, ghAvailable: ghAvailable()) else {
+            return .failure(.unavailable)
+        }
+        do {
+            let candidates: [Candidate]?
+            switch transport {
+            case .gh:
+                candidates = Self.parseGH(Data(try await runGH(Self.arguments(for: repository)).utf8))
+            case .rest:
+                candidates = Self.parseREST(
+                    try await anonymous.openPullRequests(
+                        owner: repository.owner, repo: repository.name, limit: Self.fetchLimit))
+            }
+            guard let candidates else {
+                watchedLogger.error("Unreadable pull request list for \(repository.id, privacy: .public)")
+                return .failure(.unavailable)
+            }
+            return .success(Self.list(from: candidates, fetchedAt: now()))
+        } catch {
+            watchedLogger.error(
+                "Listing \(repository.id, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+            return .failure(Self.failure(from: error))
+        }
+    }
+
+    func viewerLogin(access: GitHubAccessMode) async -> String? {
+        guard Self.transport(access: access, ghAvailable: ghAvailable()) == .gh,
+            let output = try? await runGH(["api", "user", "--jq", ".login"])
+        else { return nil }
+        let login = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return login.isEmpty ? nil : login
+    }
+
+    static func transport(access: GitHubAccessMode, ghAvailable: Bool) -> Transport? {
+        switch access {
+        case .anonymous: return .rest
+        case .gh: return ghAvailable ? .gh : nil
+        case .auto: return ghAvailable ? .gh : .rest
+        }
+    }
+
+    static func arguments(for repository: WatchedRepository) -> [String] {
+        [
+            "pr", "list", "-R", repository.id, "--state", "open", "--limit", String(fetchLimit),
+            "--json", "number,title,url,author,isDraft,createdAt",
+        ]
+    }
+
+    static func failure(from error: any Error) -> WatchedFailure {
+        switch error {
+        case let process as ProcessError:
+            if process.stderr.contains("Could not resolve to a Repository") { return .notFound }
+            if process.stderr.localizedCaseInsensitiveContains("rate limit") { return .rateLimited(resetAt: nil) }
+            return .unavailable
+        case GitHubServiceError.privateRepository:
+            return .notFound
+        case GitHubServiceError.rateLimited(let resetAt):
+            return .rateLimited(resetAt: resetAt)
+        default:
+            return .unavailable
+        }
+    }
+
+    static func message(for failure: WatchedFailure, repository: String, anonymous: Bool) -> String {
+        let lead = "Couldn't list pull requests for \(repository)."
+        switch failure {
+        case .notFound:
+            let signIn = anonymous ? " Sign in with the GitHub CLI to watch private repositories." : ""
+            return "\(lead) It's private or doesn't exist.\(signIn)"
+        case .rateLimited(let resetAt):
+            let limit = anonymous ? "GitHub's anonymous limit is used up." : "GitHub's rate limit is used up."
+            let when =
+                resetAt.map {
+                    " Try again after \(DateFormatter.localizedString(from: $0, dateStyle: .none, timeStyle: .short))."
+                } ?? ""
+            return "\(lead) \(limit)\(when)"
+        case .unavailable:
+            return lead
+        }
     }
 
     static let fetchLimit = 30
