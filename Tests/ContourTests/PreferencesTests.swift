@@ -206,6 +206,14 @@ struct PreferencesTests {
             Preferences(defaults: defaults, environment: [:]).watchedRepositories.map(\.id)
                 == ["acme/api", "acme/web"])
     }
+
+    @Test func storedWatchedRepositoriesKeepOnlyTheFirstOfEachNameInAnyCase() {
+        let defaults = freshDefaults()
+        defaults.set(["acme/api", "Acme/API", "acme/web", "acme/api"], forKey: "watchedRepositories")
+        #expect(
+            Preferences(defaults: defaults, environment: [:]).watchedRepositories.map(\.id)
+                == ["acme/api", "acme/web"])
+    }
 }
 
 struct ExecutableResolutionTests {

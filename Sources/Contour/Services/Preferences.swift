@@ -117,7 +117,12 @@ final class Preferences {
     }
 
     var watchedRepositories: [WatchedRepository] {
-        get { (defaults.stringArray(forKey: Key.watchedRepositories) ?? []).compactMap(WatchedRepository.parse) }
+        get {
+            (defaults.stringArray(forKey: Key.watchedRepositories) ?? []).compactMap(WatchedRepository.parse)
+                .reduce(into: []) { kept, repository in
+                    if !kept.contains(where: { $0.matches(repository.id) }) { kept.append(repository) }
+                }
+        }
         set { defaults.set(newValue.map(\.id), forKey: Key.watchedRepositories) }
     }
 
