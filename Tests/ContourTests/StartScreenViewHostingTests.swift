@@ -20,6 +20,7 @@ struct StartScreenViewHostingTests {
     }
 
     private let prURL = "https://github.com/acme/shop/pull/7"
+    private let clipboardOffer = "Open acme/shop #7 from clipboard?"
 
     private func pasteboard(holding text: String?) -> NSPasteboard {
         let board = NSPasteboard(name: NSPasteboard.Name("contour.tests.\(UUID().uuidString)"))
@@ -111,19 +112,20 @@ struct StartScreenViewHostingTests {
             guard object.responds(to: selector) else { return nil }
             return object.perform(selector)?.takeUnretainedValue() as? String
         }
+        var visited = Set<ObjectIdentifier>()
         func walk(_ node: Any) -> NSObject? {
-            guard let object = node as? NSObject else { return nil }
+            guard let object = node as? NSObject, visited.insert(ObjectIdentifier(object)).inserted else { return nil }
             let isButton =
                 [NSAccessibility.Role.button.rawValue, NSAccessibility.Role.link.rawValue]
                 .contains(text(object, "accessibilityRole") ?? "")
-            let names = ["accessibilityLabel", "accessibilityHelp", "accessibilityTitle"].compactMap {
-                text(object, $0)
-            }
-            if isButton, names.contains(where: { $0.contains(name) }) { return object }
+            let names = ["accessibilityLabel", "accessibilityHelp"].compactMap { text(object, $0) }
+            if isButton, names.contains(name) { return object }
             let childrenSelector = NSSelectorFromString("accessibilityChildren")
-            guard object.responds(to: childrenSelector) else { return nil }
-            let children = object.perform(childrenSelector)?.takeUnretainedValue()
-            for child in children as? [Any] ?? [] {
+            let children =
+                object.responds(to: childrenSelector)
+                ? object.perform(childrenSelector)?.takeUnretainedValue() as? [Any] ?? [] : []
+            let subviews = (object as? NSView)?.subviews ?? []
+            for child in children + subviews {
                 if let found = walk(child) { return found }
             }
             return nil
@@ -166,7 +168,7 @@ struct StartScreenViewHostingTests {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: prURL))
         #expect(recorder.recentLoads == 1)
-        #expect(button(in: window, named: "from clipboard?") != nil)
+        #expect(button(in: window, named: clipboardOffer) != nil)
         window.close()
     }
 
@@ -202,15 +204,15 @@ struct StartScreenViewHostingTests {
     @Test func dismissingTheClipboardOfferKeepsItAwayWhenTheAppReturns() async {
         let recorder = Recorder()
         let window = host(recorder: recorder, board: pasteboard(holding: prURL))
-        #expect(button(in: window, named: "from clipboard?") != nil)
+        #expect(button(in: window, named: clipboardOffer) != nil)
         #expect(press("Dismiss", in: window))
-        #expect(button(in: window, named: "from clipboard?") == nil)
+        #expect(button(in: window, named: clipboardOffer) == nil)
         NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(25))
             if let content = window.contentView { settle(content) }
         }
-        #expect(button(in: window, named: "from clipboard?") == nil)
+        #expect(button(in: window, named: clipboardOffer) == nil)
         #expect(recorder.submitted.isEmpty)
         window.close()
     }
@@ -294,6 +296,87 @@ struct StartScreenViewHostingTests {
         settle(hosting)
         #expect(!model.showsWelcome)
         #expect((window.firstResponder as? NSTextView)?.isFieldEditor == true)
+        window.close()
+    }
+
+    private func hostPopover(initialText: String, watched: @escaping (String) -> Void) -> NSWindow {
+        _ = NSApplication.shared
+        let hosting = NSHostingView(
+            rootView: WatchRepositoryPopover(suggestions: [], initialText: initialText, onWatch: watched))
+        let window = HeadlessWindow(size: NSSize(width: 360, height: 160), styleMask: [.titled, .closable])
+        window.contentView = hosting
+        window.orderBack(nil)
+        settle(hosting)
+        return window
+    }
+
+    @Test func returnInThePopoverWatchesAValidRepository() {
+        let recorder = Recorder()
+        let window = hostPopover(initialText: "acme/api") { recorder.submitted.append($0) }
+        pressReturn(in: window)
+        #expect(recorder.submitted == ["acme/api"])
+        window.close()
+    }
+
+    @Test func returnInThePopoverIgnoresInputThatNamesNoRepository() {
+        let recorder = Recorder()
+        let window = hostPopover(initialText: "--flag/x") { recorder.submitted.append($0) }
+        pressReturn(in: window)
+        #expect(recorder.submitted.isEmpty)
+        window.close()
+    }
+
+    @Test func choosingASuggestionFromTheSidebarPopoverWatchesIt() {
+        _ = NSApplication.shared
+        let recentPRs = recents()
+        let model = StartScreenModel(
+            preferences: preferences(),
+            dependencies: StartScreenModel.Dependencies(loadRecents: { recentPRs }, loadReviewRequests: { nil }))
+        var spawned: [@MainActor () async -> Void] = []
+        let actions = StartScreenActions(model: model, spawn: { spawned.append($0) })
+        let view = NamespaceHost { namespace in
+            StartScreenView(
+                model: model, markNamespace: namespace, pasteboard: self.pasteboard(holding: nil),
+                actions: actions, onSubmit: { _ in })
+        }
+        let hosting = NSHostingView(rootView: view)
+        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
+        window.contentView = hosting
+        window.orderBack(nil)
+        settle(hosting)
+        #expect(model.suggestions == ["acme/shop"])
+        #expect(press("Watch a repository…", in: window))
+        let suggestion = NSApp.windows.lazy.compactMap { self.button(in: $0, named: "acme/shop") }.first
+        _ = suggestion?.perform(NSSelectorFromString("accessibilityPerformPress"))
+        settle(hosting)
+        #expect(suggestion != nil)
+        #expect(spawned.count == 1)
+        for popover in NSApp.windows where popover.className.contains("Popover") { popover.close() }
+        window.close()
+    }
+
+    @Test func returningToTheAppRefreshesStaleWatchedLists() {
+        let recorder = Recorder()
+        let prefs = preferences()
+        prefs.watchedRepositories = [WatchedRepository(owner: "acme", name: "api")]
+        let model = StartScreenModel(
+            preferences: prefs,
+            dependencies: StartScreenModel.Dependencies(loadRecents: { [] }, loadReviewRequests: { nil }))
+        var refreshes = 0
+        let actions = StartScreenActions(model: model, spawn: { _ in refreshes += 1 })
+        let view = NamespaceHost { namespace in
+            StartScreenView(
+                model: model, markNamespace: namespace, pasteboard: self.pasteboard(holding: nil),
+                actions: actions, onSubmit: { recorder.submitted.append($0) })
+        }
+        let hosting = NSHostingView(rootView: view)
+        let window = HeadlessWindow(size: NSSize(width: 1080, height: 720), styleMask: [.titled, .closable])
+        window.contentView = hosting
+        window.orderBack(nil)
+        settle(hosting)
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        settle(hosting)
+        #expect(refreshes >= 1)
         window.close()
     }
 }

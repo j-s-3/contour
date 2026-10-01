@@ -64,12 +64,13 @@ extension StartListHeader where Trailing == EmptyView {
 
 struct PullRequestRow: View {
     let title: String
-    let repo: String
+    let repo: String?
     let number: Int
     let detail: String?
     let date: Date?
     let dateVerb: String
     let url: String
+    var labels: [String] = []
     var onOpen: (String) -> Void
 
     @State private var hovering = false
@@ -79,15 +80,20 @@ struct PullRequestRow: View {
             onOpen(url)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(verbatim: title)
                     .font(.callout)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(verbatim: subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    ForEach(labels, id: \.self) { label in
+                        PullRequestLabel(text: label)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
@@ -105,5 +111,20 @@ struct PullRequestRow: View {
 
     private var subtitle: String {
         StartScreenLogic.subtitle(repo: repo, number: number, detail: detail, date: date, dateVerb: dateVerb)
+    }
+}
+
+struct PullRequestLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.18)))
     }
 }

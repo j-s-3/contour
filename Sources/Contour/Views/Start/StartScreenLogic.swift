@@ -101,8 +101,8 @@ enum StartScreenLogic {
         "updated \(date.formatted(.relative(presentation: .named)))"
     }
 
-    static func subtitle(repo: String, number: Int, detail: String?, date: Date?, dateVerb: String) -> String {
-        var parts = ["\(repo) #\(number)"]
+    static func subtitle(repo: String?, number: Int, detail: String?, date: Date?, dateVerb: String) -> String {
+        var parts = [repo.map { "\($0) #\(number)" } ?? "#\(number)"]
         if let detail { parts.append(detail) }
         if let date { parts.append("\(dateVerb) \(date.formatted(.relative(presentation: .named)))") }
         return parts.joined(separator: " · ")

@@ -319,4 +319,10 @@ struct StartScreenLogicTests {
     @Test func theFetchedLabelSaysWhenTheListWasUpdated() {
         #expect(StartScreenLogic.fetchedLabel(Date()).hasPrefix("updated "))
     }
+
+    @Test func aRowInARepositorysOwnListLeavesTheRepositoryOut() {
+        #expect(
+            StartScreenLogic.subtitle(repo: nil, number: 42, detail: "mwright", date: nil, dateVerb: "opened")
+                == "#42 · mwright")
+    }
 }

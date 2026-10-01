@@ -41,16 +41,32 @@ struct StartScreenViewRenderTests {
     }
 
     private func loaded(
-        recents: [AnalysisCache.RecentPR], requests: [ReviewRequest]?, selecting source: StartSource? = nil
+        recents: [AnalysisCache.RecentPR], requests: [ReviewRequest]?, selecting source: StartSource? = nil,
+        watching: [String] = [],
+        fetch: @escaping StartScreenModel.WatchedFetch = { _, _ in .failure(.unavailable) }
     ) async -> StartScreenModel {
+        let prefs = preferences()
+        prefs.watchedRepositories = watching.compactMap(WatchedRepository.parse)
         let model = StartScreenModel(
-            preferences: preferences(),
+            preferences: prefs,
             dependencies: StartScreenModel.Dependencies(
-                loadRecents: { recents }, loadReviewRequests: { requests }))
+                loadRecents: { recents }, loadReviewRequests: { requests }, fetchWatched: fetch))
         model.loadRecents()
-        await model.loadReviewRequests()
+        await model.loadRemoteSources()
         if let source { model.select(source) }
         return model
+    }
+
+    private func watchedList(_ count: Int, hasMore: Bool = false) -> WatchedPullRequestList {
+        WatchedPullRequestList(
+            pullRequests: count == 0
+                ? []
+                : (1...count).map {
+                    WatchedPullRequest(
+                        url: "https://github.com/acme/api/pull/\($0)", number: $0, title: "t\($0)",
+                        author: "mwright", isDraft: $0 == 1, createdAt: Date())
+                },
+            hasMore: hasMore, fetchedAt: Date())
     }
 
     @Test func theWelcomeLaysOutWhenNothingIsListed() async {
@@ -73,22 +89,97 @@ struct StartScreenViewRenderTests {
 
     @Test func eachSourceListLaysOutWithAndWithoutRows() async {
         let full = await loaded(recents: recents(), requests: requests(), selecting: .reviewRequests)
-        #expect(render(StartSourceList(model: full, onOpen: { _ in })).height > 0)
+        let fullActions = StartScreenActions(model: full)
+        #expect(render(StartSourceList(model: full, actions: fullActions, onOpen: { _ in })).height > 0)
         full.select(.recents)
-        #expect(render(StartSourceList(model: full, onOpen: { _ in })).height > 0)
+        #expect(render(StartSourceList(model: full, actions: fullActions, onOpen: { _ in })).height > 0)
 
         let empty = await loaded(recents: [], requests: [], selecting: .reviewRequests)
-        #expect(render(StartSourceList(model: empty, onOpen: { _ in })).height > 0)
+        let emptyActions = StartScreenActions(model: empty)
+        #expect(render(StartSourceList(model: empty, actions: emptyActions, onOpen: { _ in })).height > 0)
         empty.select(.recents)
-        #expect(render(StartSourceList(model: empty, onOpen: { _ in })).height > 0)
+        #expect(render(StartSourceList(model: empty, actions: emptyActions, onOpen: { _ in })).height > 0)
     }
 
     @Test func theSidebarLaysOutWithAndWithoutTheMark() async {
         let welcome = await loaded(recents: [], requests: nil)
         let browsing = await loaded(recents: recents(), requests: requests())
         for model in [welcome, browsing] {
-            _ = render(NamespaceHost { StartSidebar(model: model, markNamespace: $0) })
+            _ = render(
+                NamespaceHost {
+                    StartSidebar(model: model, actions: StartScreenActions(model: model), markNamespace: $0)
+                })
         }
+    }
+
+    @Test func theBrowserLaysOutWithAWatchedRepositorySelected() async {
+        let list = watchedList(10, hasMore: true)
+        let model = await loaded(
+            recents: recents(), requests: requests(), selecting: .watched("acme/api"),
+            watching: ["acme/api", "acme/web"], fetch: { _, _ in .success(list) })
+        #expect(model.count(for: .watched("acme/api")) == "10+")
+        _ = render(NamespaceHost { StartScreenView(model: model, markNamespace: $0, onSubmit: { _ in }) })
+        _ = render(
+            StartSourceList(model: model, actions: StartScreenActions(model: model), onOpen: { _ in }))
+    }
+
+    @Test func theWatchedListLaysOutInEveryState() {
+        let states: [WatchedLoadState?] = [
+            nil, .loading, .loaded(watchedList(3)), .loaded(watchedList(0)),
+            .loaded(watchedList(0, hasMore: true)), .failed(.notFound, keeping: nil),
+            .failed(.rateLimited(resetAt: Date()), keeping: watchedList(2)),
+        ]
+        for state in states {
+            let size = render(
+                VStack(alignment: .leading) {
+                    WatchedPullRequestsList(
+                        repository: "acme/api", state: state, labels: { _ in ["draft", "yours"] },
+                        failureMessage: { _ in "Couldn't list pull requests for acme/api." },
+                        onRefresh: {}, onOpen: { _ in })
+                })
+            #expect(size.height > 0)
+        }
+    }
+
+    @Test func aRowWithAHostileTitleStaysOneLineTall() {
+        func height(_ title: String) -> CGFloat {
+            render(
+                PullRequestRow(
+                    title: title, repo: nil, number: 1, detail: "mwright", date: nil, dateVerb: "opened",
+                    url: "https://github.com/acme/api/pull/1", labels: ["draft"], onOpen: { _ in }
+                ).frame(width: 500)
+            ).height
+        }
+        let plain = height("Fix it")
+        #expect(height(String(repeating: "A very long title ", count: 60)) == plain)
+        #expect(height("first line\nsecond line\nthird line") == plain)
+        #expect(height("**bold** [link](https://example.com) `code`") == plain)
+    }
+
+    @Test func labelsFailureMessagesAndMenusLayOut() {
+        #expect(render(PullRequestLabel(text: "review requested")).width > 0)
+        #expect(render(WatchedFailureMessage(text: "Couldn't list pull requests.", onRetry: {})).height > 0)
+        #expect(
+            render(
+                VStack {
+                    StartMenu(items: [
+                        StartMenuItem(title: "Refresh", action: {}),
+                        StartMenuItem(title: "Stop Watching acme/api", isDestructive: true, action: {}),
+                    ])
+                }
+            ).width > 0)
+    }
+
+    @Test func thePopoverLaysOutWithAndWithoutSuggestions() {
+        #expect(render(WatchRepositoryPopover(suggestions: [], onWatch: { _ in })).width > 0)
+        #expect(
+            render(WatchRepositoryPopover(suggestions: ["acme/web", "acme/infra"], onWatch: { _ in })).height > 0)
+    }
+
+    @Test func onlyWatchedSourcesAreInTheWatchedGroup() {
+        #expect(StartSidebar.isWatched(.watched("acme/api")))
+        #expect(!StartSidebar.isWatched(.recents))
+        #expect(!StartSidebar.isWatched(.reviewRequests))
     }
 
     @Test func sourceRowsLayOutWithAndWithoutACount() {
