@@ -36,7 +36,7 @@ final class IntegrationSmokeTests: XCTestCase {
                 XCTFail(message)
                 break loop
             case .complete: break loop
-            case .checkout, .revalidating, .fromCache: break
+            case .checkout, .stack, .revalidating, .fromCache: break
             }
         }
         await pipeline.cancel()
