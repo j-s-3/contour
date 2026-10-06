@@ -26,6 +26,14 @@ struct SummaryViewRenderTests {
         #expect(render(summary(ContourSampleData.publishTriggeredReindex, AnalysisState(isComplete: true))) != nil)
     }
 
+    @Test func rendersTheStackStripInTheHeader() {
+        let view = SummaryView(
+            graph: ContourSampleData.publishTriggeredReindex, analysis: AnalysisState(isComplete: true),
+            discussed: [], onRetry: { _ in }, navigate: { _ in },
+            stack: PRStackTests.three, stackStatuses: [3: .cached], openLayer: { _ in })
+        #expect(render(view) != nil)
+    }
+
     @Test func rendersWhileEveryStageIsStillRunning() {
         var graph = ContourSampleData.publishTriggeredReindex
         graph.behaviorChanges = []

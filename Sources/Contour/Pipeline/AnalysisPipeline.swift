@@ -6,6 +6,7 @@ enum PipelineEvent: Sendable {
     case graph(PRGraph)
     case diff(String)
     case checkout(RepoCheckout)
+    case stack(PRStack, cached: Set<Int>)
     case revalidating(fromHead: String?)
     case fromCache
     case complete
@@ -43,6 +44,11 @@ actor AnalysisPipeline {
     private let checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)?
     private let previousRevisionOverride: AnalysisCache.Entry?
     private let mockOverride: AnalysisService.MockOptions?
+    private let stackDiscoveryOverride: (@Sendable (RawPRContext) async -> PRStack?)?
+    private let stackDiscoveryGrace: Duration
+    private var stack: PRStack?
+    private var discoveryFinished = false
+    private var discoveryTask: Task<Void, Never>?
 
     init(
         harnessID: HarnessID, trackerID: TrackerID = .github, githubAccess: GitHubAccessMode = .auto,
@@ -50,7 +56,9 @@ actor AnalysisPipeline {
         prSourceOverride: (any PRSource)? = nil,
         checkoutOverride: (@Sendable (RawPRContext) async throws -> RepoCheckout)? = nil,
         previousRevisionOverride: AnalysisCache.Entry? = nil,
-        mockOverride: AnalysisService.MockOptions? = nil
+        mockOverride: AnalysisService.MockOptions? = nil,
+        stackDiscoveryOverride: (@Sendable (RawPRContext) async -> PRStack?)? = nil,
+        stackDiscoveryGrace: Duration = .seconds(5)
     ) {
         self.harnessID = harnessID
         self.trackerID = trackerID
@@ -60,6 +68,8 @@ actor AnalysisPipeline {
         self.checkoutOverride = checkoutOverride
         self.previousRevisionOverride = previousRevisionOverride
         self.mockOverride = mockOverride
+        self.stackDiscoveryOverride = stackDiscoveryOverride
+        self.stackDiscoveryGrace = stackDiscoveryGrace
         (events, continuation) = AsyncStream.makeStream(of: PipelineEvent.self)
     }
 
@@ -107,6 +117,8 @@ actor AnalysisPipeline {
     private func cancelInFlight() {
         runTask?.cancel()
         runTask = nil
+        discoveryTask?.cancel()
+        discoveryTask = nil
         for task in retryTasks.values { task.cancel() }
         retryTasks = [:]
     }
@@ -123,6 +135,8 @@ actor AnalysisPipeline {
             continuation.yield(.diff(ctx.diff))
             publish()
             setStatus(.fetching, .done)
+            discoveryFinished = false
+            discoveryTask = Task { await self.discoverStack(ctx) }
 
             setStatus(.checkingOut, .running(detail: nil))
             log(.checkingOut, "\(ctx.owner)/\(ctx.repo) @ \(ctx.headSha.prefix(8))")
@@ -143,7 +157,9 @@ actor AnalysisPipeline {
                 mock: mockOverride)
 
             let contextFile = checkout.rootDir.appendingPathComponent(PromptBuilder.contextFileName)
-            try PromptBuilder.contextFileContents(ctx).write(to: contextFile, atomically: true, encoding: .utf8)
+            let stack = await awaitStack(grace: stackDiscoveryGrace)
+            try PromptBuilder.contextFileContents(ctx, stack: stack).write(
+                to: contextFile, atomically: true, encoding: .utf8)
 
             let toRun = restoreFromCache(ctx, forceRefresh: forceRefresh)
             if toRun.isEmpty {
@@ -278,6 +294,41 @@ actor AnalysisPipeline {
         if toRun.contains(.judgment) {
             await execute(.judgment)
         }
+    }
+
+    private func discoverStack(_ ctx: RawPRContext) async {
+        defer { discoveryFinished = true }
+        let found: PRStack?
+        if let stackDiscoveryOverride {
+            found = await stackDiscoveryOverride(ctx)
+        } else {
+            found = await StackDiscovery().discover(ctx: ctx, access: github.mode)
+        }
+        guard let found, !Task.isCancelled else { return }
+        stack = found
+        log(.fetching, "part \(found.currentIndex + 1) of a \(found.layers.count)-layer stack")
+        continuation.yield(.stack(found, cached: cachedLayers(of: found)))
+    }
+
+    private func awaitStack(grace: Duration) async -> PRStack? {
+        let deadline = ContinuousClock.now + grace
+        while !discoveryFinished, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return stack
+    }
+
+    func cachedLayers(of stack: PRStack) -> Set<Int> {
+        guard let ctx else { return [] }
+        let analysed = stack.layers.filter { layer in
+            guard layer.number != ctx.number,
+                let entry = cache.load(
+                    owner: ctx.owner, repo: ctx.repo, number: layer.number, headSha: layer.headSha,
+                    baseSha: layer.baseSha, pipelineVersion: Self.pipelineVersion)
+            else { return false }
+            return entry.completedStages.isSuperset(of: PipelineStage.analysis)
+        }
+        return Set(analysed.map(\.number))
     }
 
     private func lookUpTicket() async {

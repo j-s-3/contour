@@ -76,7 +76,7 @@ final class BenchTests: XCTestCase {
             case .diff(let diff):
                 diffText = diff
                 _ = UnifiedDiff.parse(diff)
-            case .checkout:
+            case .checkout, .stack:
                 break
             case .revalidating(let head):
                 state.revalidatingFrom = head

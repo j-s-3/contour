@@ -142,6 +142,13 @@ struct AnonymousAPISource: PRSource {
         return data
     }
 
+    func pullRequests(owner: String, repo: String, query: String) async throws -> Data {
+        let (data, _) = try await send(
+            request("/repos/\(owner)/\(repo)/pulls?\(query)", accept: "application/vnd.github+json"),
+            owner: owner, repo: repo)
+        return data
+    }
+
     private func request(_ path: String, accept: String) -> URLRequest {
         var req = URLRequest(url: URL(string: path, relativeTo: Self.api)!)
         req.setValue(accept, forHTTPHeaderField: "Accept")

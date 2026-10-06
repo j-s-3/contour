@@ -121,6 +121,15 @@ fails and retries on its own, and you can stop a run and resume it section by se
 Reopening a PR you've analyzed before is instant. If it has new commits, you see the
 previous analysis, clearly marked, while the new one runs.
 
+### Stacked pull requests
+
+When a pull request is one layer of a stack, Contour notices from the branch chain alone and
+shows the whole stack under the title: part 3 of 7, one chip per layer, click to open any of
+them. Each layer is reviewed on its own diff, and the analysis is told which layers are
+already in the checkout and which build on this one, so code that nothing calls yet is read
+as a later layer's job rather than dead code. Next and previous layer are in the File menu
+(⌥⌘] and ⌥⌘[) and in ⌘K.
+
 ## Why trust it
 
 - **Provenance on every statement.** Everything the app says is tagged as an observed

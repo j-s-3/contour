@@ -15,6 +15,9 @@ struct ContentViewActions {
     func retry(_ stage: PipelineStage) { store.retry(stage) }
     func navigate(_ target: NavigationTarget) { store.navigate(to: target) }
     func openEvidence(_ ref: CodeRef) { store.navigate(to: .evidence(ref)) }
+    func openLayer(_ layer: StackLayer) { store.openLayer(layer) }
+    func openNextLayer() { store.openNextLayer() }
+    func openPreviousLayer() { store.openPreviousLayer() }
     func approve() { store.submitReview(.approve) }
     func requestChanges(_ comment: String) { store.submitReview(.requestChanges, comment: comment) }
     func acknowledge() {}

@@ -99,7 +99,11 @@ struct ContentView: View {
             close: actions.close,
             repository: repository,
             isWatchingRepository: startScreen.isWatched(repository),
-            toggleWatch: repository.map(StartScreenActions(model: startScreen).toggleWatch) ?? {}
+            toggleWatch: repository.map(StartScreenActions(model: startScreen).toggleWatch) ?? {},
+            canOpenNextLayer: store.canOpenNextLayer,
+            canOpenPreviousLayer: store.canOpenPreviousLayer,
+            openNextLayer: actions.openNextLayer,
+            openPreviousLayer: actions.openPreviousLayer
         )
     }
 
@@ -525,7 +529,8 @@ struct ContentView: View {
         case .summary:
             SummaryView(
                 graph: graph, analysis: analysis, discussed: store.conversations.discussedConsiderationIds,
-                onRetry: actions.retry, navigate: actions.navigate
+                onRetry: actions.retry, navigate: actions.navigate,
+                stack: store.stack, stackStatuses: store.stackAnalysis, openLayer: actions.openLayer
             )
         case .architecture, .componentDetail(_), .edgeDetail(_):
             sectionContent(

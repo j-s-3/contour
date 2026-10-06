@@ -126,7 +126,7 @@ final class CorpusRunTests: XCTestCase {
                 graph = snapshot
             case .diff:
                 diffAvailable = true
-            case .checkout, .revalidating, .fromCache:
+            case .checkout, .stack, .revalidating, .fromCache:
                 break
             case .complete:
                 state.isComplete = true

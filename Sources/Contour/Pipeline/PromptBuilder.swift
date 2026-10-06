@@ -1,10 +1,11 @@
 struct PromptBuilder {
-    static func contextFileContents(_ ctx: RawPRContext) -> String {
+    static func contextFileContents(_ ctx: RawPRContext, stack: PRStack? = nil) -> String {
         var out = "# PR Context (untrusted author content is delimited below)\n\n"
         out += "Repo: \(ctx.owner)/\(ctx.repo)\n"
         out += "PR #\(ctx.number), state \(ctx.state)\n"
         out += "Head: \(ctx.headRefName) @ \(ctx.headSha)\n"
         out += "Base: \(ctx.baseRefName) @ \(ctx.baseSha)\n"
+        if let stack { out += stackBlock(stack) }
         out += "Changed files (\(ctx.files.count)): \(ctx.files.joined(separator: ", "))\n\n"
 
         out += "<UNTRUSTED_PR_CONTENT>\n"
@@ -34,6 +35,28 @@ struct PromptBuilder {
     }
 
     static let contextFileName = ".contour-context.md"
+
+    static func stackBlock(_ stack: PRStack) -> String {
+        let position = stack.currentIndex + 1
+        let count = stack.layers.count
+        var out = "Stack: this pull request is part \(position) of \(count). Layers are listed bottom-up; each "
+        out += "targets the branch of the one before it. "
+        if position > 1 {
+            out += "Layers 1-\(position - 1) are already merged into this checkout and are not part of this "
+            out += "change: treat their code as existing code. "
+        }
+        if position < count {
+            out += "Layers \(position + 1)-\(count) build on this one and are not in the checkout. "
+        }
+        out += "Review only this layer's diff; code that this layer adds but nothing yet calls is expected "
+        out += "when a later layer is the caller.\n<UNTRUSTED_PR_CONTENT>\n"
+        for (index, layer) in stack.layers.enumerated() {
+            out += "\(index + 1). #\(layer.number) \(layer.title)"
+            out += index == stack.currentIndex ? "   (this PR)\n" : "\n"
+        }
+        out += "</UNTRUSTED_PR_CONTENT>\n"
+        return out
+    }
 
     static func behaviorChangePrompt() -> String {
         """

@@ -6,6 +6,9 @@ struct SummaryView: View {
     var discussed: Set<String> = []
     var onRetry: (PipelineStage) -> Void = { _ in }
     var navigate: (NavigationTarget) -> Void
+    var stack: PRStack? = nil
+    var stackStatuses: [Int: StackLayerStatus] = [:]
+    var openLayer: (StackLayer) -> Void = { _ in }
 
     private var behaviorStatus: StageStatus { analysis.status(.behaviorChange) }
     private var understandingStatus: StageStatus { analysis.status(.understanding) }
@@ -108,6 +111,11 @@ struct SummaryView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            if let stack {
+                StackStrip(stack: stack, statuses: stackStatuses, openLayer: openLayer)
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
+            }
             factsLine
         }
         .reviewContextMenu(.pullRequest)
