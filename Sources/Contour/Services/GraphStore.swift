@@ -8,6 +8,10 @@ enum SessionPhase: Equatable {
     case failed(String)
 }
 
+enum StackLayerStatus: Equatable {
+    case cached
+}
+
 enum NavigationTarget: Hashable {
     case summary
     case architecture
@@ -43,6 +47,8 @@ final class GraphStore {
     private(set) var progressLog: [PipelineProgressEntry] = []
     private(set) var analysis = AnalysisState()
     private(set) var metrics: AnalysisMetrics?
+    private(set) var stack: PRStack?
+    private(set) var stackAnalysis: [Int: StackLayerStatus] = [:]
     private var metricsSaved = false
     private var pipeline: AnalysisPipeline?
 
@@ -111,6 +117,8 @@ final class GraphStore {
         conversations.reset()
         focusedSubject = nil
         diagramMode = .delta
+        stack = nil
+        stackAnalysis = [:]
 
         guard let harnessID = preferences.resolvedHarness else {
             phase = .failed(
@@ -151,6 +159,27 @@ final class GraphStore {
     func close() {
         endAnalysis()
         phase = .idle
+    }
+
+    var canOpenNextLayer: Bool { stack?.layer(offset: 1) != nil }
+    var canOpenPreviousLayer: Bool { stack?.layer(offset: -1) != nil }
+
+    @MainActor
+    func openLayer(_ layer: StackLayer) {
+        noteEngagement()
+        load(prURL: layer.url)
+    }
+
+    @MainActor
+    func openNextLayer() {
+        guard let next = stack?.layer(offset: 1) else { return }
+        openLayer(next)
+    }
+
+    @MainActor
+    func openPreviousLayer() {
+        guard let previous = stack?.layer(offset: -1) else { return }
+        openLayer(previous)
     }
 
     @MainActor
@@ -214,6 +243,9 @@ final class GraphStore {
             diffFiles = UnifiedDiff.parse(diff)
         case .checkout(let checkout):
             self.checkout = checkout
+        case .stack(let found, let cached):
+            stack = found
+            stackAnalysis = Dictionary(uniqueKeysWithValues: cached.map { ($0, StackLayerStatus.cached) })
         case .revalidating(let head):
             analysis.revalidatingFrom = head
         case .fromCache:
