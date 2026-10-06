@@ -120,3 +120,18 @@ the seven fields the parser reads (`number`, `title`, `html_url`, `draft`, `crea
 `user.login`, `user.type`), because the full response is several hundred kilobytes of
 fields nothing reads. No value was changed. The REST API spells a bot's login
 `dependabot[bot]` and sets `user.type` to `Bot`.
+
+## `gh-pr-list-head.json`, `gh-pr-list-base.json`
+Real output of `gh pr list -R cli/cli --state open --limit 10 --head babakks/refresh-token-a-foundation --json
+number,url,title,author,isDraft,headRefName,baseRefName,headRefOid,baseRefOid,additions,deletions,changedFiles,isCrossRepository`
+and the same with `--base` in place of `--head`, captured 2026-10-06 and unedited. The branch is
+layer 1 of a seven-layer stack (`Refreshable tokens (1/7)` to `(7/7)`); the `--head` answer is that
+layer, the `--base` answer is layer 2. `StackDiscoveryParseTests` relies on each holding one row.
+
+## `rest-pulls-head.json`, `rest-pulls-base.json`
+Real output of `GET /repos/cli/cli/pulls?state=open&per_page=10&head=cli:babakks/refresh-token-a-foundation`
+and `...&base=babakks/refresh-token-a-foundation`, captured 2026-10-06. Each response was
+projected with `jq` to the fields the parser reads (`number`, `title`, `html_url`, `draft`,
+`user.login`, `head.ref`, `head.sha`, `head.repo.full_name`, `base.ref`, `base.sha`, `additions`,
+`deletions`, `changed_files`). No value was changed. The list endpoint returns `null` for the
+three size fields, which is why `StackLayer.size` is optional.
