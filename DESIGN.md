@@ -174,8 +174,10 @@ through three levels: **understand** what changed, **reason** about what it mean
 needs their judgment, and **verify** the analysis against the evidence only when they want
 to. One centered column (max ~1240pt) reads top to bottom — title and metadata, with one
 quiet facts line (`12 files · +148 −37 · CI passing · 2 approvals · 3 unresolved threads ·
-opened 2 days ago`, `PRGlance`) that omits whatever the source couldn't tell; **What
-changed**, the before/after stage diagram as the hero (3–6 short stages per side, green for
+opened 2 days ago`, `PRGlance`) that omits whatever the source couldn't tell; when the pull request is one layer
+of a stack, a strip under the metadata line names its position ("Part 3 of 7 in a stack")
+with one chip per layer, the opened one filled, cached ones ticked, each opening that layer
+(`Views/Summary/StackStrip.swift`); **What changed**, the before/after stage diagram as the hero (3–6 short stages per side, green for
 a step this PR adds, dashed for a step that no longer happens, an optional success/failure
 outcome on the last stage); **Why** and **Consequence** at one or two lines each; **What
 this means**, two to four one-line implications of the change (behavioral, architectural,
@@ -513,6 +515,18 @@ The checkout uses plain `git clone`, not `gh repo clone`. Git's credential helpe
 `gh` installs when it authenticates — already covers private repositories, so a single
 code path serves both cases and the checkout depends on `gh` not at all.
 
+**Stacked pull requests** are recognised from branch chaining alone
+(`Services/StackDiscovery.swift`): the parent of a layer is the open pull request whose head
+branch is this one's base branch, found with `gh pr list --head <base>` or
+`GET /pulls?head=owner:<base>`; the children are the open pull requests whose base is this one's
+head, with `--base` or `?base=`. The walk descends until nothing matches, climbs while exactly
+one child matches, stops on a repeated branch and at 32 layers, and ignores rows from forks.
+One call per link, so a seven-layer stack opened at the bottom costs seven calls out of the
+anonymous 60 per hour. Branch names are author-controlled: a name that fails git's refname
+rules is treated as "no parent" rather than passed to `gh`, and is percent-encoded for REST.
+Discovery runs beside the checkout and never fails a review; a failure goes to the technical
+log and the pull request is reviewed as a plain one.
+
 Posting reviews back to GitHub is designed (one line-anchored comment per reviewer-marked
 decision via the REST reviews API) but deferred past MVP. Until then the review still has a
 way out: **Open on GitHub** (toolbar, File menu, ⌘⇧O) and **Copy Review Summary** (toolbar,
@@ -551,7 +565,8 @@ a review.
 ## 9. Repository-context acquisition
 
 The app does the minimum acquisition itself — clone/fetch, write one context file
-(`.contour-context.md`, containing PR title/body/commits/comments/diff, all wrapped in
+(`.contour-context.md`, containing PR title/body/commits/comments/diff and, for a stacked pull
+request, its position in the stack and the other layers' titles, all author content wrapped in
 `<UNTRUSTED_PR_CONTENT>` tags) — and then hands the rest to `pi`'s own file tools. `pi`
 reads real files, greps, and follows call chains itself rather than the app pre-computing
 a symbol index and feeding a dumb model; this is the direct consequence of building the
@@ -757,6 +772,10 @@ independent stages in parallel (§10).
   commit shows everything at once. Beside the entries, a small `recent-prs.json` index
   of the last PRs opened (URL, repo, title, when) feeds the start screen's recent list
   without decoding every cached graph.
+- **Stacks.** Each layer of a stacked pull request is cached as an ordinary entry under its
+  own number, head and base. The pipeline reports which layers already have a complete entry
+  when it emits the stack, so the strip can mark them; merging a lower layer retargets the one
+  above it, which moves its base SHA and misses the cache as it should.
 - **Stale-while-revalidate.** When the head has moved, the newest analysis of an earlier
   head is shown straight away, marked "from previous revision" (banner, stage status),
   and replaced slice by slice as the current revision's stages land. A stale slice is
