@@ -15,6 +15,11 @@ class Contour < Formula
   depends_on macos: :sequoia
 
   def install
+    # `swift` resolves through xcode-select, which may point at the Command Line Tools.
+    # Their compiler rejects code that builds under Xcode 27's toolchain, so build with
+    # the Xcode the formula depends on, the same toolchain CI uses.
+    ENV["DEVELOPER_DIR"] = MacOS::Xcode.prefix.to_s
+
     # SwiftPM's own sandbox can't nest inside Homebrew's build sandbox.
     system "swift", "build", "--disable-sandbox", "-c", "release"
 
