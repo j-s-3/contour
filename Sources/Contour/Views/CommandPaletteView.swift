@@ -98,6 +98,20 @@ struct CommandPaletteView: View {
                     symbol: "stop.circle"
                 ) { store.stopAnalysis() })
         }
+        if store.canOpenNextLayer {
+            commands.append(
+                .init(
+                    title: "Open next layer in stack", subtitle: "File ▸ Open Next Layer in Stack (⌥⌘])",
+                    symbol: "square.3.layers.3d.top.filled"
+                ) { store.openNextLayer() })
+        }
+        if store.canOpenPreviousLayer {
+            commands.append(
+                .init(
+                    title: "Open previous layer in stack", subtitle: "File ▸ Open Previous Layer in Stack (⌥⌘[)",
+                    symbol: "square.3.layers.3d.bottom.filled"
+                ) { store.openPreviousLayer() })
+        }
         guard let graph = store.graph else { return commands }
         commands.append(
             .init(

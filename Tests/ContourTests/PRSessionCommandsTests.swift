@@ -12,6 +12,37 @@ struct PRSessionCommandsTests {
         #expect(!PRSessionCommandsLogic.openPullRequestEnabled(nil))
     }
 
+    @Test func layerCommandsAreEnabledOnlyWhenTheSessionSaysSo() {
+        let both = PRSessionActions(
+            hasOpenPR: true, pullRequestURL: nil, openDifferent: {}, close: {},
+            canOpenNextLayer: true, canOpenPreviousLayer: true)
+        let none = PRSessionActions(hasOpenPR: true, pullRequestURL: nil, openDifferent: {}, close: {})
+        #expect(PRSessionCommandsLogic.nextLayerEnabled(both))
+        #expect(PRSessionCommandsLogic.previousLayerEnabled(both))
+        #expect(!PRSessionCommandsLogic.nextLayerEnabled(none))
+        #expect(!PRSessionCommandsLogic.previousLayerEnabled(none))
+        #expect(!PRSessionCommandsLogic.nextLayerEnabled(nil))
+        #expect(!PRSessionCommandsLogic.previousLayerEnabled(nil))
+    }
+
+    @MainActor
+    @Test func menuActionsForwardLayerNavigationToTheSession() {
+        final class Calls {
+            var names: [String] = []
+        }
+        let calls = Calls()
+        let session = PRSessionActions(
+            hasOpenPR: true, pullRequestURL: nil, openDifferent: {}, close: {},
+            openNextLayer: { calls.names.append("next") }, openPreviousLayer: { calls.names.append("previous") })
+        let actions = PRSessionMenuActions(session: session)
+        actions.openNextLayer()
+        actions.openPreviousLayer()
+        #expect(calls.names == ["next", "previous"])
+        PRSessionMenuActions(session: nil).openNextLayer()
+        PRSessionMenuActions(session: nil).openPreviousLayer()
+        #expect(calls.names == ["next", "previous"])
+    }
+
     @Test func hasLinkableURLNeedsBothASessionAndAURL() {
         let url = URL(string: "https://github.com/acme/shop/pull/42")!
         let withURL = PRSessionActions(hasOpenPR: true, pullRequestURL: url, openDifferent: {}, close: {})

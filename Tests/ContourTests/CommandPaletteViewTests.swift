@@ -23,6 +23,18 @@ struct CommandPaletteViewTests {
     }
 
     @MainActor
+    @Test func layerCommandsAppearOnlyWhenAStackHasANeighbour() {
+        let store = GraphStore()
+        let before = CommandPaletteView.allCommands(store: store).map(\.title)
+        #expect(!before.contains("Open next layer in stack"))
+        #expect(!before.contains("Open previous layer in stack"))
+        store.handle(.stack(PRStackTests.three, cached: []))
+        let after = CommandPaletteView.allCommands(store: store).map(\.title)
+        #expect(after.contains("Open next layer in stack"))
+        #expect(after.contains("Open previous layer in stack"))
+    }
+
+    @MainActor
     @Test func filteredReturnsEmptyWhenNothingMatches() {
         let commands = [Self.command("Go to Overview")]
         #expect(CommandPaletteView.filtered(commands, query: "nonsense").isEmpty)
